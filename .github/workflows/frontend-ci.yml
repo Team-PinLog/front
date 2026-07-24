@@ -1,0 +1,63 @@
+name: frontend-ci
+
+on:
+  pull_request:
+    branches: [dev]
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: frontend-ci / check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install CI validator dependencies
+        run: python3 -m pip install --require-hashes -r .github/requirements-ci.txt
+
+      - name: Test CI contract
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Detect and validate frontend project
+        id: frontend
+        run: python3 .github/scripts/check_frontend_project.py . >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        if: steps.frontend.outputs.has_app == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.frontend.outputs.has_app == 'true'
+        run: npm ci
+
+      - name: Run tests
+        if: steps.frontend.outputs.has_app == 'true'
+        run: npm test --if-present
+
+      - name: Build frontend
+        if: steps.frontend.outputs.has_app == 'true'
+        run: npm run build
+
+      - name: Verify Vite build artifact
+        if: steps.frontend.outputs.has_app == 'true'
+        run: test -f dist/index.html
