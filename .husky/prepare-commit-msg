@@ -1,0 +1,51 @@
+# 브랜치명(feature/S15P11A705-42-foo)에서 이슈키를 추출해
+# 커밋 헤더에 스코프로 자동 삽입한다: "feat: 설명" -> "feat(S15P11A705-42): 설명"
+# docs/conventions.md 3장 커밋 형식(type(이슈키): 설명) 기준.
+
+COMMIT_MSG_FILE="$1"
+COMMIT_SOURCE="$2"
+
+# merge/squash/amend(commit)/template 커밋은 이미 메시지가 있으므로 건드리지 않는다
+case "$COMMIT_SOURCE" in
+  merge|squash|commit|template)
+    exit 0
+    ;;
+esac
+
+BRANCH_NAME=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+ISSUE_KEY=$(printf '%s' "$BRANCH_NAME" | grep -oE 'S15P11A705-[0-9]+' | head -n1)
+
+# 브랜치명에 이슈키 패턴이 없으면 통과
+if [ -z "$ISSUE_KEY" ]; then
+  exit 0
+fi
+
+HEADER=$(head -n1 "$COMMIT_MSG_FILE")
+
+# 헤더에 이슈키가 이미 있으면 건드리지 않는다
+if printf '%s' "$HEADER" | grep -qE 'S15P11A705-[0-9]+'; then
+  exit 0
+fi
+
+# "type: 설명" 형태가 아니면(빈 메시지, 코멘트뿐인 템플릿 등) 건드리지 않는다
+if ! printf '%s' "$HEADER" | grep -qE '^[a-zA-Z]+(\([^)]*\))?: .+'; then
+  exit 0
+fi
+
+# 이미 스코프가 있으면(type(scope): 설명) 건드리지 않는다
+if printf '%s' "$HEADER" | grep -qE '^[a-zA-Z]+\([^)]*\): .+'; then
+  exit 0
+fi
+
+TYPE=$(printf '%s' "$HEADER" | sed -E 's/^([a-zA-Z]+): .*/\1/')
+SUBJECT=$(printf '%s' "$HEADER" | sed -E 's/^[a-zA-Z]+: //')
+NEW_HEADER="${TYPE}(${ISSUE_KEY}): ${SUBJECT}"
+
+TMP_FILE=$(mktemp)
+{
+  printf '%s\n' "$NEW_HEADER"
+  tail -n +2 "$COMMIT_MSG_FILE"
+} > "$TMP_FILE"
+mv "$TMP_FILE" "$COMMIT_MSG_FILE"
+
+exit 0
