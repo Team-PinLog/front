@@ -1,6 +1,6 @@
-import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { fileURLToPath, URL } from 'node:url';
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -21,4 +21,9 @@ export default defineConfig({
       },
     },
   },
-})
+  test: {
+    // 현재는 순수 함수(봉투 언랩·에러 변환) 테스트만 있어 DOM 없이 node 환경으로 충분하다.
+    // 컴포넌트 테스트 도입 시 jsdom으로 교체.
+    environment: 'node',
+  },
+});

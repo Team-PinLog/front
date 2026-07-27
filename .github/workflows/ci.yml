@@ -23,4 +23,4 @@ jobs:
 
       - run: npm run build
 
-      # 테스트 도입 시 추가
+      - run: npm run test

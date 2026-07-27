@@ -5,6 +5,7 @@ import { httpClient } from '@/shared/http/client';
  * ⭐ 표준 패턴: 화면(Component) → Hook → API 함수(여기) → httpClient
  * API 함수가 요청/응답 타입을 소유하고, 응답을 Zod로 파싱한다.
  * 근거: docs/architecture.md 1장, docs/reference/08_API_명세.md 3.6.
+ * 표준: 봉투({ success, data })는 httpClient 인터셉터가 벗긴다. API 함수는 언랩된 data만 파싱한다.
  */
 const meSummarySchema = z.object({
   provider: z.string(),
