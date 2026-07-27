@@ -16,18 +16,20 @@
 
 - 컴포넌트는 Hook만 호출한다. API 함수나 Axios를 직접 부르지 않는다.
 - API 함수는 요청/응답 타입을 소유하고 Zod로 응답을 파싱한다.
-- HTTP Client는 공통 관심사(baseURL, 쿠키 전송, 401 → 재로그인 유도)를 담당한다.
+- HTTP Client는 공통 관심사(baseURL, 쿠키 전송, 401 → refresh 시도 → 실패 시 재로그인 유도)를 담당한다.
 - 장소 검색은 백엔드 검색 프록시(BFF) API를 호출한다. 프론트가 카카오 로컬 API를 직접 호출하지 않는다.
 - 인증·에러·페이지네이션 규약은 `docs/api-contract.md`를 따른다.
 
-### 1-1. 인증 (BFF)
+### 1-1. 인증 (쿠키 기반)
 
-인증은 **BFF(Backend for Frontend)** 가 담당한다.
+인증은 **쿠키 기반**이다. BFF와 리소스 서버는 별도 계층이 아니라 Spring 단일 앱이 겸한다(`docs/reference/11_인증_설계.md` 2장).
 
-- Axios 인터셉터는 **Bearer 토큰을 주입하지 않는다.** 프론트는 accessToken/refreshToken을 저장하지 않는다.
-- Axios는 **`withCredentials: true`**로 쿠키를 전송한다.
-- **401 시 재발급 로직을 프론트에 두지 않는다.** 재로그인 페이지/유도로만 처리한다.
-- 세부 계약(쿠키명, 만료·로그아웃 처리)은 `docs/api-contract.md`의 [협의 필요] 항목을 따른다.
+- Axios는 **`withCredentials: true`**로 인증 쿠키를 자동 전송한다(fetch는 `credentials: 'include'`). **Bearer 토큰을 헤더에 직접 주입하지 않는다.** 프론트는 accessToken/refreshToken을 저장하지 않는다 — 서버가 `HttpOnly`+`Secure`+`SameSite=Lax` 쿠키로 관리한다.
+- **401 시 프론트가 `POST /auth/refresh`를 직접 호출한다**(요청 본문 없음, Refresh 쿠키로 동작). 성공하면 새 쿠키가 `Set-Cookie`로 갱신되고 원래 요청을 재시도한다. 실패(401)하면 재로그인 화면으로 유도한다.
+- **재발급은 동시에 하나만 보낸다(single-flight 필수).** 회전 발급이라 여러 요청이 401을 한꺼번에 받아도 재발급 호출은 한 번만 하고 나머지는 그 결과를 기다린다. **재발급 요청 자체의 401은 재시도하지 않는다**(무한 루프 방지) — 즉시 재로그인으로 유도한다.
+- **CSRF**: 서버가 내려주는 `XSRF-TOKEN` 쿠키(비-`HttpOnly`) 값을 상태 변경 요청(`POST`·`PUT`·`PATCH`·`DELETE`)의 `X-XSRF-TOKEN` 헤더로 실어 보낸다. `GET` 등 조회 요청은 해당 없음.
+- **로그인 상태 확인**: `logged_in` 비-`HttpOnly` 쿠키로 앱 시작 시 초기 화면(로그인/메인)을 결정한다. **UI 힌트 전용이며 인가 판단에 쓰지 않는다** — 실제 인가는 서버가 매 요청 인증 쿠키로 검증한다.
+- 세부 계약은 `docs/api-contract.md`의 [확정] 인증 섹션을 따른다.
 
 ## 2. 폴더 구조 계획
 
