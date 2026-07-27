@@ -10,14 +10,24 @@
 화면(Component)
   → Query/Mutation Hook (TanStack Query)
     → API 함수 (엔드포인트별 함수, 요청/응답 타입 소유)
-      → HTTP Client (Axios 인스턴스: baseURL, 인증 헤더, 401 처리)
-        → Backend (/api/core/v1)
+      → HTTP Client (Axios 인스턴스: baseURL, withCredentials, 401 처리)
+        → Backend (/api/core/v1, BFF)
 ```
 
 - 컴포넌트는 Hook만 호출한다. API 함수나 Axios를 직접 부르지 않는다.
 - API 함수는 요청/응답 타입을 소유하고 Zod로 응답을 파싱한다.
-- HTTP Client는 공통 관심사(baseURL, `Authorization` 헤더 주입, 401 → 재발급/재로그인)를 담당한다.
+- HTTP Client는 공통 관심사(baseURL, 쿠키 전송, 401 → 재로그인 유도)를 담당한다.
+- 장소 검색은 백엔드 검색 프록시(BFF) API를 호출한다. 프론트가 카카오 로컬 API를 직접 호출하지 않는다.
 - 인증·에러·페이지네이션 규약은 `docs/api-contract.md`를 따른다.
+
+### 1-1. 인증 (BFF)
+
+인증은 **BFF(Backend for Frontend)** 가 담당한다.
+
+- Axios 인터셉터는 **Bearer 토큰을 주입하지 않는다.** 프론트는 accessToken/refreshToken을 저장하지 않는다.
+- Axios는 **`withCredentials: true`**로 쿠키를 전송한다.
+- **401 시 재발급 로직을 프론트에 두지 않는다.** 재로그인 페이지/유도로만 처리한다.
+- 세부 계약(쿠키명, 만료·로그아웃 처리)은 `docs/api-contract.md`의 [협의 필요] 항목을 따른다.
 
 ## 2. 폴더 구조 계획
 

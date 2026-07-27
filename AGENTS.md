@@ -15,11 +15,12 @@ PinLog 프론트엔드(PC 웹). 스택 예정: React + TypeScript + Vite + Tailw
 
 ## 절대 금지 (확정 사실 기반)
 
-1. 타인 화면(Feed·타인 Shelf·Collection 상세)에 **Context 원문 노출**. 타인 응답의 `contexts`는 `null`이다.
-2. **`member.id`(내부 사용자 ID)를 URL·요청·응답에 사용**. 진입점은 Collection id다.
-3. **Keyword `code` 노출**. Keyword는 `label`만 사용한다.
-4. Context 수정 후 **구 `contextId`를 쿼리 키·URL·선택 상태로 계속 사용**. 응답의 새 id로 교체한다.
-5. AI 미완료 상태인 **`keywords: []`를 오류·로딩 실패로 처리**. 정상 응답이다.
+1. 공개 화면(Feed·타인 Shelf·Collection 상세)에 타인 **Context 원문**, **`member.id`**(내부 사용자 ID), **Keyword `code`** 노출. 타인 응답의 `contexts`는 `null`이며, 진입점은 Collection id, Keyword 표시는 `label`만 쓴다.
+2. **Keyword `label`을 식별 키로 사용**. 식별자는 불변인 `code`이고, `label`은 표시 전용이라 변경될 수 있다.
+3. Context 수정 후 **구 `contextId`를 쿼리 키·URL·선택 상태로 계속 사용**. 응답의 새 id로 교체한다.
+4. AI 미완료 상태인 **`keywords: []`를 오류·로딩 실패로 처리**. 정상 응답이다.
+5. **Feed `position`/`requestId`를 프론트에서 재계산**. 응답 값을 그대로 사용한다.
+6. **프론트에 토큰 저장·재발급 로직 작성**. 인증은 BFF(Backend for Frontend)가 담당하며, 프론트는 401 수신 시 재로그인만 유도한다(`docs/troubleshooting/2026-07-27-auth-bff-decision.md`).
 
 ## 규칙
 
