@@ -20,7 +20,8 @@ PinLog 프론트엔드(PC 웹). 스택 예정: React + TypeScript + Vite + Tailw
 3. Context 수정 후 **구 `contextId`를 쿼리 키·URL·선택 상태로 계속 사용**. 응답의 새 id로 교체한다.
 4. AI 미완료 상태인 **`keywords: []`를 오류·로딩 실패로 처리**. 정상 응답이다.
 5. **Feed `position`/`requestId`를 프론트에서 재계산**. 응답 값을 그대로 사용한다.
-6. **프론트에 토큰 저장·재발급 로직 작성**. 인증은 BFF(Backend for Frontend)가 담당하며, 프론트는 401 수신 시 재로그인만 유도한다(`docs/troubleshooting/2026-07-27-auth-bff-decision.md`).
+6. **토큰(access/refresh)을 프론트가 저장**. 서버가 `HttpOnly`+`Secure`+`SameSite=Lax` 쿠키로 관리하며, 프론트는 값을 읽거나 보관하지 않는다.
+   - ⚠️ 이것이 "재발급 로직을 만들지 말라"는 뜻은 **아니다**. 401 시 프론트가 `POST /auth/refresh`를 **single-flight**로 직접 호출해 재발급해야 한다(본문 없음, 쿠키로 동작). 재발급 자체의 401은 재시도하지 않고 즉시 재로그인 화면으로 유도한다(`docs/api-contract.md` 401 처리, `docs/reference/11_인증_설계.md` 4.4, `docs/troubleshooting/2026-07-27-auth-bff-decision.md`).
 
 ## 규칙
 
