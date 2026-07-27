@@ -12,8 +12,8 @@ PinLog은 익명 SNS다. 타인에게는 발행된 Collection과 공개 가능�
 
 ## 2. `member.id`(내부 사용자 ID)를 쓰지 않는다
 
-- 내부 사용자 ID는 순차값이라 노출 시 사용자 열거·가입 순번 추론이 가능하다. **URL·요청·응답 어디에도 쓰지 않는다.**
-- 예외: 로그인·가입 확정 응답의 본인 `memberId`만 수신한다(타인 식별에 쓰지 않는다).
+- 내부 사용자 ID는 순차값이라 노출 시 사용자 열거·가입 순번 추론이 가능하다. **URL·요청·응답 어디에도 쓰지 않는다.** 예외 없음 — 로그인 등 본인 응답에도 `memberId`를 포함하지 않는다(`docs/reference/08_API_명세.md` 1.1, `docs/reference/11_인증_설계.md` 4.6).
+  - ~~과거엔 "로그인·가입 확정 응답의 본인 memberId만 예외로 수신"이었으나, 쿠키 기반 인증 확정으로 폐기됨(2026-07-27) — 서버가 세션을 쿠키로 식별하므로 프론트가 자신의 memberId를 알 필요가 없어졌다.~~
 - 타인 접근의 **진입점은 Collection id**다. 팔로우·책장 탐색은 Collection id로 시작한다.
   - `POST /follows { collectionId }`, `GET /feed/collections/{collectionId}/shelf`, `GET /follows/{followId}/collections`
 
@@ -24,11 +24,11 @@ PinLog은 익명 SNS다. 타인에게는 발행된 Collection과 공개 가능�
 
 ## 4. Keyword 공개 등급 (참조: `03_공식_용어사전.md`, `04_익명SNS_공개정책.md`)
 
-| 등급 | 본인 | 타인 |
-|---|---|---|
-| `PUBLIC` | 제공 | 제공(공개 Collection 안에서) |
-| `PRIVATE_ONLY` | 제공 | 비공개(서버가 필터) |
-| `BLOCKED` | 비공개 | 비공개 |
+| 등급           | 본인   | 타인                         |
+| -------------- | ------ | ---------------------------- |
+| `PUBLIC`       | 제공   | 제공(공개 Collection 안에서) |
+| `PRIVATE_ONLY` | 제공   | 비공개(서버가 필터)          |
+| `BLOCKED`      | 비공개 | 비공개                       |
 
 - 타인 화면에는 서버가 `PUBLIC`만 내려준다. 프론트가 등급으로 필터링을 재구현하지 않는다(서버 계약을 신뢰하되, 타인 화면에 등급 원본을 노출하지 않는다).
 - 본인 화면에서 `PRIVATE_ONLY`를 **시각적으로 구분 표시할지는 제품 미결정**이다(`05-1_파트간_요구사항` 1.4). `docs/api-contract.md`의 "협의 필요"를 확인하고, 확정 전까지 구분 UI를 임의로 만들지 않는다.
@@ -59,7 +59,7 @@ function RecordCard({ record }: { record: RecordDetail }) {
   return (
     <article>
       <PlaceInfo place={record.place} />
-      <KeywordList labels={record.keywords} />       {/* label 문자열만 */}
+      <KeywordList labels={record.keywords} /> {/* label 문자열만 */}
       {isOwner && <ContextList contexts={record.contexts!} />}
     </article>
   );
@@ -92,5 +92,7 @@ sendEvent({ keywordCode: kw.code });
 
 ```tsx
 // ✅ 화면·전송 모두 label 문자열만 사용
-{record.keywords.map((label) => <Chip key={label}>{label}</Chip>)}
+{
+  record.keywords.map((label) => <Chip key={label}>{label}</Chip>);
+}
 ```
