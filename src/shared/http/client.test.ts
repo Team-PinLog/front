@@ -1,6 +1,25 @@
-import { describe, expect, it } from 'vitest';
-import type { AxiosError, AxiosResponse } from 'axios';
-import { handleResponseError, handleResponseSuccess } from './client';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { AxiosHeaders, type AxiosError, type AxiosResponse } from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
+import {
+  attachXsrfHeader,
+  extractXsrfTokenFromCookie,
+  handleResponseError,
+  handleResponseSuccess,
+} from './client';
+
+function clearCookies() {
+  for (const pair of document.cookie.split('; ')) {
+    const name = pair.split('=')[0];
+    if (name) {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    }
+  }
+}
+
+function fakeRequestConfig(method: string): InternalAxiosRequestConfig {
+  return { method, headers: new AxiosHeaders() } as InternalAxiosRequestConfig;
+}
 
 function fakeResponse(status: number, data: unknown): AxiosResponse {
   return { status, data } as AxiosResponse;
@@ -18,6 +37,88 @@ function fakeAxiosError(options: {
     response: status === undefined ? undefined : fakeResponse(status, data),
   } as AxiosError;
 }
+
+describe('extractXsrfTokenFromCookie', () => {
+  beforeEach(clearCookies);
+
+  it('XSRF-TOKEN 쿠키가 있으면 값을 반환한다', () => {
+    document.cookie = 'XSRF-TOKEN=abc123';
+
+    expect(extractXsrfTokenFromCookie()).toBe('abc123');
+  });
+
+  it('XSRF-TOKEN 쿠키가 없으면 undefined를 반환한다', () => {
+    document.cookie = 'other=value';
+
+    expect(extractXsrfTokenFromCookie()).toBeUndefined();
+  });
+
+  it('여러 쿠키 중 XSRF-TOKEN만 추출한다', () => {
+    document.cookie = 'logged_in=1';
+    document.cookie = 'XSRF-TOKEN=token-value';
+    document.cookie = 'session=xyz';
+
+    expect(extractXsrfTokenFromCookie()).toBe('token-value');
+  });
+
+  it('특수문자(URL 인코딩)를 포함한 값도 디코딩해서 반환한다', () => {
+    const raw = 'a+b/c=d';
+    document.cookie = `XSRF-TOKEN=${encodeURIComponent(raw)}`;
+
+    expect(extractXsrfTokenFromCookie()).toBe(raw);
+  });
+
+  it('잘못된 퍼센트 인코딩이면 크래시 없이 undefined를 반환한다', () => {
+    document.cookie = 'XSRF-TOKEN=%';
+
+    expect(extractXsrfTokenFromCookie()).toBeUndefined();
+  });
+});
+
+describe('attachXsrfHeader', () => {
+  beforeEach(clearCookies);
+
+  it.each(['post', 'put', 'patch', 'delete'])(
+    '%s 요청에는 X-XSRF-TOKEN 헤더를 붙인다',
+    (method) => {
+      document.cookie = 'XSRF-TOKEN=csrf-token';
+
+      const config = attachXsrfHeader(fakeRequestConfig(method));
+
+      expect(config.headers.get('X-XSRF-TOKEN')).toBe('csrf-token');
+    },
+  );
+
+  it('GET 요청에는 헤더를 붙이지 않는다', () => {
+    document.cookie = 'XSRF-TOKEN=csrf-token';
+
+    const config = attachXsrfHeader(fakeRequestConfig('get'));
+
+    expect(config.headers.get('X-XSRF-TOKEN')).toBeUndefined();
+  });
+
+  it('대문자 method(POST)도 상태 변경 요청으로 판별한다', () => {
+    document.cookie = 'XSRF-TOKEN=csrf-token';
+
+    const config = attachXsrfHeader(fakeRequestConfig('POST'));
+
+    expect(config.headers.get('X-XSRF-TOKEN')).toBe('csrf-token');
+  });
+
+  it('쿠키가 없으면 헤더를 생략한다(크래시 없음)', () => {
+    const config = attachXsrfHeader(fakeRequestConfig('post'));
+
+    expect(config.headers.get('X-XSRF-TOKEN')).toBeUndefined();
+  });
+
+  it('Authorization 헤더를 주입하지 않는다', () => {
+    document.cookie = 'XSRF-TOKEN=csrf-token';
+
+    const config = attachXsrfHeader(fakeRequestConfig('post'));
+
+    expect(config.headers.get('Authorization')).toBeUndefined();
+  });
+});
 
 describe('handleResponseSuccess', () => {
   it('성공 봉투(success:true)는 data만 반환한다', () => {
