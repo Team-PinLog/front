@@ -18,3 +18,8 @@ export function savePreLoginPath(pathname: string = window.location.pathname): v
 export function getPreLoginPath(): string | null {
   return sessionStorage.getItem(PRE_LOGIN_PATH_KEY);
 }
+
+/** 콜백 성공 처리에서 사용한 뒤 호출한다 — 다음 로그인 때 값이 잘못 재사용되지 않도록 정리한다. */
+export function clearPreLoginPath(): void {
+  sessionStorage.removeItem(PRE_LOGIN_PATH_KEY);
+}
