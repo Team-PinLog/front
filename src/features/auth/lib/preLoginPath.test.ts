@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { getPreLoginPath, PRE_LOGIN_PATH_KEY, savePreLoginPath } from './preLoginPath';
+import {
+  clearPreLoginPath,
+  getPreLoginPath,
+  PRE_LOGIN_PATH_KEY,
+  savePreLoginPath,
+} from './preLoginPath';
 
 describe('savePreLoginPath', () => {
   beforeEach(() => {
@@ -57,5 +62,23 @@ describe('getPreLoginPath', () => {
 
   it('저장된 값이 없으면 null을 반환한다', () => {
     expect(getPreLoginPath()).toBeNull();
+  });
+});
+
+describe('clearPreLoginPath', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('저장된 값을 제거한다', () => {
+    sessionStorage.setItem(PRE_LOGIN_PATH_KEY, '/collections/42');
+
+    clearPreLoginPath();
+
+    expect(getPreLoginPath()).toBeNull();
+  });
+
+  it('저장된 값이 없어도 에러 없이 동작한다', () => {
+    expect(() => clearPreLoginPath()).not.toThrow();
   });
 });

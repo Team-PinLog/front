@@ -2,8 +2,11 @@ import { createRootRoute, createRoute, createRouter } from '@tanstack/react-rout
 import { RootLayout } from './RootLayout';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
+import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
+import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
+import { oauthCallbackSearchSchema } from '@/features/auth/lib/oauthCallbackSearchSchema';
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -29,7 +32,16 @@ const loginRoute = createRoute({
   component: LoginPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute]);
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/auth/callback',
+  validateSearch: (search) => oauthCallbackSearchSchema.parse(search),
+  // 성공/실패 모두 beforeLoad에서 리다이렉트로 처리한다(handleOAuthCallback.ts).
+  beforeLoad: handleOAuthCallback,
+  component: OAuthCallbackPage,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, loginRoute, callbackRoute]);
 
 export const router = createRouter({
   routeTree,
