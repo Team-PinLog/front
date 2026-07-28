@@ -13,6 +13,9 @@ BASE_IMAGE = (
     "nginx:1.29.1-alpine@"
     "sha256:42a516af16b852e33b7682d5ef8acbd5d13fe08fecadc7ed98605ba5e3b26ab8"
 )
+API_BASE_URL = "/api/core/v1"
+IMAGE_DOCKERFILE = ROOT / "infra" / "frontend-image" / "Dockerfile"
+NGINX_CONFIG = ROOT / "infra" / "frontend-image" / "nginx.conf"
 
 
 def load_workflow():
@@ -41,7 +44,45 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
 
-    def test_checked_build_produces_and_validates_the_exact_container_artifact(self):
+    def test_build_injects_and_asserts_the_non_empty_api_base_url(self):
+        check = self.jobs["check"]
+        build = named_step(check, "Build frontend")
+        self.assertEqual(build["env"], {"VITE_API_BASE_URL": API_BASE_URL})
+        self.assertIn(': "${VITE_API_BASE_URL:?', build["run"])
+        self.assertIn("npm run build", build["run"])
+
+        assertion = named_step(check, "Assert API base URL in dist")
+        self.assertEqual(assertion["env"], {"VITE_API_BASE_URL": API_BASE_URL})
+        self.assertIn(': "${VITE_API_BASE_URL:?', assertion["run"])
+        self.assertIn("grep", assertion["run"])
+        self.assertIn("dist", assertion["run"])
+
+    def test_image_recipe_runs_as_uid_101_without_linux_capabilities(self):
+        dockerfile = IMAGE_DOCKERFILE.read_text()
+        nginx = NGINX_CONFIG.read_text()
+
+        self.assertIn(f"FROM {BASE_IMAGE}", dockerfile)
+        self.assertIn('ENTRYPOINT ["nginx", "-g", "daemon off;"]', dockerfile)
+        self.assertIn("pid /tmp/nginx.pid;", nginx)
+        for temp_path in (
+            "client_body_temp_path /tmp/client_temp;",
+            "proxy_temp_path /tmp/proxy_temp;",
+            "fastcgi_temp_path /tmp/fastcgi_temp;",
+            "uwsgi_temp_path /tmp/uwsgi_temp;",
+            "scgi_temp_path /tmp/scgi_temp;",
+        ):
+            self.assertIn(temp_path, nginx)
+        self.assertIn("listen 8080;", nginx)
+        self.assertNotRegex(nginx, r"(?m)^\s*listen\s+80\s*;")
+
+    def test_healthz_is_exact_and_api_paths_do_not_use_spa_fallback(self):
+        nginx = NGINX_CONFIG.read_text()
+        self.assertRegex(nginx, r"location\s*=\s*/healthz\s*\{")
+        self.assertRegex(nginx, r"location\s+\^~\s+/api/\s*\{")
+        self.assertIn("return 404;", nginx)
+        self.assertIn("try_files $uri $uri/ /index.html;", nginx)
+
+    def test_checked_build_produces_smokes_and_uploads_the_exact_container_artifact(self):
         self.assertIn("check", self.jobs)
         check = self.jobs["check"]
         self.assertEqual(check["name"], "frontend-ci / check")
@@ -52,24 +93,37 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
             "npm ci",
             "npm run lint",
             "npm run typecheck",
-            "npm run build",
             "npm run test",
             "python3 -m unittest -v tests.test_frontend_ci_contract",
         ):
             self.assertIn(command, commands)
 
         recipe = named_step(check, "Create immutable frontend image recipe")["run"]
-        self.assertIn(f"FROM {BASE_IMAGE}", recipe)
-        self.assertIn("COPY dist/ /usr/share/nginx/html/", recipe)
-        self.assertIn("COPY default.conf /etc/nginx/conf.d/default.conf", recipe)
-        self.assertIn("try_files $uri $uri/ /index.html", recipe)
+        self.assertIn("infra/frontend-image/Dockerfile", recipe)
+        self.assertIn("infra/frontend-image/nginx.conf", recipe)
+        self.assertIn("cp -R dist", recipe)
 
         validate = named_step(check, "Validate frontend container image")
         self.assertEqual(validate["with"]["push"], "false")
+        self.assertEqual(validate["with"]["load"], "true")
         self.assertEqual(validate["with"]["context"], ".ci-image/context")
         self.assertEqual(
             validate["with"]["file"], ".ci-image/context/Dockerfile"
         )
+        self.assertEqual(validate["with"]["tags"], "pinlog-front:ci-${{ github.sha }}")
+
+        smoke = named_step(check, "Smoke test frontend container security contract")
+        for contract in (
+            "--user 101:101",
+            "--cap-drop ALL",
+            "no-new-privileges",
+            "--read-only",
+            "--tmpfs /tmp:",
+            "/healthz",
+            "/spa-route",
+            "/api/core/v1/healthz",
+        ):
+            self.assertIn(contract, smoke["run"])
 
         artifact = named_step(check, "Upload validated frontend image context")
         self.assertEqual(artifact["with"]["name"], "frontend-image-${{ github.sha }}")
