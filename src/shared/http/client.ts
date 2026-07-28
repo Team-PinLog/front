@@ -40,7 +40,6 @@ export function extractXsrfTokenFromCookie(): string | undefined {
 /**
  * 상태 변경 요청(POST/PUT/PATCH/DELETE)에만 X-XSRF-TOKEN 헤더를 붙인다(api-contract.md [확정] CSRF).
  * ❌ Authorization Bearer 주입 금지 — 토큰 관리는 서버가 담당한다(docs/architecture.md 1-1, conventions.md).
- * TODO(인증 티켓): status === 401 시 /auth/refresh single-flight 재발급 예정(api-contract.md 401 처리).
  */
 export function attachXsrfHeader(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
   const method = config.method?.toLowerCase();
@@ -108,16 +107,54 @@ export function handleResponseSuccess(response: AxiosResponse): AxiosResponse {
   throw buildApiError(body.error, response.status, body.error.message);
 }
 
-/**
- * 실패 응답 처리. 원인에 관계없이 항상 ApiError로 통일해서 reject한다 — 호출부는 항상 ApiError를 받는다고 가정할 수 있다.
- * status는 다음 401 single-flight 재발급 작업의 판단 기준이므로 항상 보존한다.
- * TODO(인증 티켓): status === 401이면 여기서 /auth/refresh를 single-flight로 호출해 원 요청을 재시도.
- *  재발급 자체의 401은 재시도하지 않고 즉시 재로그인으로 유도한다(api-contract.md 401 처리).
- */
-export function handleResponseError(error: AxiosError): never {
-  const status = error.response?.status ?? null;
-  const serverError = toServerError(error.response?.data);
+interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
+let refreshPromise: Promise<void> | null = null;
+
+/**
+ * 401 재발급을 single-flight로 처리한다(api-contract.md [확정] 401 처리).
+ * 동시에 여러 요청이 401을 받아도 진행 중인 refresh Promise를 공유해 /auth/refresh 호출은 하나만 나간다.
+ */
+function refreshAccessToken(): Promise<void> {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/auth/refresh`, undefined, { withCredentials: true })
+      .then(() => undefined)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+/**
+ * 실패 응답 처리.
+ * - 401이면 /auth/refresh(single-flight)로 재발급 후 원 요청을 1회 재시도한다.
+ * - 재발급 자체가 401이거나, 재시도한 요청이 다시 401이면 더 이상 재시도하지 않고 ApiError(status:401)로 reject한다.
+ * - 401이 아닌 실패는 원인에 관계없이 항상 ApiError로 통일해서 reject한다 — 호출부는 항상 ApiError를 받는다고 가정할 수 있다.
+ */
+export function handleResponseError(error: AxiosError): Promise<AxiosResponse> | never {
+  const status = error.response?.status ?? null;
+  const config = error.config as RetryableRequestConfig | undefined;
+
+  if (status === 401 && config && !config._retry) {
+    config._retry = true;
+    return refreshAccessToken().then(
+      () => httpClient.request(config),
+      (refreshError: AxiosError) => {
+        // TODO: 로그인 리다이렉트 - 다음 auth 티켓에서 처리
+        throw buildApiError(
+          toServerError(refreshError.response?.data),
+          refreshError.response?.status ?? 401,
+          refreshError.message || '인증이 만료되었습니다.',
+        );
+      },
+    );
+  }
+
+  const serverError = toServerError(error.response?.data);
   throw buildApiError(serverError, status, error.message || '요청 처리 중 오류가 발생했습니다.');
 }
 
