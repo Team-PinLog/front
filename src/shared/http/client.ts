@@ -1,4 +1,4 @@
-import axios, { type AxiosError, type AxiosResponse } from 'axios';
+import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '@/config/constants';
 import type { ApiError, ApiResponse, ServerApiError } from './types';
 
@@ -15,10 +15,47 @@ export const httpClient = axios.create({
   },
 });
 
-// 요청 인터셉터 자리.
-// ❌ Authorization Bearer 주입 금지 — 토큰 관리는 서버가 담당한다(docs/architecture.md 1-1, conventions.md).
-// TODO(인증 티켓): 상태 변경 요청(POST/PUT/PATCH/DELETE)에 X-XSRF-TOKEN 헤더 부착 예정(api-contract.md CSRF).
-httpClient.interceptors.request.use((config) => config);
+const XSRF_COOKIE_NAME = 'XSRF-TOKEN';
+const XSRF_HEADER_NAME = 'X-XSRF-TOKEN';
+const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+
+/** document.cookie에서 XSRF-TOKEN 값만 추출한다. 없으면 undefined(에러로 취급하지 않음). */
+export function extractXsrfTokenFromCookie(): string | undefined {
+  const entry = document.cookie.split('; ').find((pair) => pair.startsWith(`${XSRF_COOKIE_NAME}=`));
+  if (!entry) {
+    return undefined;
+  }
+  const value = entry.slice(XSRF_COOKIE_NAME.length + 1);
+  if (!value) {
+    return undefined;
+  }
+  try {
+    // 잘못된 퍼센트 인코딩은 무시(크래시 대신 헤더 생략으로 처리).
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 상태 변경 요청(POST/PUT/PATCH/DELETE)에만 X-XSRF-TOKEN 헤더를 붙인다(api-contract.md [확정] CSRF).
+ * ❌ Authorization Bearer 주입 금지 — 토큰 관리는 서버가 담당한다(docs/architecture.md 1-1, conventions.md).
+ * TODO(인증 티켓): status === 401 시 /auth/refresh single-flight 재발급 예정(api-contract.md 401 처리).
+ */
+export function attachXsrfHeader(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
+  const method = config.method?.toLowerCase();
+  if (!method || !MUTATION_METHODS.has(method)) {
+    return config;
+  }
+
+  const xsrfToken = extractXsrfTokenFromCookie();
+  if (xsrfToken) {
+    config.headers.set(XSRF_HEADER_NAME, xsrfToken);
+  }
+  return config;
+}
+
+httpClient.interceptors.request.use(attachXsrfHeader);
 
 function isEnvelope(data: unknown): data is ApiResponse<unknown> {
   return typeof data === 'object' && data !== null && 'success' in data;

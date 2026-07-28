@@ -22,8 +22,7 @@ export default defineConfig({
     },
   },
   test: {
-    // 현재는 순수 함수(봉투 언랩·에러 변환) 테스트만 있어 DOM 없이 node 환경으로 충분하다.
-    // 컴포넌트 테스트 도입 시 jsdom으로 교체.
-    environment: 'node',
+    // document.cookie(CSRF 헤더 인터셉터) 테스트를 위해 jsdom 필요.
+    environment: 'jsdom',
   },
 });
