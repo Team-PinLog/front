@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { AxiosHeaders, type AxiosError, type AxiosResponse } from 'axios';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import axios, { AxiosHeaders, type AxiosError, type AxiosResponse } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
 import {
   attachXsrfHeader,
   extractXsrfTokenFromCookie,
   handleResponseError,
   handleResponseSuccess,
+  httpClient,
 } from './client';
 
 function clearCookies() {
@@ -17,8 +18,8 @@ function clearCookies() {
   }
 }
 
-function fakeRequestConfig(method: string): InternalAxiosRequestConfig {
-  return { method, headers: new AxiosHeaders() } as InternalAxiosRequestConfig;
+function fakeRequestConfig(method: string, url = '/records'): InternalAxiosRequestConfig {
+  return { method, url, headers: new AxiosHeaders() } as InternalAxiosRequestConfig;
 }
 
 function fakeResponse(status: number, data: unknown): AxiosResponse {
@@ -29,13 +30,27 @@ function fakeAxiosError(options: {
   status?: number;
   data?: unknown;
   message?: string;
+  config?: InternalAxiosRequestConfig;
 }): AxiosError {
-  const { status, data, message } = options;
+  const { status, data, message, config } = options;
   return {
     isAxiosError: true,
     message: message ?? 'Error',
     response: status === undefined ? undefined : fakeResponse(status, data),
+    config,
   } as AxiosError;
+}
+
+function fakeUnauthorizedErrorData() {
+  return {
+    success: false as const,
+    error: {
+      code: 'UNAUTHORIZED',
+      message: '인증이 필요합니다.',
+      fieldErrors: [],
+      traceId: 't-1',
+    },
+  };
 }
 
 describe('extractXsrfTokenFromCookie', () => {
@@ -194,5 +209,93 @@ describe('handleResponseError', () => {
         status: null,
       });
     }
+  });
+});
+
+describe('handleResponseError - 401 single-flight 재발급', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('401 응답이면 refresh 후 원 요청을 재시도해 성공한다', async () => {
+    const refreshSpy = vi.spyOn(axios, 'post').mockResolvedValue(fakeResponse(204, ''));
+    const retryResponse = fakeResponse(200, { ok: true });
+    const requestSpy = vi.spyOn(httpClient, 'request').mockResolvedValue(retryResponse);
+
+    const config = fakeRequestConfig('get');
+    const error = fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData(), config });
+
+    const result = await handleResponseError(error);
+
+    expect(refreshSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh'),
+      undefined,
+      expect.objectContaining({ withCredentials: true }),
+    );
+    expect(requestSpy).toHaveBeenCalledWith(expect.objectContaining({ _retry: true }));
+    expect(result).toBe(retryResponse);
+  });
+
+  it('동시에 여러 요청이 401을 받아도 refresh는 한 번만 호출된다', async () => {
+    let resolveRefresh: (() => void) | undefined;
+    const refreshPromise = new Promise<AxiosResponse>((resolve) => {
+      resolveRefresh = () => resolve(fakeResponse(204, ''));
+    });
+    const refreshSpy = vi.spyOn(axios, 'post').mockReturnValue(refreshPromise);
+    const requestSpy = vi
+      .spyOn(httpClient, 'request')
+      .mockResolvedValue(fakeResponse(200, { ok: true }));
+
+    const errors = [1, 2, 3].map((i) => {
+      const config = fakeRequestConfig('get', `/records/${i}`);
+      return fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData(), config });
+    });
+
+    const resultsPromise = Promise.all(errors.map((error) => handleResponseError(error)));
+    resolveRefresh?.();
+    await resultsPromise;
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(requestSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('refresh 요청 자체가 401이면 재시도 없이 ApiError(status:401)로 reject한다', async () => {
+    const refreshError = fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData() });
+    vi.spyOn(axios, 'post').mockRejectedValue(refreshError);
+    const requestSpy = vi.spyOn(httpClient, 'request');
+
+    const config = fakeRequestConfig('get');
+    const error = fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData(), config });
+
+    expect.assertions(2);
+    try {
+      await handleResponseError(error);
+    } catch (apiError) {
+      expect(apiError).toMatchObject({ code: 'UNAUTHORIZED', status: 401 });
+    }
+    expect(requestSpy).not.toHaveBeenCalled();
+  });
+
+  it('재시도한 요청도 401이면 더 이상 재시도하지 않고 reject한다(무한 루프 방지)', async () => {
+    const refreshSpy = vi.spyOn(axios, 'post').mockResolvedValue(fakeResponse(204, ''));
+    vi.spyOn(httpClient, 'request').mockImplementation((cfg) => {
+      const retriedError = fakeAxiosError({
+        status: 401,
+        data: fakeUnauthorizedErrorData(),
+        config: cfg as InternalAxiosRequestConfig,
+      });
+      return Promise.reject(retriedError).catch((e) => handleResponseError(e as AxiosError));
+    });
+
+    const config = fakeRequestConfig('get');
+    const error = fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData(), config });
+
+    expect.assertions(2);
+    try {
+      await handleResponseError(error);
+    } catch (apiError) {
+      expect(apiError).toMatchObject({ code: 'UNAUTHORIZED', status: 401 });
+    }
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 });
