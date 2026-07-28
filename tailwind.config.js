@@ -2,7 +2,21 @@
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
-    extend: {},
+    extend: {
+      // 출처: Team-PinLog/brand-resource (확정 브랜드 가이드)
+      colors: {
+        'pin-navy': '#042142',
+        'log-mint': '#3BB7A2',
+        'paper-white': '#FAF7F6',
+        'ink-gray': '#6D6663',
+        'ink-gray-light': '#A39C99',
+        'line-card': '#E8E2DF',
+        'line-subtle': '#F0EBE8',
+      },
+      fontFamily: {
+        sans: ['Pretendard Variable', 'Pretendard', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 }
