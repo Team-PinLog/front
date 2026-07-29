@@ -5,12 +5,14 @@ import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
 import { RecordDetailPage } from '@/pages/RecordDetailPage';
+import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
 import { oauthCallbackSearchSchema } from '@/features/auth/lib/oauthCallbackSearchSchema';
 
 const recordIdParamSchema = z.coerce.number().int().positive();
+const collectionIdParamSchema = z.coerce.number().int().positive();
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -57,7 +59,26 @@ const recordDetailRoute = createRoute({
   component: RecordDetailPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute, callbackRoute, recordDetailRoute]);
+const collectionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/collections/$collectionId',
+  // 공개 진입 라우트: Collection 상세는 Feed·타인 Shelf와 함께 비로그인도 접근 가능한 3대 공개 진입점 중 하나다
+  // (privacy-rules.md 1장 — "공개 진입 경로는 Feed / 타인 Shelf / Collection 상세 셋뿐이다"). requireLoggedIn을
+  // 걸지 않는다 — 소유자/타인 구분은 ownedByMe로 서버가 응답한다(08_API_명세 7.3).
+  params: {
+    parse: (rawParams) => ({ collectionId: collectionIdParamSchema.parse(rawParams.collectionId) }),
+    stringify: (params) => ({ collectionId: String(params.collectionId) }),
+  },
+  component: CollectionDetailPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  loginRoute,
+  callbackRoute,
+  recordDetailRoute,
+  collectionDetailRoute,
+]);
 
 export const router = createRouter({
   routeTree,
