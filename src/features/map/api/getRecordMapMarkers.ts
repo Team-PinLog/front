@@ -1,0 +1,38 @@
+import { z } from 'zod';
+import { httpClient } from '@/shared/http/client';
+
+/**
+ * ⭐ 표준 패턴: 화면 → Hook → API 함수(여기) → httpClient.
+ * 근거: docs/reference/08_API_명세.md 4.2 내 Record 지도.
+ * bbox 없이 호출하면 내 전체 활성 Record 마커를 반환한다. bounds는 결과 없으면 null이다.
+ */
+const recordMapBoundsSchema = z.object({
+  swLat: z.number(),
+  swLng: z.number(),
+  neLat: z.number(),
+  neLng: z.number(),
+});
+
+export type RecordMapBbox = z.infer<typeof recordMapBoundsSchema>;
+
+const recordMapItemSchema = z.object({
+  recordId: z.number(),
+  placeId: z.number(),
+  name: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+});
+
+export type RecordMapItem = z.infer<typeof recordMapItemSchema>;
+
+const recordMapMarkersSchema = z.object({
+  bounds: recordMapBoundsSchema.nullable(),
+  items: z.array(recordMapItemSchema),
+});
+
+export type RecordMapMarkers = z.infer<typeof recordMapMarkersSchema>;
+
+export async function getRecordMapMarkers(bbox?: RecordMapBbox): Promise<RecordMapMarkers> {
+  const { data } = await httpClient.get('/records/map', { params: bbox });
+  return recordMapMarkersSchema.parse(data);
+}
