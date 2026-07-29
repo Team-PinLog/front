@@ -63,7 +63,8 @@
 
 ### Feed와 공개
 
-- Spring 규칙 기반 발행 Collection 추천·상세 조회
+- Spring 규칙 기반 발행 Collection 추천·상세 조회 — 후보는 최신 발행·팔로우·무작위 세 채널
+- 팔로우·공개 Keyword·최신성·노출 패널티 기반 점수 계산
 - Redis 기반 Feed Cache와 노출·클릭·저장 이벤트 수집
 - 같은 Shelf의 다른 Collection 조회
 - Feed에서 Shelf Follow
@@ -99,3 +100,4 @@
 - 검색어 LLM 분해
 - 학습형 Feed Ranking과 Multi-Armed Bandit
 - 자동 Collection Keyword 물리 집계
+- Place category·region 기반 Feed 후보 채널과 점수 가중치([AI 설계](05_AI_설계.md) 14.2)

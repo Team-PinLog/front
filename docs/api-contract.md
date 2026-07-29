@@ -11,9 +11,10 @@
 - **인증**: **쿠키 기반**. BFF 별도 계층 없음 — Spring 단일 앱이 BFF+리소스서버를 겸한다(`11_인증_설계` 2장).
   - 방식: JWT. Access 30분 / Refresh 7일. Refresh는 Redis 저장·**회전 발급**(재발급 시 이전 토큰 무효화).
   - 토큰은 **`HttpOnly` + `Secure` + `SameSite=Lax`** 쿠키로 발급한다. 응답 본문에 토큰을 담지 않으며 프론트 스크립트는 읽을 수 없다.
-  - 프론트는 `accessToken`/`refreshToken`을 저장·직접 다루지 않는다. `Authorization` 헤더를 직접 구성하지 않는다.
+  - 프론트는 `access_token`/`refresh_token`(서버 쿠키명. 과거 이 문서의 `accessToken`/`refreshToken` 표기는 정정 대상)을 저장·직접 다루지 않는다. `Authorization` 헤더를 직접 구성하지 않는다. HttpOnly 쿠키라 프론트 코드 동작에는 영향 없으며, 문서 정확성을 위한 정정이다. <!-- 근거: 08_API_명세.md §1.1 -->
   - Axios는 **`withCredentials: true`**(fetch는 `credentials: 'include'`)만 켠다.
   - Refresh 쿠키는 `Path=/api/core/v1/auth`로 제한된다(재발급·로그아웃 요청에만 실림).
+  - Access 쿠키는 `Path=/api/core`(context-path)로 제한된다. API 기본 경로 `/api/core/v1`과는 다른 값이니 `/api/core/v1`로 오인하지 않는다. HttpOnly 쿠키라 프론트 코드 동작에는 영향 없으며, 문서 정확성을 위한 정정이다. <!-- 근거: 08_API_명세.md §1.1 -->
 - **소셜 로그인**: **302 리다이렉트 방식**. **기존 "별도 POST 토큰 교환" 방식 및 약관 동의로 가입을 확정하던 흐름은 폐기됨.**
   - 흐름: `window.location.href`로 `/api/core/v1/auth/{provider}/login` 이동(`fetch`/axios 호출 금지 — 페이지 이동이어야 리다이렉트가 동작한다) → 공급자 인증 → 서버 콜백(`GET /auth/{provider}/callback`)에서 활성 `social_account` 있으면 로그인, 없으면 그 시점에 `member`+`social_account` 생성(소셜 인증 성공이 곧 가입 완료) → `Set-Cookie`로 인증 쿠키 발급 후 302로 프론트 복귀.
   - 지원 provider: `google`, `kakao`, `naver`(경로는 소문자).
@@ -58,6 +59,7 @@
 - **`POST /records`는 `result`로 분기한다.**
   - `RECORD_CREATED` → `201` (내 활성 Record 없음 → Record + 첫 Context 생성)
   - `CONTEXT_ADDED` → `200` (내 활성 Record 존재 → 기존 Record에 Context 추가, `contexts`는 기존 포함 전체)
+- **Context 본문 상한은 500자**다. `POST /records`(`contextBody`) · `POST /records/{recordId}/contexts`(`body`) · `PATCH /records/{recordId}/contexts/{contextId}`(`body`) 모두에 적용되며, 초과 시 `400 INVALID_INPUT`(`error.fieldErrors`에 위반 필드)이다. 프론트는 입력 UI에 `maxlength=500`을 걸어 사전에 막는다. <!-- 근거: 06_데이터모델_및_무결성.md §8 -->
 - **`GET /records/by-place`는 미저장 시 404가 아니라 `record: null`(200)**이다. 미저장 장소 조회는 정상 흐름.
 - **Context 수정 `PATCH .../contexts/{contextId}`는 `200`이며 새 `contextId`를 반환한다.** 프론트는 구 id를 새 id로 교체한다(→ `docs/architecture.md` 4장).
 - **Record/Context 삭제는 연쇄 삭제 시 `409` + `impact { recordDeleted, collectionIds }`**를 반환한다. 사용자 확인 후 **`DELETE /records/{recordId}/force`** 호출.
@@ -70,6 +72,11 @@
 - **Collection 상세는 단일 DTO**(`GET /collections/{collectionId}`, Feed·Library·직접 진입 공통).
 - **`ownedByMe` 플래그로 소유자/타인을 구분**하고, **타인 조회 시 각 Record의 `contexts`는 `null`**이다.
 - **`recordSize` 기본값 1은 의도된 값**(책 넘김 UX). **모바일 = 1, 웹 펼침 = 2**로 명시해서 요청한다. 미전송 시 서버가 1을 주고, 다음 페이지는 `records.nextCursor`로 이어받는다.
+- **`recordIds` 배열 상한은 100개**다(`POST /collections`, `POST /collections/{collectionId}/records`). 초과 시 `400 INVALID_INPUT`. Record 추가는 멱등(이미 담긴 Record는 건너뜀)이므로 100개를 넘으면 나눠 호출해도 중복 문제가 없다. <!-- 근거: 05-1_파트간_요구사항.md §1.5 -->
+
+### Follow
+
+- **별칭(`alias`) 수정 `PATCH /follows/{followId}`는 키를 생략한 요청(`{}`)도 값 제거로 처리한다.** 서버는 키 부재와 명시적 `null`을 구분하지 않는다 — 변경된 필드만 모아 보내는 부분 수정 방식을 쓰면 건드리지 않은 `alias`가 지워질 수 있으니, 유지하려면 현재 값을 그대로 실어 보낸다. <!-- 근거: 08_API_명세.md §8.3 -->
 
 ### Feed 이벤트
 
@@ -79,6 +86,7 @@
   1. **Keyword의 키는 `label`이 아니라 `code`(불변 식별자)다.** `label`은 표시용이라 변경될 수 있다.
   2. **`position`은 배열 인덱스가 아니라 응답 값을 그대로 사용한다**(2페이지 첫 항목은 `0`이 아니다).
   3. **`requestId`는 응답 단위다.** 페이지를 넘기면 새 값이며, 그 페이지에서 발생한 이벤트는 그 페이지의 `requestId`를 쓴다.
+- **`events` 배열 상한은 100개**다. 초과 시 `400 INVALID_INPUT`. (단건→배열 배치 전송으로의 요청 스키마 변경 자체는 이번 반영 범위 밖 — 별도 확인 예정) <!-- 근거: 05-1_파트간_요구사항.md §1.5 -->
 
 ### AI 검색 · Keyword
 
@@ -87,6 +95,7 @@
 - **Keyword 생성**: 정상 2초 이내 완료. 폴링은 저장 후 **3초·8초 2회만** 재조회하고 중단한다. **무한 폴링 금지** — 실패 복구는 분 단위로 이뤄져 폴링으로는 잡을 수 없다.
 - **`keywords` 빈 배열은 정상**이다(COMPLETED 0건 포함). 실패로 처리하지 않는다.
 - 현재 응답은 **실패 / 처리중 / 정상 0건을 구분하지 못한다**(A안 현행 유지).
+- **[확인 필요]** AI 파생 데이터 삭제 정책이 origin에서 '즉시 파기' → '무효화 표시(`is_deleted`/`CANCELLED`)'로 변경됨(`05_AI_설계.md` §11). `docs/privacy-rules.md` 영향 여부 미확인 — 이 문서에서는 반영하지 않았다.
 
 ### Keyword 등급 (MVP)
 
@@ -103,11 +112,11 @@
    - 로컬 개발은 포트가 달라도 **same-site**라 `SameSite=Lax` 쿠키는 정상 전송되지만, **origin은 다르므로 로컬 개발 환경에서만 CORS 설정이 필요**하다(`11_인증_설계` §7.3). 운영에는 해당하지 않는다.
 2. **카카오 검색 프록시 API** — BFF 경유 방식은 확정, 엔드포인트 경로·요청/응답 스키마는 명세 대기.
 3. **Collection 내부 Record 정렬** — 정책(오름차순) vs 구현(`created_at DESC`) 충돌. 프론트는 서버 응답 순서를 그대로 쓰므로 코드 영향은 없다. 문서 정리는 백엔드/기획 대기.
-4. **Context 본문 최대 길이** — 미정(`06_데이터모델_및_무결성.md` §8). Zod `maxLength` 확정 불가. 임시로 최소 길이(공백 아님)만 검증한다.
-5. **provider 대소문자** — 경로는 소문자(`kakao`), 응답은 대문자(`KAKAO`). 타입은 대문자로 두고 경로 조립 시 `toLowerCase()`로 매핑한다.
+4. **provider 대소문자** — 경로는 소문자(`kakao`), 응답은 대문자(`KAKAO`). 타입은 대문자로 두고 경로 조립 시 `toLowerCase()`로 매핑한다.
 
 ### 이번에 [협의 필요]에서 제거(확정으로 흡수)됨
 
 - ~~BFF 세부 계약~~ → BFF 별도 계층 없음. Spring 단일 앱이 BFF+리소스서버 겸함(위 [확정] 참고).
 - ~~소셜 로그인 토큰 교환 엔드포인트~~ → 토큰 교환 방식 자체가 폐기되고 302 리다이렉트 방식으로 대체됨(위 [확정] 참고).
 - ~~refreshToken 저장 위치~~ → 쿠키(서버가 `HttpOnly`+`Secure`+`SameSite=Lax`로 관리, 프론트는 저장하지 않음).
+- ~~Context 본문 최대 길이~~ → **확정: 500자.** 위 [확정] > Record · Context 섹션 참고. <!-- 근거: 06_데이터모델_및_무결성.md §8 -->
