@@ -1,12 +1,16 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router';
+import { z } from 'zod';
 import { RootLayout } from './RootLayout';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
+import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
 import { oauthCallbackSearchSchema } from '@/features/auth/lib/oauthCallbackSearchSchema';
+
+const recordIdParamSchema = z.coerce.number().int().positive();
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -41,7 +45,19 @@ const callbackRoute = createRoute({
   component: OAuthCallbackPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, loginRoute, callbackRoute]);
+const recordDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/records/$recordId',
+  // 보호 라우트: 본인 Record만 조회 가능(GET /records/{recordId}, 08_API_명세 5.2).
+  beforeLoad: requireLoggedIn,
+  params: {
+    parse: (rawParams) => ({ recordId: recordIdParamSchema.parse(rawParams.recordId) }),
+    stringify: (params) => ({ recordId: String(params.recordId) }),
+  },
+  component: RecordDetailPage,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, loginRoute, callbackRoute, recordDetailRoute]);
 
 export const router = createRouter({
   routeTree,
