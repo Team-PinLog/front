@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
 import { useAddRecordContextMutation } from '../hooks/useAddRecordContextMutation';
+import { ContextListItem } from './ContextListItem';
 
 const CONTEXT_BODY_MAX_LENGTH = 500;
 
@@ -83,12 +84,7 @@ export function RecordDetailView({ recordId }: RecordDetailViewProps) {
         )}
         {isOwner &&
           record.contexts!.map((context) => (
-            <div
-              key={context.contextId}
-              className="whitespace-pre-wrap rounded-lg border border-line-card bg-white p-4 text-sm leading-relaxed text-ink-gray"
-            >
-              {context.body}
-            </div>
+            <ContextListItem key={context.contextId} recordId={recordId} context={context} />
           ))}
       </section>
 
