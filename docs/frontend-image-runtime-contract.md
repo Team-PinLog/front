@@ -1,8 +1,12 @@
 # Frontend image runtime contract
 
-The `dev` frontend image is built with these fixed deployment inputs:
+The `dev` frontend image is built with the public configuration declared in
+`.github/pinlog/runtime-config.dev.yaml`:
 
-- `VITE_API_BASE_URL=/api/core/v1` is a non-secret build-time value. Vite embeds it in `dist`; Kubernetes runtime environment variables cannot change an existing bundle. CI fails if the variable is empty or if the resulting artifact does not contain the value.
+- `VITE_API_BASE_URL`, `VITE_KAKAO_REST_KEY`, and `VITE_KAKAO_JS_KEY` are public build configuration. Vite embeds every `VITE_*` value in the browser bundle, so these values must not be called or managed as Secrets or SealedSecrets.
+- The `dev` push workflow reads all three values from repository-level GitHub Actions Variables. A missing or empty variable fails the workflow before the build. The repository currently has no configured Actions Variables or Environment, so all three variables are a required deployment prerequisite; this PR does not create them.
+- Pull-request CI uses non-sensitive placeholders and validates the contract without reading real key values. The contract declares `ownerSecretKeys: []`; therefore no sealing or dispatch action/job is invoked. A server-side runtime consumer must be introduced before adding a Secret handoff.
+- Kubernetes runtime environment variables cannot change an existing bundle. Changing one of these public variables requires an image rebuild; the resulting immutable image SHA/digest is then rolled out through Infra GitOps.
 - The image runs as UID/GID `101:101`, with `allowPrivilegeEscalation: false` and all Linux capabilities dropped.
 - Nginx listens on container port `8080`. Infra must set the frontend Service/Deployment `targetPort` and probes to `8080`; port `80` is not part of this image contract.
 - The root filesystem may be read-only when a writable, size-bounded `emptyDir` (preferably memory-backed) is mounted at `/tmp`. Nginx PID and all temporary paths are explicitly under `/tmp`.

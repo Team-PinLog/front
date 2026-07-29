@@ -48,17 +48,33 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Validate dev public build variables
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
+          VITE_KAKAO_JS_KEY: ${{ vars.VITE_KAKAO_JS_KEY }}
+        run: |
+          set -euo pipefail
+          : "${VITE_API_BASE_URL:?VITE_API_BASE_URL GitHub Actions Variable must be configured}"
+          : "${VITE_KAKAO_REST_KEY:?VITE_KAKAO_REST_KEY GitHub Actions Variable must be configured}"
+          : "${VITE_KAKAO_JS_KEY:?VITE_KAKAO_JS_KEY GitHub Actions Variable must be configured}"
+
       - name: Build frontend
         env:
-          VITE_API_BASE_URL: /api/core/v1
+          VITE_API_BASE_URL: ${{ github.event_name == 'pull_request' && '/api/core/v1' || vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_REST_KEY: ${{ github.event_name == 'pull_request' && 'ci-public-rest-key' || vars.VITE_KAKAO_REST_KEY }}
+          VITE_KAKAO_JS_KEY: ${{ github.event_name == 'pull_request' && 'ci-public-js-key' || vars.VITE_KAKAO_JS_KEY }}
         run: |
           set -euo pipefail
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL must be a non-empty build-time value}"
+          : "${VITE_KAKAO_REST_KEY:?VITE_KAKAO_REST_KEY must be a non-empty build-time value}"
+          : "${VITE_KAKAO_JS_KEY:?VITE_KAKAO_JS_KEY must be a non-empty build-time value}"
           npm run build
 
       - name: Assert API base URL in dist
         env:
-          VITE_API_BASE_URL: /api/core/v1
+          VITE_API_BASE_URL: ${{ github.event_name == 'pull_request' && '/api/core/v1' || vars.VITE_API_BASE_URL }}
         run: |
           set -euo pipefail
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL must be a non-empty build-time value}"
