@@ -7,15 +7,17 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+RUNTIME_CONTRACT = ROOT / ".github" / "pinlog" / "runtime-config.dev.yaml"
 FULL_SHA = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 IMAGE = "ghcr.io/team-pinlog/front"
 BASE_IMAGE = (
     "nginx:1.29.1-alpine@"
     "sha256:42a516af16b852e33b7682d5ef8acbd5d13fe08fecadc7ed98605ba5e3b26ab8"
 )
-API_BASE_URL = "/api/core/v1"
 IMAGE_DOCKERFILE = ROOT / "infra" / "frontend-image" / "Dockerfile"
 NGINX_CONFIG = ROOT / "infra" / "frontend-image" / "nginx.conf"
+RUNTIME_DOC = ROOT / "docs" / "frontend-image-runtime-contract.md"
+ENV_EXAMPLE = ROOT / ".env.example"
 
 
 def load_workflow():
@@ -46,16 +48,97 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
 
     def test_build_injects_and_asserts_the_non_empty_api_base_url(self):
         check = self.jobs["check"]
+        expected_api_expression = (
+            "${{ github.event_name == 'pull_request' && '/api/core/v1' "
+            "|| vars.VITE_API_BASE_URL }}"
+        )
         build = named_step(check, "Build frontend")
-        self.assertEqual(build["env"], {"VITE_API_BASE_URL": API_BASE_URL})
+        self.assertEqual(build["env"]["VITE_API_BASE_URL"], expected_api_expression)
         self.assertIn(': "${VITE_API_BASE_URL:?', build["run"])
         self.assertIn("npm run build", build["run"])
 
         assertion = named_step(check, "Assert API base URL in dist")
-        self.assertEqual(assertion["env"], {"VITE_API_BASE_URL": API_BASE_URL})
+        self.assertEqual(assertion["env"]["VITE_API_BASE_URL"], expected_api_expression)
         self.assertIn(': "${VITE_API_BASE_URL:?', assertion["run"])
         self.assertIn("grep", assertion["run"])
         self.assertIn("dist", assertion["run"])
+
+    def test_runtime_config_contract_classifies_all_vite_inputs_as_public(self):
+        contract = yaml.safe_load(RUNTIME_CONTRACT.read_text())
+
+        self.assertEqual(contract["apiVersion"], "pinlog.io/v1alpha1")
+        self.assertEqual(contract["kind"], "RuntimeConfigContract")
+        self.assertEqual(contract["metadata"]["name"], "front-dev")
+        spec = contract["spec"]
+        self.assertEqual(spec["service"], "front")
+        self.assertEqual(spec["environment"], "dev")
+        self.assertEqual(
+            spec["source"],
+            {"repository": "Team-PinLog/front", "baseRef": "refs/heads/dev"},
+        )
+        self.assertEqual(
+            spec["publicVariables"],
+            [
+                "VITE_API_BASE_URL",
+                "VITE_KAKAO_REST_KEY",
+                "VITE_KAKAO_JS_KEY",
+            ],
+        )
+        self.assertEqual(spec["ownerSecretKeys"], [])
+        self.assertEqual(spec["infraOwnedKeys"], [])
+        self.assertEqual(
+            spec["target"],
+            {"namespace": "pinlog-dev", "name": "front-runtime-config"},
+        )
+        self.assertEqual(spec["rollout"]["mode"], "image-rebuild")
+
+    def test_dev_push_fails_closed_when_public_github_variables_are_missing(self):
+        check = self.jobs["check"]
+        validation = named_step(check, "Validate dev public build variables")
+        self.assertEqual(
+            validation["if"],
+            "${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}",
+        )
+        self.assertEqual(
+            validation["env"],
+            {
+                "VITE_API_BASE_URL": "${{ vars.VITE_API_BASE_URL }}",
+                "VITE_KAKAO_REST_KEY": "${{ vars.VITE_KAKAO_REST_KEY }}",
+                "VITE_KAKAO_JS_KEY": "${{ vars.VITE_KAKAO_JS_KEY }}",
+            },
+        )
+        for variable in validation["env"]:
+            self.assertIn(f'"${{{variable}:?', validation["run"])
+
+    def test_pull_request_build_uses_value_free_public_placeholders(self):
+        check = self.jobs["check"]
+        build = named_step(check, "Build frontend")
+        for variable, placeholder in {
+            "VITE_API_BASE_URL": "/api/core/v1",
+            "VITE_KAKAO_REST_KEY": "ci-public-rest-key",
+            "VITE_KAKAO_JS_KEY": "ci-public-js-key",
+        }.items():
+            expression = build["env"][variable]
+            self.assertIn("github.event_name == 'pull_request'", expression)
+            self.assertIn(placeholder, expression)
+            self.assertIn(f"vars.{variable}", expression)
+
+    def test_runtime_docs_do_not_describe_browser_exposed_vite_values_as_secrets(self):
+        runtime_doc = RUNTIME_DOC.read_text()
+        env_example = ENV_EXAMPLE.read_text()
+
+        for variable in (
+            "VITE_API_BASE_URL",
+            "VITE_KAKAO_REST_KEY",
+            "VITE_KAKAO_JS_KEY",
+        ):
+            self.assertIn(variable, runtime_doc)
+            self.assertIn(variable, env_example)
+        self.assertIn("GitHub Actions Variables", runtime_doc)
+        self.assertIn("browser bundle", runtime_doc)
+        self.assertIn("ownerSecretKeys: []", runtime_doc)
+        self.assertIn("no sealing or dispatch action/job is invoked", runtime_doc)
+        self.assertIn("public build configuration", env_example)
 
     def test_image_recipe_runs_as_uid_101_without_linux_capabilities(self):
         dockerfile = IMAGE_DOCKERFILE.read_text()
