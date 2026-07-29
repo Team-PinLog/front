@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { AddToCollectionButton } from '@/features/collections/components/AddToCollectionButton';
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
 import { useAddRecordContextMutation } from '../hooks/useAddRecordContextMutation';
 import { ContextListItem } from './ContextListItem';
@@ -55,9 +56,12 @@ export function RecordDetailView({ recordId }: RecordDetailViewProps) {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 p-8">
-      <header>
-        <h1 className="text-2xl font-extrabold text-pin-navy">{record.place.name}</h1>
-        <p className="text-sm font-semibold text-log-mint">{record.place.address}</p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-pin-navy">{record.place.name}</h1>
+          <p className="text-sm font-semibold text-log-mint">{record.place.address}</p>
+        </div>
+        <AddToCollectionButton />
       </header>
 
       {record.keywords.length > 0 ? (
