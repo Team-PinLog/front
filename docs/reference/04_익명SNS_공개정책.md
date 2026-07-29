@@ -43,6 +43,8 @@ Keyword는 사전 정의된 프리셋에서만 선택하며, 타인에게 공개
 
 - 추천 단위는 Collection입니다.
 - 공개 화면에서 다른 사용자의 Context 원문을 제공하지 않습니다.
+- **타인 Collection의 추천 특징으로 쓰는 Keyword는 `PUBLIC`뿐입니다.** `PRIVATE_ONLY`는 본인 관심 계산에만 쓰고, `BLOCKED`는 계산과 노출 모두에서 제외합니다(2장 표와 같습니다).
+- **Feed 응답에 소유자를 식별할 수 있는 값을 넣지 않습니다.** 같은 Shelf를 따라가는 경로는 있어도 소유자 신원은 드러나지 않습니다.
 - 소프트 삭제된 User, Shelf, Collection, Record, CollectionRecord는 제외합니다.
 - 탈퇴한 User의 Collection은 Feed에서 즉시 제외합니다.
 - 신고·차단은 MVP에 포함하지 않습니다.

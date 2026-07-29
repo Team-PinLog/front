@@ -22,6 +22,8 @@ MVP REST API 명세입니다. 데이터 구조는 데이터 모델 및 무결성
 - Refresh Token은 **Redis**에 저장한다(로그아웃 무효화·회전 발급 관리, TTL 자동 만료).
 - 토큰은 **`HttpOnly` + `Secure` + `SameSite=Lax` 쿠키**로 발급한다. 응답 본문에 토큰을 담지 않으며 클라이언트 스크립트는 토큰을 읽을 수 없다.
 - 클라이언트는 요청에 자격증명을 포함시키기만 한다(`credentials: include` / `withCredentials`). 인증 헤더를 직접 구성하지 않는다.
+- 쿠키 이름은 `access_token`·`refresh_token`이다. 둘 다 `HttpOnly`이므로 클라이언트가 이름으로 접근할 일은 없다.
+- Access 쿠키는 `Path=/api/core`(context-path)로 발급한다. 모든 API 요청에 실려야 하고, 그 밖으로 나갈 필요는 없다.
 - Refresh 쿠키는 `Path=/api/core/v1/auth`로 제한해 일반 API 요청(`/records` 등)에 실리지 않게 한다. 재발급과 로그아웃이 모두 이 범위에 들어간다.
 - 프론트엔드와 API는 같은 오리진에서 서비스한다. 따라서 `SameSite=None`과 CORS 자격증명 설정이 필요하지 않다.
 - 인증 쿠키와 별개로, 클라이언트가 로그인 여부를 판단할 수 있도록 **표시용 쿠키**를 함께 발급한다(1.8).
@@ -137,6 +139,16 @@ Record·Context 생성 및 수정 응답은 Keyword·Embedding 생성을 기다�
 - 클라이언트는 `POST`·`PUT`·`PATCH`·`DELETE` 요청에 그 값을 `X-XSRF-TOKEN` 헤더로 실어 보낸다.
 - 헤더가 없거나 값이 일치하지 않으면 `403`을 반환한다.
 - `GET`을 비롯한 조회 요청은 해당하지 않는다.
+
+| 항목      | 값                                                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 이름      | `XSRF-TOKEN`                                                                                                             |
+| 속성      | `Secure`, `SameSite=Lax`, **`Path=/`**. **`HttpOnly`가 아니다**                                                          |
+| 발급 시점 | 조회 요청을 포함한 모든 요청의 응답. 클라이언트는 첫 `GET` 응답에서 값을 얻으므로 토큰 전용 엔드포인트를 호출하지 않는다 |
+
+> **`Path=/`는 이 쿠키가 동작하기 위한 조건이다.**
+>
+> 읽는 주체가 브라우저 JS이므로, `Path`를 API 경로(`/api/core`)로 좁히면 프론트 페이지(`/`·`/auth/callback`)의 `document.cookie`에 **나타나지 않는다.** 그러면 클라이언트는 `X-XSRF-TOKEN`에 넣을 값을 구할 방법이 없고 상태 변경 요청이 **전부 `403`**이 된다. 표시 쿠키(1.8)와 같은 판단이다 — 읽는 주체가 JS인 쿠키는 `Path=/`여야 한다.
 
 ## 1.8 로그인 표시 쿠키
 
@@ -280,8 +292,8 @@ GET /api/core/v1/auth/{provider}/callback?code={code}&state={state}
 ```http
 HTTP/1.1 302 Found
 Location: /auth/callback
-Set-Cookie: accessToken=…; HttpOnly; Secure; SameSite=Lax; Path=/api/core/v1
-Set-Cookie: refreshToken=…; HttpOnly; Secure; SameSite=Lax; Path=/api/core/v1/auth
+Set-Cookie: access_token=…; HttpOnly; Secure; SameSite=Lax; Path=/api/core
+Set-Cookie: refresh_token=…; HttpOnly; Secure; SameSite=Lax; Path=/api/core/v1/auth
 Set-Cookie: logged_in=1; Secure; SameSite=Lax; Path=/
 ```
 
@@ -367,8 +379,41 @@ DELETE /api/core/v1/me
 | `member`, `social_account`                                            | 소프트 삭제                                                                       |
 | `record`, `context`, `collection`, `collection_record`, 관련 `follow` | 소프트 삭제                                                                       |
 | `social_account`의 `provider_user_id`, `email`                        | **마스킹**(개인정보 파기 대상)                                                    |
+| `ai.context_ai_state`                                                 | 두 status를 `CANCELLED`로 전이                                                    |
+| `ai.context_embedding`                                                | `is_deleted = true` 표시                                                          |
 | Refresh Token                                                         | 해당 회원의 **모든** Refresh를 무효화하고 인증 쿠키와 표시 쿠키(1.8)를 만료시킨다 |
 | `place`                                                               | 공용 데이터이므로 유지한다                                                        |
+
+### AI 파생 데이터
+
+Context가 소프트 삭제될 때 함께 처리한다. **물리 삭제가 아니라 무효화 표시다.**
+
+| 표시                                         | 효과                                                                                           |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `context_ai_state`의 두 status → `CANCELLED` | 진행 중인 AI 작업을 취소해 **늦게 도착한 결과가 저장되는 것을 막고**, 키워드 조회에서 제외한다 |
+| `context_embedding.is_deleted = true`        | 검색 대상에서 제외하고 물리 삭제 대상으로 식별한다                                             |
+
+```sql
+UPDATE ai.context_ai_state
+SET embedding_status = 'CANCELLED',
+    keyword_status   = 'CANCELLED',
+    updated_at       = now()
+WHERE context_id = ?;
+-- 조건 없음. COMPLETED·FAILED도 덮는다. CANCELLED가 다른 모든 상태보다 우선한다(05 §11.1).
+
+UPDATE ai.context_embedding
+SET is_deleted = true, updated_at = now()
+WHERE context_id = ?;
+-- 영향 행이 0이어도 정상이다(Embedding 생성 전에 삭제된 경우).
+-- 늦게 도착하는 INSERT는 State의 CANCELLED가 차단한다(05 §11.2).
+```
+
+- **`CANCELLED` 전이에 조건을 걸지 않는다.** `COMPLETED`도 덮어야 한다. `context_keyword`에는 `is_deleted`에 해당하는 컬럼이 없어, 키워드 조회 제외를 오직 `keyword_status = 'CANCELLED'`가 담당하기 때문이다. `COMPLETED`를 남기면 임베딩 검색에서는 걸러지지만 **키워드 조회에서 탈퇴한 사용자의 키워드가 계속 노출된다.**
+- `is_deleted` UPDATE의 **영향 행이 0이어도 오류로 처리하지 않는다.**
+- 두 컬럼 모두 **백엔드(Spring)가 변경한다.** FastAPI는 건드리지 않는다(05 §6.4·§12.3). 반대로 Finalizer는 `CANCELLED`를 `FAILED`로 덮어쓸 수 없다(05 §12).
+- `ai.context_keyword`는 별도 처리가 필요 없다. 조회가 `context_ai_state`를 조인해 `keyword_status = 'COMPLETED'`로 거르므로 자동 제외된다(05 §9·§11.2). 백엔드는 이 테이블에 쓰지 않고 읽기 조인만 한다.
+- 물리 삭제 시점은 이 명세의 범위가 아니며 개인정보 정책을 따른다(07 §5).
+- 같은 처리를 Record 삭제(5.6·5.7)에도 적용한다. 탈퇴 전용 동작이 아니다.
 
 이 경로는 Refresh 쿠키의 `Path` 범위 밖이라 Refresh 쿠키가 전송되지 않는다. 따라서 **Access 쿠키로 회원을 식별하고 그 회원의 Refresh를 전부 무효화한다.** 탈퇴는 모든 기기에서 즉시 로그아웃되어야 하므로 전체 무효화가 의도된 동작이다. Access가 만료된 상태라면 인증 실패(401)이므로, 클라이언트는 재발급(3.3) 후 다시 요청한다.
 
@@ -506,7 +551,7 @@ POST /api/core/v1/records
 GET /api/core/v1/records/{recordId}
 ```
 
-본인 소유 Record만 조회한다. `contexts`는 배열이다.
+본인 소유 Record만 조회한다. `contexts`는 배열이며, `createdAt`(최초 작성 시각) 오름차순 — 오래된 것부터 — 으로 정렬된다. 모든 `contexts` 배열 응답에 공통이다.
 
 ## 5.3 장소로 내 Record 조회
 
@@ -579,7 +624,7 @@ PATCH /api/core/v1/records/{recordId}/contexts/{contextId}
 
 Context 수정은 내부적으로 기존 Context를 소프트 삭제하고 새 Context를 생성하는 교체 방식으로 처리할 수 있다.
 
-응답은 최신 ID를 반환한다.
+응답은 최신 ID를 반환한다. `createdAt`은 구 Context의 최초 작성 시각을 그대로 승계한다(`origin_created_at`) — 수정해도 목록 위치와 표시 시각이 바뀌지 않는다.
 
 ```json
 {
@@ -587,13 +632,13 @@ Context 수정은 내부적으로 기존 Context를 소프트 삭제하고 새 C
   "data": {
     "contextId": 91002,
     "body": "주말 오후에 다시 가고 싶은 카페",
-    "createdAt": "2026-07-23T10:05:00Z",
+    "createdAt": "2026-07-23T10:00:00Z",
     "keywords": []
   }
 }
 ```
 
-프론트는 기존 `contextId`를 새 ID로 교체해야 한다.
+프론트는 기존 `contextId`를 새 ID로 교체해야 한다. `createdAt`은 바뀌지 않는다.
 
 ## 5.6 Context 삭제
 
@@ -633,7 +678,7 @@ DELETE /api/core/v1/records/{recordId}
 ```
 
 - 프론트는 이 Record가 어떤 Collection의 마지막 Record인지 알 수 없다. 서버가 DB에서 확인한다.
-- 마지막 Record인 활성 Collection이 없으면: Record·Context 소프트 삭제, Collection 연결 소프트 삭제, AI 파생 데이터 파기(204).
+- 마지막 Record인 활성 Collection이 없으면: Record·Context 소프트 삭제, Collection 연결 소프트 삭제, AI 파생 데이터 무효화 — State `CANCELLED` + Embedding `is_deleted`(204). 물리 삭제 시점은 미결이며 별도 개인정보 정책을 따른다([06 §1.1](06_데이터모델_및_무결성.md)).
 - 마지막 Record인 활성 Collection이 있으면: 삭제하지 않고 409로 거절한다.
 
 ```http
@@ -663,7 +708,7 @@ DELETE /api/core/v1/records/{recordId}/force
 ```
 
 - 5.6·5.7에서 409를 받은 프론트가 사용자 안내·확인 후 호출한다.
-- Record·활성 Context 전체 소프트 삭제, Collection 연결 소프트 삭제, **마지막 Record였던 Collection 소프트 삭제**, AI 파생 데이터 파기를 한 트랜잭션으로 수행한다.
+- Record·활성 Context 전체 소프트 삭제, Collection 연결 소프트 삭제, **마지막 Record였던 Collection 소프트 삭제**, AI 파생 데이터 무효화(State `CANCELLED` + Embedding `is_deleted`)를 한 트랜잭션으로 수행한다.
 - 204.
 - 연쇄 삭제 대상이 없어도 정상 수행한다(일반 삭제와 동일 결과).
 
@@ -688,9 +733,8 @@ POST /api/core/v1/search/records
 
 검색 범위:
 
-- 현재 로그인 사용자의 Place
-- 현재 로그인 사용자의 Context
-- 현재 로그인 사용자의 Keyword
+- 현재 로그인 사용자의 **활성 Context 임베딩 단일 경로**다. 질의 전체를 1회 임베딩해 Context 단위 유사도(정확 cosine)를 구하고, Record 단위로 집계한다(최고 유사도 Context가 `matchedContext` 대표).
+- Place·Keyword는 독립 검색 경로가 아니다([AI 설계](05_AI_설계.md) §9.4 MVP 제외 — 독립 Place·Keyword 후보 검색).
 
 응답:
 
@@ -715,7 +759,7 @@ POST /api/core/v1/search/records
           "body": "비 오는 날 친구와 가려고 저장",
           "createdAt": "2026-07-23T10:00:00Z"
         },
-        "keywords": ["친구", "비 오는 날", "카페"],
+        "keywords": ["친구", "비 오는 날"],
         "createdAt": "2026-07-20T09:00:00Z"
       }
     ]
@@ -725,7 +769,7 @@ POST /api/core/v1/search/records
 
 - `bounds`는 검색 결과 Record들의 Place 전체를 포함하는 최소 사각형이다(4.2와 동일 규칙: 결과 없으면 `null`). 프론트는 검색 결과를 지도에 띄울 때 `fitBounds(bounds, padding)`을 사용한다.
 - `keywords`는 매칭된 Context의 Keyword가 아니라 **해당 Record의 활성 Context 전체 Keyword 집계값**이다(`ai.context_keyword`를 Record 단위로 집계, 중복 제거).
-- `keywords`는 `keyword_preset`의 `label` 문자열 배열이다. `code`는 내부 식별용으로 노출하지 않는다(모든 Keyword 응답 공통).
+- `keywords`는 `keyword_preset`의 `display_name` 문자열 배열이다. `code`는 내부 식별용으로 노출하지 않는다(모든 Keyword 응답 공통). 지역·Place 카테고리(예: "카페")는 프리셋에 없으므로 Keyword로 나올 수 없다.
 
 ### 검색 결과 카드 요구사항
 
@@ -939,10 +983,12 @@ DELETE /api/core/v1/collections/{collectionId}/records/{recordId}
 ## 8.1 최초 공개 책장 탐색
 
 ```http
-GET /api/core/v1/feed/collections/{collectionId}/shelf?cursor={cursor}&size=10
+GET /api/core/v1/feed/collections/{collectionId}/shelf?cursor={cursor}&size=20
 ```
 
 `collectionId`를 공개 진입점으로 사용해 해당 Collection 작성자의 다른 공개 Collection을 조회한다.
+
+`size`는 공통 커서 계약을 따른다 — 기본값 `CursorPage.DEFAULT_SIZE`(20), 서버 방어 상한 `CursorPage.MAX_SIZE`(100), 범위 밖 값은 `CursorPage.normalizeSize`가 보정한다. 같은 Feed 네임스페이스의 `GET /feed/collections`와 기본 크기를 맞춘다.
 
 응답:
 
@@ -1033,12 +1079,23 @@ PATCH /api/core/v1/follows/{followId}
 }
 ```
 
+`alias` **키를 생략한 요청(`{}`)도 제거로 처리한다.** 서버는 키 부재와 명시적 `null`을 구분하지 않는다.
+
+```json
+{}
+```
+
 규칙:
 
 - 최대 20자
 - 공백 제거 후 빈 문자열은 `null`
+- 키 생략과 명시적 `null`은 같다 — 둘 다 제거
 - 별칭은 지정한 본인만 볼 수 있음
 - 동일 별칭 중복 허용
+
+> **변경된 필드만 모아 보내는 방식이면 주의한다.** 별칭을 건드리지 않았는데 `alias` 키가 빠지면 지워진다. 유지하려면 현재 값을 그대로 실어 보낸다.
+>
+> Follow는 수정 가능한 필드가 `alias` 하나뿐이라 부분 수정 요청이 나올 이유가 없어 구분하지 않기로 했다. 구분이 필요한 리소스가 생기면 그때 도입한다.
 
 ## 8.4 Follow 해제
 
@@ -1152,11 +1209,15 @@ GET /api/core/v1/feed/collections?cursor={cursor}&size=20
 
 규칙:
 
-- 공개 가능한 Keyword만 반환
-- AI 처리가 끝나지 않았다면 `keywords: []`
-- AI 미완료 Collection도 Feed 후보에 포함 가능
-- Context 원문과 사용자 신원은 반환하지 않음
+- `size` 기본 20. 커서는 공통 페이지네이션 계약(1.4)을 따르며 `cursor`는 opaque 문자열이다.
+- `requestId`는 Feed Session 식별자다. 같은 Session의 다음 페이지는 `nextCursor`로 이어받고, 클라이언트는 이 값을 10.2의 이벤트 요청에 그대로 돌려보낸다.
+- 공개 가능한 `PUBLIC` Keyword만 반환한다. `PRIVATE_ONLY`·`BLOCKED`는 타인 노출과 타인 Collection 특징 계산 모두에서 제외한다.
+- AI 처리가 끝나지 않았다면 `keywords: []`다. 오류가 아니다.
+- AI 미완료 Collection도 Feed 후보에 포함한다.
+- Context 원문과 사용자 신원은 반환하지 않는다. **소유자 식별자(`memberId` 등)를 응답에 넣지 않는다.**
 - 상세 조회는 IMPRESSION 기록 대상이 아님
+
+후보 채널·점수 구성·가중치 등 추천 정책은 [AI 설계](05_AI_설계.md) 14장이 정본이다.
 
 Collection 선택:
 
@@ -1172,27 +1233,15 @@ GET /api/core/v1/collections/{collectionId}
 POST /api/core/v1/feed/events
 ```
 
-CLICK:
+`requestId`는 배열 바깥의 별도 필드다. 10.1 응답에서 받은 값을 그대로 돌려보낸다. 이벤트는 배열로 묶어 한 번에 보낸다.
 
 ```json
 {
-  "event": "CLICK",
-  "collectionId": 7001,
-  "placeId": null,
   "requestId": "5b2c0000-0000-0000-0000-000000000000",
-  "position": 0
-}
-```
-
-SAVE:
-
-```json
-{
-  "event": "SAVE",
-  "collectionId": 7001,
-  "placeId": 5501,
-  "requestId": "5b2c0000-0000-0000-0000-000000000000",
-  "position": 0
+  "events": [
+    { "event": "CLICK", "collectionId": 7001, "placeId": null, "position": 0 },
+    { "event": "SAVE", "collectionId": 7001, "placeId": 5501, "position": 0 }
+  ]
 }
 ```
 
@@ -1202,7 +1251,15 @@ SAVE:
 204 No Content
 ```
 
-IMPRESSION은 클라이언트가 보내지 않는다.
+규칙:
+
+- `events` 배열의 크기 상한은 **100개**다. 초과하면 `400 INVALID_INPUT`이다. `recordIds` 배열과 같은 값이며 근거는 [파트간 요구사항](05-1_파트간_요구사항.md) 1.5에 있다.
+- `event`는 `CLICK`·`SAVE`만 허용한다. **IMPRESSION은 서버가 10.1 응답 생성 시 기록하므로 클라이언트가 보내면 `400`으로 거부한다.**
+- 사용자 식별자는 본문으로 받지 않는다. 인증 컨텍스트에서 가져온다.
+- `placeId`는 Collection 안의 특정 Place를 대상으로 한 경우에만 채우고, 아니면 `null`이다.
+- `position`은 10.1 응답에서 받은 값을 그대로 돌려보낸다.
+- 이벤트는 관측 로그이므로 개별 항목이 유효하지 않으면(예: 삭제된 Collection) 그 항목만 버리고 나머지는 저장한다. 부분 실패로 전체를 실패시키지 않는다.
+- 쓰기 전용이며 어떤 조회 결과도 반환하지 않는다.
 
 ---
 
@@ -1269,7 +1326,7 @@ type RecordDetail = {
 type ContextDetail = {
   contextId: number;
   body: string;
-  createdAt: string;
+  createdAt: string; // 최초 작성 시각(origin_created_at). 수정으로 contextId가 바뀌어도 승계되어 변하지 않는다
 };
 ```
 
