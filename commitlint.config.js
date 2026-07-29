@@ -11,4 +11,4 @@ export default {
     // 한글 제목 허용을 위해 case 검사 비활성화
     'subject-case': [0],
   },
-}
+};
