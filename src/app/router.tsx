@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
 import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
+import { MapPage } from '@/pages/MapPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
@@ -59,6 +60,15 @@ const recordDetailRoute = createRoute({
   component: RecordDetailPage,
 });
 
+const mapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/map',
+  // 보호 라우트: 내 Record 지도 마커 조회는 개인 데이터다(GET /records/map, 08_API_명세 4.2).
+  // 검색(149)과 동일하게 requireLoggedIn을 적용한다.
+  beforeLoad: requireLoggedIn,
+  component: MapPage,
+});
+
 const collectionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/collections/$collectionId',
@@ -78,6 +88,7 @@ const routeTree = rootRoute.addChildren([
   callbackRoute,
   recordDetailRoute,
   collectionDetailRoute,
+  mapRoute,
 ]);
 
 export const router = createRouter({
