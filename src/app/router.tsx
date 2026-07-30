@@ -13,6 +13,7 @@ import { LibraryPage } from '@/pages/LibraryPage';
 import { FeedPage } from '@/pages/FeedPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
+import { redirectIfLoggedIn } from '@/features/auth/lib/redirectIfLoggedIn';
 import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
 import { oauthCallbackSearchSchema } from '@/features/auth/lib/oauthCallbackSearchSchema';
 
@@ -39,7 +40,9 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  // 보호 대상 아님(beforeLoad 없음) — 걸면 무한 리다이렉트가 된다.
+  // requireLoggedIn을 걸면 안 된다(무한 리다이렉트) — 로그인 상태면 홈으로 보내는
+  // 반대 방향 가드(redirectIfLoggedIn, 114)를 대신 붙인다.
+  beforeLoad: redirectIfLoggedIn,
   component: LoginPage,
 });
 
