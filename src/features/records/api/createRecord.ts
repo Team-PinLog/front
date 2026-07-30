@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { httpClient } from '@/shared/http/client';
-import type { KakaoPlace } from '@/features/places/api/searchKakaoPlaces';
 
 /**
  * ⭐ 표준 패턴: 화면 → Hook → API 함수(여기) → httpClient.
@@ -34,8 +33,18 @@ const createRecordResponseSchema = z.object({
 
 export type CreateRecordResponse = z.infer<typeof createRecordResponseSchema>;
 
+// KakaoPlace(검색 결과)·PlaceSummary(이미 저장된 Record의 place)를 모두 구조적으로 받아들이기 위한 최소 형태.
+// 142 "저장하기"(features/collections/components/RecordSaveButton)가 PlaceSummary로 이 함수를 재사용한다.
+export interface CreateRecordPlaceInput {
+  kakaoPlaceId: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
 export interface CreateRecordRequest {
-  place: KakaoPlace;
+  place: CreateRecordPlaceInput;
   contextBody: string;
 }
 

@@ -9,6 +9,7 @@ import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
 import { SearchPage } from '@/pages/SearchPage';
 import { MapPage } from '@/pages/MapPage';
 import { MyShelfPage } from '@/pages/MyShelfPage';
+import { FeedPage } from '@/pages/FeedPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
@@ -71,6 +72,13 @@ const mapRoute = createRoute({
   component: MapPage,
 });
 
+// Feed(142) 경유 클릭 이벤트 근거로 쓰는 optional search params. 기존 진입 경로(140/141/143)는 이 값 없이도
+// 그대로 동작해야 한다(하위 호환) — 둘 다 optional이며, 값이 있을 때만 RecordSaveButton이 SAVE 이벤트를 큐잉한다.
+const collectionDetailSearchSchema = z.object({
+  feedRequestId: z.string().optional(),
+  feedPosition: z.coerce.number().optional(),
+});
+
 const collectionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/collections/$collectionId',
@@ -81,6 +89,7 @@ const collectionDetailRoute = createRoute({
     parse: (rawParams) => ({ collectionId: collectionIdParamSchema.parse(rawParams.collectionId) }),
     stringify: (params) => ({ collectionId: String(params.collectionId) }),
   },
+  validateSearch: (search) => collectionDetailSearchSchema.parse(search),
   component: CollectionDetailPage,
 });
 
@@ -102,6 +111,14 @@ const shelfRoute = createRoute({
   component: MyShelfPage,
 });
 
+const feedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/feed',
+  // 보호 라우트: 발행된 Collection 추천 목록은 로그인 사용자 대상이다(08_API_명세 10.1) — 149/150/141과 동일.
+  beforeLoad: requireLoggedIn,
+  component: FeedPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -111,6 +128,7 @@ const routeTree = rootRoute.addChildren([
   searchRoute,
   mapRoute,
   shelfRoute,
+  feedRoute,
 ]);
 
 export const router = createRouter({
