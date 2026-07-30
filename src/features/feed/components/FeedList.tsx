@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
 import type { FeedCollectionItem } from '../api/getFeedCollections';
@@ -62,43 +63,56 @@ export function FeedList() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {items.map((item) => (
-          <button
+          <div
             key={`${item.requestId}-${item.collectionId}-${item.position}`}
-            type="button"
-            onClick={() => handleItemClick(item)}
-            className="flex flex-col gap-2 rounded-lg border border-line-card bg-white p-4 text-left"
+            className="flex flex-col items-center gap-2"
           >
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-base font-bold text-pin-navy">{item.title}</p>
-              <p className="flex-none text-xs font-semibold text-log-mint">{item.recordCount}개</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleItemClick(item)}
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-line-card bg-white text-left shadow-[0_6px_14px_rgba(4,33,66,.08)] transition-transform hover:-translate-y-1"
+            >
+              <div
+                aria-hidden="true"
+                className="aspect-[4/3] w-full"
+                style={{ backgroundColor: getCollectionAccentColor(item.collectionId) }}
+              />
+              <div className="flex flex-col gap-1.5 p-3">
+                <p className="text-sm font-bold leading-snug text-pin-navy">{item.title}</p>
 
-            {item.keywords.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {item.keywords.map((keyword) => (
-                  <span
-                    key={keyword}
-                    className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
-                  >
-                    {keyword}
-                  </span>
-                ))}
+                {item.keywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {item.keywords.map((keyword) => (
+                      <span
+                        key={keyword}
+                        className="rounded-full bg-log-mint/10 px-2 py-0.5 text-[10px] font-bold text-log-mint"
+                      >
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-[10px] font-semibold text-log-mint">{item.recordCount}개 장소</p>
+                <p className="text-[10px] text-ink-gray-light">{item.createdAt}</p>
               </div>
-            )}
+            </button>
 
-            <p className="text-xs text-ink-gray">{item.createdAt}</p>
-          </button>
+            <span className="rounded-full bg-line-subtle px-2.5 py-0.5 text-[10px] font-semibold text-ink-gray">
+              {item.position}
+            </span>
+          </div>
         ))}
-      </section>
+      </div>
 
       {hasNext && (
         <button
           type="button"
           onClick={() => void feedQuery.fetchNextPage()}
           disabled={feedQuery.isFetchingNextPage}
-          className="h-11 rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy disabled:opacity-40"
+          className="h-11 self-center rounded-full border border-pin-navy/15 px-6 text-sm font-bold text-pin-navy disabled:opacity-40"
         >
           {feedQuery.isFetchingNextPage ? '불러오는 중…' : '더 보기'}
         </button>
