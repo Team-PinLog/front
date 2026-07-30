@@ -3,17 +3,25 @@ import { useCollectionDeleteConfirm } from '@/contexts/useCollectionDeleteConfir
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
 import { RecordRemoveButton } from './RecordRemoveButton';
+import { RecordSaveButton } from './RecordSaveButton';
 
 interface CollectionDetailViewProps {
   collectionId: number;
+  // Feed(142) 경유 진입일 때만 채워진다 — 그 외 진입(내 책장·직접 URL 등)은 undefined다(하위 호환).
+  feedRequestId?: string;
+  feedPosition?: number;
 }
 
 /**
- * Collection 상세: 제목·Record 목록 조회 + 소유자 전용 제목 수정·삭제·Record 제거.
- * 근거: Jira S15P11A705-140, docs/reference/08_API_명세.md 7.3~7.6.
+ * Collection 상세: 제목·Record 목록 조회 + 소유자 전용 제목 수정·삭제·Record 제거, 타인 Record 저장.
+ * 근거: Jira S15P11A705-140/142, docs/reference/08_API_명세.md 5.1·7.3~7.6·10.2.
  * ownedByMe로 소유자/타인을 구분한다(privacy-rules.md 1장) — 타인 조회는 contexts가 null이라 렌더링하지 않는다.
  */
-export function CollectionDetailView({ collectionId }: CollectionDetailViewProps) {
+export function CollectionDetailView({
+  collectionId,
+  feedRequestId,
+  feedPosition,
+}: CollectionDetailViewProps) {
   const detailQuery = useCollectionDetailQuery(collectionId);
   const editTitleState = useEditCollectionTitle();
   const deleteConfirm = useCollectionDeleteConfirm();
@@ -78,8 +86,15 @@ export function CollectionDetailView({ collectionId }: CollectionDetailViewProps
                 <p className="text-base font-bold text-pin-navy">{record.place.name}</p>
                 <p className="text-xs font-semibold text-log-mint">{record.place.address}</p>
               </div>
-              {ownedByMe && (
+              {ownedByMe ? (
                 <RecordRemoveButton collectionId={collectionId} recordId={record.recordId} />
+              ) : (
+                <RecordSaveButton
+                  place={record.place}
+                  collectionId={collectionId}
+                  feedRequestId={feedRequestId}
+                  feedPosition={feedPosition}
+                />
               )}
             </div>
 
