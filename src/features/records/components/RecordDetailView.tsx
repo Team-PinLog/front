@@ -3,7 +3,7 @@ import { ErrorState } from '@/shared/ui/ErrorState';
 import { AddToCollectionButton } from '@/features/collections/components/AddToCollectionButton';
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
 import { useAddRecordContextMutation } from '../hooks/useAddRecordContextMutation';
-import { ContextListItem } from './ContextListItem';
+import { ContextCard } from './ContextCard';
 
 const CONTEXT_BODY_MAX_LENGTH = 500;
 
@@ -88,7 +88,7 @@ export function RecordDetailView({ recordId }: RecordDetailViewProps) {
         )}
         {isOwner &&
           record.contexts!.map((context) => (
-            <ContextListItem key={context.contextId} recordId={recordId} context={context} />
+            <ContextCard key={context.contextId} recordId={recordId} context={context} />
           ))}
       </section>
 
