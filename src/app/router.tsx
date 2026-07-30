@@ -9,6 +9,7 @@ import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
 import { SearchPage } from '@/pages/SearchPage';
 import { MapPage } from '@/pages/MapPage';
 import { MyShelfPage } from '@/pages/MyShelfPage';
+import { LibraryPage } from '@/pages/LibraryPage';
 import { FeedPage } from '@/pages/FeedPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
@@ -119,6 +120,15 @@ const feedRoute = createRoute({
   component: FeedPage,
 });
 
+const libraryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library',
+  // 보호 라우트: 내 책장(GET /collections)과 내 팔로우 목록(GET /follows, 08_API_명세 9장)을 함께 보여주는
+  // 화면이라 141/149/150과 동일하게 본인 관리 화면으로 취급한다.
+  beforeLoad: requireLoggedIn,
+  component: LibraryPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -129,6 +139,7 @@ const routeTree = rootRoute.addChildren([
   mapRoute,
   shelfRoute,
   feedRoute,
+  libraryRoute,
 ]);
 
 export const router = createRouter({

@@ -2,12 +2,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/shared/http/types';
 import { deleteFollow } from '../api/deleteFollow';
 import { shelfExploreQueryKey } from '@/features/feed/hooks/useShelfExploreQuery';
+import { followsListQueryKey } from './useFollowsQuery';
 
 export interface UnfollowMutationVariables {
   followId: number;
   // 책장 탐색 쿼리를 invalidate하려면 진입점인 sourceCollectionId가 필요하다 — deleteFollow 응답(204,
-  // 본문 없음)에는 collectionId가 없으므로 호출부가 함께 넘긴다.
-  sourceCollectionId: number;
+  // 본문 없음)에는 collectionId가 없으므로 호출부가 함께 넘긴다. Library(144)에서 호출할 때는 진입점이
+  // 없으므로 optional — 그 경우 팔로우 목록만 invalidate한다.
+  sourceCollectionId?: number;
 }
 
 // ⭐ 표준 패턴: 컴포넌트는 이 Hook만 호출한다. API 함수·httpClient를 직접 부르지 않는다.
@@ -18,7 +20,10 @@ export function useUnfollowMutation() {
   return useMutation<void, ApiError, UnfollowMutationVariables>({
     mutationFn: ({ followId }) => deleteFollow(followId),
     onSuccess: (_data, { sourceCollectionId }) => {
-      queryClient.invalidateQueries({ queryKey: shelfExploreQueryKey(sourceCollectionId) });
+      queryClient.invalidateQueries({ queryKey: followsListQueryKey });
+      if (sourceCollectionId !== undefined) {
+        queryClient.invalidateQueries({ queryKey: shelfExploreQueryKey(sourceCollectionId) });
+      }
     },
   });
 }
