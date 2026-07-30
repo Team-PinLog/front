@@ -1,29 +1,81 @@
+import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
+import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
+import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
+import { SmartSearchPanel } from '@/features/home/components/SmartSearchPanel';
+import { HomeMapSection } from '@/features/home/components/HomeMapSection';
+import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
 
-// 홈 화면 전체 레이아웃(목업 지도·서가 등)은 별도 티켓 대상. 여기서는 Place 검색·선택 시트(S15P11A705-136) 진입점만 연결한다.
+// 136: Place 검색·선택 시트 진입점. 목업 홈의 우측 하단 원형 FAB 위치로 옮겼다(기능은 그대로).
 function AddPlaceRecordButton() {
   const sheet = usePlaceRecordSheet();
   return (
     <button
       type="button"
       onClick={sheet.open}
-      className="rounded-full bg-pin-navy px-5 py-3 text-sm font-bold text-white"
+      aria-label="장소 기록 추가"
+      title="장소 기록 추가"
+      className="fixed bottom-8 right-8 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-pin-navy text-2xl font-bold text-white shadow-lg transition-transform hover:-translate-y-0.5"
     >
-      + 장소 기록
+      +
     </button>
   );
 }
 
+/**
+ * 홈 화면: 스마트 검색(149)과 지도(150)를 하나의 화면에서 상호 배타적으로 전환한다.
+ * 근거: Jira S15P11A705-165. 검색 mutation은 SearchPage.tsx(149)와 동일하게 여기서 한 번만
+ * 호출해 SmartSearchPanel·SearchResultGallery 형제 컴포넌트에 나눠 내려준다.
+ * 지도 마커 클릭 시 동작(라우트 이동)은 RecordMapView(150) 그대로 유지한다(166에서 변경 예정).
+ */
 export function HomePage() {
+  const navigate = useNavigate();
+  const searchMutation = useSearchRecordsMutation();
+  const [openRecordId, setOpenRecordId] = useState<number | null>(null);
+
+  const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
+  // mockup의 homeSearchNoResults(검색은 했지만 0건)에 대응한다 — idle·pending·error와 달리
+  // 지도 위에 "원하는 장소를 찾아보세요" 안내를 함께 보여준다(mockup 1058~1060행).
+  const hasNoResults = searchMutation.isSuccess && searchMutation.data.items.length === 0;
+
   return (
     <PlaceRecordSheetProvider>
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-paper-white">
-        <p className="text-lg font-bold text-pin-navy">PinLog</p>
-        <AddPlaceRecordButton />
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 p-8">
+        <SmartSearchPanel
+          onSubmit={(query) => searchMutation.mutate(query)}
+          isPending={searchMutation.isPending}
+        />
+
+        {hasResults ? (
+          <SearchResultGallery items={searchMutation.data.items} onSelectRecord={setOpenRecordId} />
+        ) : (
+          <>
+            {hasNoResults && (
+              <p className="flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
+                원하는 장소를 찾아보세요.
+                <button
+                  type="button"
+                  onClick={() => void navigate({ to: '/feed' })}
+                  className="font-bold text-log-mint underline"
+                >
+                  탐색 탭으로 이동 →
+                </button>
+              </p>
+            )}
+            <HomeMapSection />
+          </>
+        )}
       </main>
+
+      <AddPlaceRecordButton />
       <PlaceRecordSheet />
+
+      {openRecordId !== null && (
+        <RecordDetailOverlay recordId={openRecordId} onClose={() => setOpenRecordId(null)} />
+      )}
     </PlaceRecordSheetProvider>
   );
 }
