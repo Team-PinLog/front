@@ -17,7 +17,13 @@ const TanStackRouterDevtoolsPanel = import.meta.env.PROD
 // "invalid"로 닫았고 워크어라운드 없음)에 걸려 rootRoute의 component에서
 // 경로 기반으로 직접 분기한다. 새 보호 라우트가 추가되면 별도 조치 없이
 // 기본적으로 AppLayout이 적용된다 — 이 배열에 넣은 경로만 예외로 빠진다.
-const ROUTES_WITHOUT_APP_LAYOUT = ['/login', '/auth/callback', '/collections/'];
+const ROUTES_WITHOUT_APP_LAYOUT = [
+  '/login',
+  '/auth/callback',
+  '/collections/',
+  '/terms',
+  '/privacy',
+];
 
 function shouldSkipAppLayout(pathname: string): boolean {
   return ROUTES_WITHOUT_APP_LAYOUT.some((prefix) => pathname.startsWith(prefix));

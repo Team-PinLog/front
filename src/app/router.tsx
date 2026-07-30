@@ -11,6 +11,8 @@ import { MapPage } from '@/pages/MapPage';
 import { MyShelfPage } from '@/pages/MyShelfPage';
 import { LibraryPage } from '@/pages/LibraryPage';
 import { FeedPage } from '@/pages/FeedPage';
+import { TermsPage } from '@/pages/TermsPage';
+import { PrivacyPage } from '@/pages/PrivacyPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { redirectIfLoggedIn } from '@/features/auth/lib/redirectIfLoggedIn';
@@ -132,10 +134,26 @@ const libraryRoute = createRoute({
   component: LibraryPage,
 });
 
+const termsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/terms',
+  // 공개 라우트: 최초 로그인 전 안내용 팝업이라 로그인 여부와 무관하게 접근 가능해야 한다(beforeLoad 없음).
+  component: TermsPage,
+});
+
+const privacyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/privacy',
+  // 공개 라우트: termsRoute와 동일한 이유로 beforeLoad 없음.
+  component: PrivacyPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   callbackRoute,
+  termsRoute,
+  privacyRoute,
   recordDetailRoute,
   collectionDetailRoute,
   searchRoute,
