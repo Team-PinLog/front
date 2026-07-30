@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
 import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
+import { SearchPage } from '@/pages/SearchPage';
 import { MapPage } from '@/pages/MapPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
@@ -82,12 +83,22 @@ const collectionDetailRoute = createRoute({
   component: CollectionDetailPage,
 });
 
+const searchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/search',
+  // 보호 라우트: 본인 소유 Record만 검색 대상이다(08_API_명세 6.1) — collectionDetailRoute(140, 공개
+  // 진입점)와 달리 개인 데이터 조회라 requireLoggedIn을 건다. recordDetailRoute와 동일 패턴.
+  beforeLoad: requireLoggedIn,
+  component: SearchPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   callbackRoute,
   recordDetailRoute,
   collectionDetailRoute,
+  searchRoute,
   mapRoute,
 ]);
 
