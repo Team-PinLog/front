@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
 import heroIllustration from '@/assets/hero.png';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
 import {
@@ -121,6 +122,20 @@ export function LoginPage() {
               </button>
             ))}
           </div>
+          <p className="text-center text-xs text-ink-gray">
+            계속 진행하면{' '}
+            <Link to="/terms" className="font-semibold text-pin-navy underline underline-offset-2">
+              이용약관
+            </Link>{' '}
+            및{' '}
+            <Link
+              to="/privacy"
+              className="font-semibold text-pin-navy underline underline-offset-2"
+            >
+              개인정보 처리방침
+            </Link>
+            에 동의하는 것으로 간주됩니다.
+          </p>
         </div>
       </section>
     </main>
