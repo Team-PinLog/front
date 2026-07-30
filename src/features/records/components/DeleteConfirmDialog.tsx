@@ -4,14 +4,18 @@ import { useForceDeleteRecordMutation } from '../hooks/useForceDeleteRecordMutat
 
 interface DeleteConfirmDialogProps {
   recordId: number;
+  onRecordDeleted?: () => void;
 }
 
 /**
  * 마지막 Context 삭제 시도(409 DELETE_CONFIRMATION_REQUIRED) 후 Record 강제 삭제를 확인받는 모달.
  * 근거: Jira S15P11A705-138, docs/api-contract.md 5.6~5.8.
  * Record 전용 문구라 shared/ui로 공용화하지 않고 features 내부에 둔다.
+ * onRecordDeleted: 삭제 성공 후 처리를 호출부가 대신하고 싶을 때 쓴다(홈 RecordDetailOverlay가
+ * 오버레이를 닫는 용도, 165 보완). 주지 않으면 기존과 동일하게 홈으로 라우트 이동한다 — 이미
+ * '/'에 있는 라우트 페이지에서는 navigate({ to: '/' })가 아무 효과가 없어 이 분기가 필요했다.
  */
-export function DeleteConfirmDialog({ recordId }: DeleteConfirmDialogProps) {
+export function DeleteConfirmDialog({ recordId, onRecordDeleted }: DeleteConfirmDialogProps) {
   const deleteConfirm = useDeleteConfirm();
   const forceDeleteMutation = useForceDeleteRecordMutation();
   const navigate = useNavigate();
@@ -32,6 +36,10 @@ export function DeleteConfirmDialog({ recordId }: DeleteConfirmDialogProps) {
       {
         onSuccess: () => {
           deleteConfirm.close();
+          if (onRecordDeleted) {
+            onRecordDeleted();
+            return;
+          }
           // 삭제된 Record 상세에는 더 이상 머무를 수 없어 홈으로 이탈한다(전용 목록 라우트가 아직 없음).
           void navigate({ to: '/' });
         },
