@@ -279,6 +279,24 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         )
         self.assertIn('echo "Published digest: $IMAGE_DIGEST"', command)
 
+    def test_successful_publish_dispatches_the_trusted_infra_updater(self):
+        publish = self.jobs["image-publish"]
+        dispatch = named_step(publish, "Request trusted Infra image promotion")
+        self.assertEqual(
+            dispatch["env"],
+            {"GH_TOKEN": "${{ secrets.PINLOG_INFRA_IMAGE_PR_TOKEN }}"},
+        )
+        command = dispatch["run"]
+        self.assertIn('test -n "$GH_TOKEN"', command)
+        self.assertIn(
+            "gh workflow run frontend-image-update.yaml \\",
+            command,
+        )
+        self.assertIn("--repo Team-PinLog/infra", command)
+        self.assertIn("--ref main", command)
+        self.assertNotIn("IMAGE_DIGEST", command)
+        self.assertNotIn("pull request", command.lower())
+
     def test_all_third_party_actions_are_pinned_to_full_commit_shas(self):
         for job_name, job in self.jobs.items():
             for step in job["steps"]:
