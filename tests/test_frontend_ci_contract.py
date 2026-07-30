@@ -282,6 +282,7 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
     def test_successful_publish_dispatches_the_trusted_infra_updater(self):
         publish = self.jobs["image-publish"]
         dispatch = named_step(publish, "Request trusted Infra image promotion")
+        self.assertEqual(dispatch["continue-on-error"], "true")
         self.assertEqual(
             dispatch["env"],
             {"GH_TOKEN": "${{ secrets.PINLOG_INFRA_IMAGE_PR_TOKEN }}"},
