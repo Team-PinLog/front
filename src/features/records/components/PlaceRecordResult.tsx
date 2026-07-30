@@ -1,12 +1,40 @@
 import type { CreateRecordResponse } from '../api/createRecord';
 
+// 168: 저장 시 함께 선택한 Collection에 담은 결과 요약 — succeededTitles 순서는 선택 순서를 따른다.
+export interface CollectionAddResult {
+  selectedCount: number;
+  succeededTitles: string[];
+  failedCount: number;
+}
+
 interface PlaceRecordResultProps {
   data: CreateRecordResponse;
+  collectionAddResult: CollectionAddResult;
   onClose: () => void;
 }
 
+function collectionResultMessage(result: CollectionAddResult): string {
+  const { selectedCount, succeededTitles, failedCount } = result;
+
+  if (selectedCount === 0) {
+    return '컬렉션 없이 개인 장소 기록으로 저장되었습니다';
+  }
+
+  const succeededCount = succeededTitles.length;
+  if (succeededCount === 0) {
+    return '컬렉션 추가에 실패했습니다';
+  }
+
+  const base =
+    succeededCount === 1
+      ? `${succeededTitles[0]}에 추가되었습니다`
+      : `${succeededCount}개 컬렉션에 추가되었습니다`;
+
+  return failedCount > 0 ? `${base} (${failedCount}개 실패)` : base;
+}
+
 // keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 오류가 아니라 "잠시 후 채워짐" 안내로 처리한다.
-export function PlaceRecordResult({ data, onClose }: PlaceRecordResultProps) {
+export function PlaceRecordResult({ data, collectionAddResult, onClose }: PlaceRecordResultProps) {
   const savedContext = data.contexts.at(-1);
   const resultLabel =
     data.result === 'RECORD_CREATED' ? '새 기록으로 저장했어요' : '기존 기록에 맥락을 추가했어요';
@@ -27,6 +55,7 @@ export function PlaceRecordResult({ data, onClose }: PlaceRecordResultProps) {
         {data.place.name}
       </h2>
       <p className="text-base font-semibold text-log-mint">{data.place.address}</p>
+      <p className="mt-2 text-sm text-ink-gray">{collectionResultMessage(collectionAddResult)}</p>
 
       {data.keywords.length > 0 ? (
         <div className="mt-6 flex flex-wrap gap-2">

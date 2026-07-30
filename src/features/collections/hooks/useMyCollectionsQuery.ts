@@ -9,8 +9,10 @@ const PAGE_SIZE = 10;
 
 // ⭐ 표준 패턴: 컴포넌트는 이 Hook만 호출한다. API 함수·httpClient를 직접 부르지 않는다.
 // TError를 ApiError로 명시한다 — httpClient가 던지는 에러는 Error 인스턴스가 아니라 ApiError 객체다.
-// props 없이 내부에서 직접 호출하는 형태로 둔다 — MyShelfList가 144(Library)에서도 그대로 재사용할 수 있도록.
-export function useMyCollectionsQuery() {
+// enabled 기본값 true로 둔다 — MyShelfList(144)처럼 항상 보이는 화면은 인자 없이 그대로 쓰고,
+// 168(PlaceRecordSheet)처럼 시트가 닫혀 있어도 항상 마운트된 컴포넌트는 sheet.isOpen을 넘겨 불필요한
+// 요청을 막는다(useMyRecordListQuery.ts와 동일 패턴).
+export function useMyCollectionsQuery(enabled = true) {
   return useInfiniteQuery<MyCollectionsPage, ApiError>({
     queryKey: myCollectionsQueryKey,
     queryFn: ({ pageParam }) =>
@@ -18,5 +20,6 @@ export function useMyCollectionsQuery() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.hasNext ? (lastPage.nextCursor ?? undefined) : undefined,
+    enabled,
   });
 }
