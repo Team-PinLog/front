@@ -35,7 +35,7 @@ export function FollowedShelfList() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-6">
         {follows.map((follow) => (
           <FollowedShelfCard
             key={follow.followId}
