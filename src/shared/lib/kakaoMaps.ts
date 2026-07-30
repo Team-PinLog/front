@@ -13,17 +13,30 @@ export interface KakaoMarker {
   setMap(map: KakaoMap | null): void;
 }
 
+export interface KakaoBounds {
+  getSouthWest(): KakaoLatLng;
+  getNorthEast(): KakaoLatLng;
+}
+
 export interface KakaoMap {
   setCenter(latlng: KakaoLatLng): void;
   setLevel(level: number): void;
   relayout(): void;
+  getBounds(): KakaoBounds;
+  setBounds(bounds: KakaoBounds): void;
+}
+
+export interface KakaoEventNamespace {
+  addListener(target: KakaoMap | KakaoMarker, type: string, handler: () => void): void;
 }
 
 export interface KakaoMapsNamespace {
   load(callback: () => void): void;
   LatLng: new (lat: number, lng: number) => KakaoLatLng;
+  LatLngBounds: new (sw: KakaoLatLng, ne: KakaoLatLng) => KakaoBounds;
   Map: new (container: HTMLElement, options: { center: KakaoLatLng; level?: number }) => KakaoMap;
   Marker: new (options: { map?: KakaoMap; position: KakaoLatLng; title?: string }) => KakaoMarker;
+  event: KakaoEventNamespace;
 }
 
 export interface KakaoNamespace {
