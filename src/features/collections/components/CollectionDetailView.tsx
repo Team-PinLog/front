@@ -1,6 +1,7 @@
 import { useEditCollectionTitle } from '@/contexts/useEditCollectionTitle';
 import { useCollectionDeleteConfirm } from '@/contexts/useCollectionDeleteConfirm';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSection';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
 import { RecordRemoveButton } from './RecordRemoveButton';
 import { RecordSaveButton } from './RecordSaveButton';
@@ -134,6 +135,9 @@ export function CollectionDetailView({
           {detailQuery.isFetchingNextPage ? '불러오는 중…' : '더 보기'}
         </button>
       )}
+
+      {/* 타인 Collection에서만 책장 탐색·Follow를 노출한다(143) — 자기 자신 책장 탐색은 대상이 아니다. */}
+      {!ownedByMe && <ShelfExploreSection collectionId={collectionId} />}
     </main>
   );
 }
