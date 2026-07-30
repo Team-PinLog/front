@@ -29,7 +29,7 @@ erDiagram
         bigint member_id FK
         varchar provider "GOOGLE/KAKAO/NAVER"
         varchar provider_user_id "탈퇴 시 마스킹"
-        varchar email "설정 표시용, 탈퇴 시 마스킹, nullable"
+        varchar email "설정 표시용, 탈퇴 시 마스킹"
         timestamptz created_at
         timestamptz deleted_at
     }
@@ -72,7 +72,7 @@ erDiagram
         bigint member_id FK
         varchar title "20자"
         boolean is_published
-        timestamptz published_at
+        timestamptz published_at "발행 시 필수 (CHECK)"
         int record_count "활성 연결 수 비정규화"
         timestamptz created_at
         timestamptz updated_at
