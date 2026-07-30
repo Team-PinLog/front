@@ -8,6 +8,7 @@ import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
 import { SearchPage } from '@/pages/SearchPage';
 import { MapPage } from '@/pages/MapPage';
+import { MyShelfPage } from '@/pages/MyShelfPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { handleOAuthCallback } from '@/features/auth/lib/handleOAuthCallback';
@@ -92,6 +93,15 @@ const searchRoute = createRoute({
   component: SearchPage,
 });
 
+const shelfRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/shelf',
+  // 보호 라우트: 내가 만든 Collection 목록(GET /collections, 08_API_명세 7.2/9.1)이라 149/150과 동일하게
+  // 본인 관리 화면으로 취급한다.
+  beforeLoad: requireLoggedIn,
+  component: MyShelfPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -100,6 +110,7 @@ const routeTree = rootRoute.addChildren([
   collectionDetailRoute,
   searchRoute,
   mapRoute,
+  shelfRoute,
 ]);
 
 export const router = createRouter({

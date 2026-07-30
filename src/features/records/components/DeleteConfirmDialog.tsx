@@ -27,13 +27,16 @@ export function DeleteConfirmDialog({ recordId }: DeleteConfirmDialogProps) {
       : '이 기록을 삭제하시겠어요? 기록이 함께 사라집니다.';
 
   const handleConfirm = () => {
-    forceDeleteMutation.mutate(recordId, {
-      onSuccess: () => {
-        deleteConfirm.close();
-        // 삭제된 Record 상세에는 더 이상 머무를 수 없어 홈으로 이탈한다(전용 목록 라우트가 아직 없음).
-        void navigate({ to: '/' });
+    forceDeleteMutation.mutate(
+      { recordId, collectionIds },
+      {
+        onSuccess: () => {
+          deleteConfirm.close();
+          // 삭제된 Record 상세에는 더 이상 머무를 수 없어 홈으로 이탈한다(전용 목록 라우트가 아직 없음).
+          void navigate({ to: '/' });
+        },
       },
-    });
+    );
   };
 
   return (
