@@ -1,10 +1,14 @@
-import type { MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { useKakaoPlaceSearch } from '@/features/places/hooks/useKakaoPlaceSearch';
 import { KakaoPlaceMap } from '@/features/places/components/KakaoPlaceMap';
 import type { KakaoPlace } from '@/features/places/api/searchKakaoPlaces';
+import { useMyCollectionsQuery } from '@/features/collections/hooks/useMyCollectionsQuery';
+import { useAddRecordsToCollectionMutation } from '@/features/collections/hooks/useAddRecordsToCollectionMutation';
+import { NewCollectionModal } from '@/features/collections/components/NewCollectionModal';
 import { useCreateRecordMutation } from '../hooks/useCreateRecordMutation';
-import { PlaceRecordResult } from './PlaceRecordResult';
+import type { CreateRecordResponse } from '../api/createRecord';
+import { PlaceRecordResult, type CollectionAddResult } from './PlaceRecordResult';
 
 const CONTEXT_BODY_MAX_LENGTH = 500;
 
@@ -28,6 +32,17 @@ export function PlaceRecordSheet() {
   const sheet = usePlaceRecordSheet();
   const searchMutation = useKakaoPlaceSearch();
   const createMutation = useCreateRecordMutation();
+  const myCollectionsQuery = useMyCollectionsQuery(sheet.isOpen);
+  const addToCollectionMutation = useAddRecordsToCollectionMutation();
+
+  // 168: 저장 시 함께 담을 Collection — 서버 상태가 아닌 이 시트에서만 쓰는 UI 상태라 Context가 아닌 로컬 state로 둔다.
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
+  const [selectedCollectionTitles, setSelectedCollectionTitles] = useState<Record<number, string>>(
+    {},
+  );
+  const [isNewCollectionModalOpen, setIsNewCollectionModalOpen] = useState(false);
+  const [isAddingToCollections, setIsAddingToCollections] = useState(false);
+  const [collectionAddResult, setCollectionAddResult] = useState<CollectionAddResult | null>(null);
 
   if (!sheet.isOpen) {
     return null;
@@ -37,6 +52,30 @@ export function PlaceRecordSheet() {
     sheet.close();
     searchMutation.reset();
     createMutation.reset();
+    setSelectedCollectionIds([]);
+    setSelectedCollectionTitles({});
+    setIsNewCollectionModalOpen(false);
+    setIsAddingToCollections(false);
+    setCollectionAddResult(null);
+  };
+
+  const toggleCollection = (collectionId: number, title: string) => {
+    setSelectedCollectionIds((prev) =>
+      prev.includes(collectionId)
+        ? prev.filter((id) => id !== collectionId)
+        : [...prev, collectionId],
+    );
+    setSelectedCollectionTitles((prev) => ({ ...prev, [collectionId]: title }));
+  };
+
+  const handleCollectionCreated = (collection: { collectionId: number; title: string }) => {
+    setSelectedCollectionIds((prev) =>
+      prev.includes(collection.collectionId) ? prev : [...prev, collection.collectionId],
+    );
+    setSelectedCollectionTitles((prev) => ({
+      ...prev,
+      [collection.collectionId]: collection.title,
+    }));
   };
 
   const handleSearch = () => {
@@ -52,160 +91,262 @@ export function PlaceRecordSheet() {
     searchMutation.reset();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const place = sheet.selectedPlace;
     const contextBody = sheet.contextBody.trim();
     if (!place || !contextBody) {
       return;
     }
-    createMutation.mutate({ place, contextBody });
+
+    let created: CreateRecordResponse;
+    try {
+      created = await createMutation.mutateAsync({ place, contextBody });
+    } catch {
+      return;
+    }
+
+    if (selectedCollectionIds.length === 0) {
+      setCollectionAddResult({ selectedCount: 0, succeededTitles: [], failedCount: 0 });
+      return;
+    }
+
+    setIsAddingToCollections(true);
+    const results = await Promise.allSettled(
+      selectedCollectionIds.map((collectionId) =>
+        addToCollectionMutation.mutateAsync({ collectionId, recordId: created.recordId }),
+      ),
+    );
+    setIsAddingToCollections(false);
+
+    const succeededTitles: string[] = [];
+    let failedCount = 0;
+    results.forEach((result, index) => {
+      const collectionId = selectedCollectionIds[index];
+      if (result.status === 'fulfilled') {
+        succeededTitles.push(selectedCollectionTitles[collectionId] ?? '컬렉션');
+      } else {
+        failedCount += 1;
+      }
+    });
+    setCollectionAddResult({
+      selectedCount: selectedCollectionIds.length,
+      succeededTitles,
+      failedCount,
+    });
   };
 
   const searchResults = searchMutation.data ?? [];
   const showResults = searchMutation.isSuccess && !sheet.selectedPlace && searchResults.length > 0;
   const showEmptyResult =
     searchMutation.isSuccess && !sheet.selectedPlace && searchResults.length === 0;
-  const savedRecord = createMutation.isSuccess ? createMutation.data : null;
+  const savedRecord = createMutation.isSuccess && collectionAddResult ? createMutation.data : null;
+  const isSaving = createMutation.isPending || isAddingToCollections;
+  const myCollections = myCollectionsQuery.isSuccess
+    ? myCollectionsQuery.data.pages.flatMap((page) => page.items)
+    : [];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-6 backdrop-blur-sm"
-      onClick={handleClose}
-      role="presentation"
-    >
+    <>
       <div
-        className="flex h-[min(560px,calc(100dvh-88px))] w-[min(1024px,calc(100vw-48px))] items-stretch gap-6"
-        onClick={stopClick}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-6 backdrop-blur-sm"
+        onClick={handleClose}
+        role="presentation"
       >
-        <div className="hidden flex-1 md:block">
-          <KakaoPlaceMap place={sheet.selectedPlace} />
-        </div>
+        <div
+          className="flex h-[min(560px,calc(100dvh-88px))] w-[min(1024px,calc(100vw-48px))] items-stretch gap-6"
+          onClick={stopClick}
+        >
+          <div className="hidden flex-1 md:block">
+            <KakaoPlaceMap place={sheet.selectedPlace} />
+          </div>
 
-        <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-xl md:w-[420px] md:flex-none">
-          {savedRecord ? (
-            <PlaceRecordResult data={savedRecord} onClose={handleClose} />
-          ) : (
-            <>
-              <div className="flex items-center justify-between gap-4 border-b border-line-subtle px-6 py-5">
-                <div>
-                  <div className="text-[11px] font-bold tracking-[0.12em] text-log-mint">
-                    PLACE RECORD
+          <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-xl md:w-[420px] md:flex-none">
+            {savedRecord && collectionAddResult ? (
+              <PlaceRecordResult
+                data={savedRecord}
+                collectionAddResult={collectionAddResult}
+                onClose={handleClose}
+              />
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-4 border-b border-line-subtle px-6 py-5">
+                  <div>
+                    <div className="text-[11px] font-bold tracking-[0.12em] text-log-mint">
+                      PLACE RECORD
+                    </div>
+                    <div className="mt-1 text-xl font-bold text-pin-navy">장소 기록</div>
                   </div>
-                  <div className="mt-1 text-xl font-bold text-pin-navy">장소 기록</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  aria-label="장소 기록 닫기"
-                  className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-pin-navy/10 text-pin-navy"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5">
-                <label
-                  htmlFor="place-search-input"
-                  className="text-[11px] font-bold tracking-[0.12em] text-log-mint"
-                >
-                  장소 검색
-                </label>
-                <div className="relative flex gap-2">
-                  <input
-                    id="place-search-input"
-                    type="text"
-                    value={sheet.searchQuery}
-                    onChange={(event) => sheet.setSearchQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        handleSearch();
-                      }
-                    }}
-                    placeholder="장소명 또는 지역을 입력하세요"
-                    autoComplete="off"
-                    className="h-12 flex-1 rounded-lg border border-pin-navy/15 bg-white px-3 text-sm text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20"
-                  />
                   <button
                     type="button"
-                    onClick={handleSearch}
-                    disabled={!sheet.searchQuery.trim() || searchMutation.isPending}
-                    className="h-12 flex-none rounded-lg bg-pin-navy px-4 text-sm font-bold text-white disabled:opacity-40"
+                    onClick={handleClose}
+                    aria-label="장소 기록 닫기"
+                    className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-pin-navy/10 text-pin-navy"
                   >
-                    {searchMutation.isPending ? '검색 중…' : '검색'}
+                    ×
                   </button>
-
-                  {showResults && (
-                    <div className="absolute left-0 right-0 top-[54px] z-10 max-h-40 overflow-y-auto rounded-lg border border-pin-navy/10 bg-white shadow-lg">
-                      {searchResults.map((place) => (
-                        <button
-                          key={place.kakaoPlaceId}
-                          type="button"
-                          onClick={() => handleSelect(place)}
-                          className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-log-mint/5"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold text-pin-navy">
-                              {place.name}
-                            </span>
-                            <span className="block truncate text-xs text-ink-gray">
-                              📍 {place.roadAddress || place.address}
-                            </span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
-                {showEmptyResult && <p className="text-xs text-ink-gray">검색 결과가 없습니다.</p>}
-                {searchMutation.isError && (
-                  <p className="text-xs text-red-600">{searchErrorMessage(searchMutation.error)}</p>
-                )}
-                {sheet.selectedPlace && (
-                  <p className="text-xs font-semibold text-log-mint">
-                    📍 {sheet.selectedPlace.name} ·{' '}
-                    {sheet.selectedPlace.roadAddress || sheet.selectedPlace.address}
+                <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5">
+                  <label
+                    htmlFor="place-search-input"
+                    className="text-[11px] font-bold tracking-[0.12em] text-log-mint"
+                  >
+                    장소 검색
+                  </label>
+                  <div className="relative flex gap-2">
+                    <input
+                      id="place-search-input"
+                      type="text"
+                      value={sheet.searchQuery}
+                      onChange={(event) => sheet.setSearchQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleSearch();
+                        }
+                      }}
+                      placeholder="장소명 또는 지역을 입력하세요"
+                      autoComplete="off"
+                      className="h-12 flex-1 rounded-lg border border-pin-navy/15 bg-white px-3 text-sm text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSearch}
+                      disabled={!sheet.searchQuery.trim() || searchMutation.isPending}
+                      className="h-12 flex-none rounded-lg bg-pin-navy px-4 text-sm font-bold text-white disabled:opacity-40"
+                    >
+                      {searchMutation.isPending ? '검색 중…' : '검색'}
+                    </button>
+
+                    {showResults && (
+                      <div className="absolute left-0 right-0 top-[54px] z-10 max-h-40 overflow-y-auto rounded-lg border border-pin-navy/10 bg-white shadow-lg">
+                        {searchResults.map((place) => (
+                          <button
+                            key={place.kakaoPlaceId}
+                            type="button"
+                            onClick={() => handleSelect(place)}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-log-mint/5"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-pin-navy">
+                                {place.name}
+                              </span>
+                              <span className="block truncate text-xs text-ink-gray">
+                                📍 {place.roadAddress || place.address}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {showEmptyResult && (
+                    <p className="text-xs text-ink-gray">검색 결과가 없습니다.</p>
+                  )}
+                  {searchMutation.isError && (
+                    <p className="text-xs text-red-600">
+                      {searchErrorMessage(searchMutation.error)}
+                    </p>
+                  )}
+                  {sheet.selectedPlace && (
+                    <p className="text-xs font-semibold text-log-mint">
+                      📍 {sheet.selectedPlace.name} ·{' '}
+                      {sheet.selectedPlace.roadAddress || sheet.selectedPlace.address}
+                    </p>
+                  )}
+
+                  <label
+                    htmlFor="place-context-body"
+                    className="text-[11px] font-bold tracking-[0.12em] text-log-mint"
+                  >
+                    기록할 내용
+                  </label>
+                  <textarea
+                    id="place-context-body"
+                    value={sheet.contextBody}
+                    onChange={(event) => sheet.setContextBody(event.target.value)}
+                    maxLength={CONTEXT_BODY_MAX_LENGTH}
+                    placeholder="이 장소에서 기억하고 싶은 맥락을 적어보세요"
+                    className="min-h-[140px] flex-1 resize-none rounded-lg border border-pin-navy/15 bg-white p-3 text-sm leading-relaxed text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20"
+                  />
+                  <p className="text-right text-[11px] text-ink-gray-light">
+                    {sheet.contextBody.length}/{CONTEXT_BODY_MAX_LENGTH}
                   </p>
-                )}
 
-                <label
-                  htmlFor="place-context-body"
-                  className="text-[11px] font-bold tracking-[0.12em] text-log-mint"
-                >
-                  기록할 내용
-                </label>
-                <textarea
-                  id="place-context-body"
-                  value={sheet.contextBody}
-                  onChange={(event) => sheet.setContextBody(event.target.value)}
-                  maxLength={CONTEXT_BODY_MAX_LENGTH}
-                  placeholder="이 장소에서 기억하고 싶은 맥락을 적어보세요"
-                  className="min-h-[140px] flex-1 resize-none rounded-lg border border-pin-navy/15 bg-white p-3 text-sm leading-relaxed text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20"
-                />
-                <p className="text-right text-[11px] text-ink-gray-light">
-                  {sheet.contextBody.length}/{CONTEXT_BODY_MAX_LENGTH}
-                </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold tracking-[0.12em] text-log-mint">
+                      추가할 컬렉션 · 선택 사항
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsNewCollectionModalOpen(true)}
+                      className="text-xs font-bold text-log-mint"
+                    >
+                      + 컬렉션 생성
+                    </button>
+                  </div>
 
-                {createMutation.isError && (
-                  <p className="text-xs text-red-600">{createMutation.error.message}</p>
-                )}
+                  {myCollectionsQuery.isPending && (
+                    <p className="text-xs text-ink-gray">컬렉션을 불러오는 중…</p>
+                  )}
+                  {myCollectionsQuery.isError && (
+                    <p className="text-xs text-red-600">컬렉션을 불러오지 못했어요.</p>
+                  )}
+                  {myCollectionsQuery.isSuccess && myCollections.length === 0 && (
+                    <p className="text-xs text-ink-gray">아직 만든 컬렉션이 없어요.</p>
+                  )}
+                  {myCollections.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {myCollections.map((collection) => {
+                        const isSelected = selectedCollectionIds.includes(collection.collectionId);
+                        return (
+                          <button
+                            key={collection.collectionId}
+                            type="button"
+                            onClick={() =>
+                              toggleCollection(collection.collectionId, collection.title)
+                            }
+                            aria-pressed={isSelected}
+                            className={
+                              isSelected
+                                ? 'rounded-full border border-log-mint bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint'
+                                : 'rounded-full border border-pin-navy/15 px-3 py-1.5 text-xs font-bold text-pin-navy'
+                            }
+                          >
+                            {collection.title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={
-                    !sheet.selectedPlace || !sheet.contextBody.trim() || createMutation.isPending
-                  }
-                  className="h-12 flex-none rounded-lg bg-log-mint text-sm font-bold text-pin-navy disabled:opacity-40"
-                >
-                  {createMutation.isPending ? '저장 중…' : '저장'}
-                </button>
-              </div>
-            </>
-          )}
+                  {createMutation.isError && (
+                    <p className="text-xs text-red-600">{createMutation.error.message}</p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleSave();
+                    }}
+                    disabled={!sheet.selectedPlace || !sheet.contextBody.trim() || isSaving}
+                    className="h-12 flex-none rounded-lg bg-log-mint text-sm font-bold text-pin-navy disabled:opacity-40"
+                  >
+                    {isSaving ? '저장 중…' : '저장'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      <NewCollectionModal
+        isOpen={isNewCollectionModalOpen}
+        onClose={() => setIsNewCollectionModalOpen(false)}
+        onCreated={handleCollectionCreated}
+      />
+    </>
   );
 }
