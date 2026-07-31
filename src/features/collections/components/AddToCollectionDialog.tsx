@@ -87,7 +87,7 @@ export function AddToCollectionDialog({ recordId }: AddToCollectionDialogProps) 
     const [addResults, createResults] = await Promise.all([
       Promise.allSettled(
         selectedCollectionIds.map((collectionId) =>
-          addToCollectionMutation.mutateAsync({ collectionId, recordId }),
+          addToCollectionMutation.mutateAsync({ collectionId, recordIds: [recordId] }),
         ),
       ),
       Promise.allSettled(

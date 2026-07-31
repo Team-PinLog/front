@@ -8,6 +8,7 @@ import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSect
 import { ContextCard } from '@/features/records/components/ContextCard';
 import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
+import { AddRecordToCollectionDialog } from './AddRecordToCollectionDialog';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
 import { RecordRemoveButton } from './RecordRemoveButton';
 import { RecordSaveButton } from './RecordSaveButton';
@@ -54,6 +55,9 @@ export function CollectionDetailView({
   // Record의 마지막 Context 삭제 확인(409) 상태. 스프레드 네비게이션과 레이스가 나지 않도록
   // 이 상태가 열려 있는 동안은 다음/이전 이동을 막는다(아래 handleNext/handlePrevious, 203 논의).
   const recordDeleteConfirm = useDeleteConfirm();
+  // 217: "내 레코드 추가" 다이얼로그 open 상태. AddToCollectionDialog(216)와 달리 이 화면에서만 열리므로
+  // 전역 Context 없이 로컬 state로 둔다(NewCollectionModal과 동일 패턴).
+  const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
 
   // 진입 시 hasNextPage가 false가 될 때까지 자동으로 순차 로드한다 — 왼쪽 지도가 Collection의 모든 record를
   // 한 번에 보여줘야 하기 때문이다(넘길 때마다 핀이 하나씩 느는 방식이 아님). 사용자 조작(다음 버튼)과
@@ -95,6 +99,9 @@ export function CollectionDetailView({
   // 판단한다(isLoadingAllPlaces) — hasNext 기반으로 다음 페이지를 직접 요청하는 로직은 없다.
   const flatRecords = pages.flatMap((page) => page.records.items);
   const isLoadingAllPlaces = detailQuery.hasNextPage && !detailQuery.isFetchNextPageError;
+  // 217: 전체 로드가 끝나기 전에는 이 목록이 불완전해 "이미 담김" 필터링을 신뢰할 수 없다 —
+  // 그동안은 아래 titleHeader의 "레코드 추가" 버튼 자체를 막는다(isLoadingAllPlaces).
+  const excludedRecordIds = new Set(flatRecords.map((record) => record.recordId));
 
   const titleHeader = (
     <header className="flex items-center justify-between gap-4 rounded-2xl bg-pin-navy px-6 py-5">
@@ -102,6 +109,14 @@ export function CollectionDetailView({
 
       {ownedByMe && (
         <div className="flex flex-none gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAddRecordOpen(true)}
+            disabled={isLoadingAllPlaces}
+            className="h-9 rounded-lg border border-paper-white/30 px-3 text-xs font-bold text-paper-white disabled:opacity-40"
+          >
+            {isLoadingAllPlaces ? '목록 불러오는 중…' : '레코드 추가'}
+          </button>
           <button
             type="button"
             onClick={editTitleState.open}
@@ -121,6 +136,15 @@ export function CollectionDetailView({
     </header>
   );
 
+  const addRecordDialog = ownedByMe && (
+    <AddRecordToCollectionDialog
+      collectionId={collectionId}
+      excludedRecordIds={excludedRecordIds}
+      isOpen={isAddRecordOpen}
+      onClose={() => setIsAddRecordOpen(false)}
+    />
+  );
+
   if (flatRecords.length === 0) {
     return (
       <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
@@ -129,6 +153,7 @@ export function CollectionDetailView({
           아직 담긴 기록이 없어요.
         </p>
         {!ownedByMe && <ShelfExploreSection collectionId={collectionId} />}
+        {addRecordDialog}
       </main>
     );
   }
@@ -271,6 +296,7 @@ export function CollectionDetailView({
           currentRecord를 새 전역 상태로 만들어야 해서(203 지시사항) 하지 않았다. 위 네비게이션 가드가
           열려 있는 동안 currentRecord 자체를 고정하므로 recordId는 항상 confirm 대상과 일치한다. */}
       {ownedByMe && <DeleteConfirmDialog recordId={currentRecord.recordId} />}
+      {addRecordDialog}
     </main>
   );
 }
