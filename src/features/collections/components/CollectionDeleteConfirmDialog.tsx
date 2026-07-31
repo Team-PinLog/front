@@ -1,9 +1,12 @@
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useCollectionDeleteConfirm } from '@/contexts/useCollectionDeleteConfirm';
 import { useDeleteCollectionMutation } from '../hooks/useDeleteCollectionMutation';
 
 interface CollectionDeleteConfirmDialogProps {
   collectionId: number;
+  // Feed·내 책장·팔로우한 책장 등 내부 진입(오버레이) 여부. CollectionDetailPage가 이미 계산해 둔 값을
+  // 그대로 받는다 — 삭제 성공 후 어디로 돌아갈지 이 값으로 분기한다.
+  hasOverlayState: boolean;
 }
 
 /**
@@ -15,10 +18,12 @@ interface CollectionDeleteConfirmDialogProps {
  */
 export function CollectionDeleteConfirmDialog({
   collectionId,
+  hasOverlayState,
 }: CollectionDeleteConfirmDialogProps) {
   const deleteConfirm = useCollectionDeleteConfirm();
   const deleteCollectionMutation = useDeleteCollectionMutation();
   const navigate = useNavigate();
+  const router = useRouter();
 
   if (!deleteConfirm.isOpen) {
     return null;
@@ -33,9 +38,15 @@ export function CollectionDeleteConfirmDialog({
     deleteCollectionMutation.mutate(collectionId, {
       onSuccess: () => {
         deleteConfirm.close();
-        // 삭제된 Collection 상세에는 더 이상 머무를 수 없어 홈으로 이탈한다(navigate(-1)이 아닌 이유는
-        // DeleteConfirmDialog.tsx와 동일 — 삭제된 리소스로 뒤로가기는 무의미하다).
-        void navigate({ to: '/' });
+        // 삭제된 Collection 상세에는 더 이상 머무를 수 없어 이탈한다. Feed·책장 등에서 오버레이로 들어온
+        // 경우(hasOverlayState)는 207의 닫기(X) 버튼과 동일하게 history back으로 배경 화면에 복귀한다.
+        // 직접 URL·공유 링크로 들어온 풀페이지는 이전 히스토리가 없을 수 있어(새 탭 진입 등) back 대신
+        // 내 책장으로 보낸다 — 삭제는 소유자만 할 수 있으므로 목적지로 자연스럽다.
+        if (hasOverlayState) {
+          router.history.back();
+          return;
+        }
+        void navigate({ to: '/shelf' });
       },
     });
   };
