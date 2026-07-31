@@ -46,7 +46,10 @@ export function CollectionDetailPage() {
             />
           </DeleteConfirmProvider>
         </CollectionSpreadProvider>
-        <CollectionDeleteConfirmDialog collectionId={collectionId} />
+        <CollectionDeleteConfirmDialog
+          collectionId={collectionId}
+          hasOverlayState={hasOverlayState}
+        />
         <EditCollectionTitleDialog collectionId={collectionId} />
       </EditCollectionTitleProvider>
     </CollectionDeleteConfirmProvider>
