@@ -198,7 +198,6 @@ jobs:
         id: identity
         shell: bash
         env:
-
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
           VITE_KAKAO_JS_KEY: ${{ vars.VITE_KAKAO_JS_KEY }}
@@ -229,7 +228,6 @@ jobs:
           test "${#IMAGE_TAG}" -le 128
           echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "config_fingerprint=$config_id" >> "$GITHUB_OUTPUT"
-
 
       - name: Build and publish run-bound immutable frontend image
         id: publish

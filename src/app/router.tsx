@@ -6,8 +6,6 @@ import { LoginPage } from '@/pages/LoginPage';
 import { OAuthCallbackPage } from '@/pages/OAuthCallbackPage';
 import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
-import { SearchPage } from '@/pages/SearchPage';
-import { MapPage } from '@/pages/MapPage';
 import { MyShelfPage } from '@/pages/MyShelfPage';
 import { LibraryPage } from '@/pages/LibraryPage';
 import { FeedPage } from '@/pages/FeedPage';
@@ -69,15 +67,6 @@ const recordDetailRoute = createRoute({
   component: RecordDetailPage,
 });
 
-const mapRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/map',
-  // 보호 라우트: 내 Record 지도 마커 조회는 개인 데이터다(GET /records/map, 08_API_명세 4.2).
-  // 검색(149)과 동일하게 requireLoggedIn을 적용한다.
-  beforeLoad: requireLoggedIn,
-  component: MapPage,
-});
-
 // Feed(142) 경유 클릭 이벤트 근거로 쓰는 optional search params. 기존 진입 경로(140/141/143)는 이 값 없이도
 // 그대로 동작해야 한다(하위 호환) — 둘 다 optional이며, 값이 있을 때만 RecordSaveButton이 SAVE 이벤트를 큐잉한다.
 const collectionDetailSearchSchema = z.object({
@@ -97,15 +86,6 @@ const collectionDetailRoute = createRoute({
   },
   validateSearch: (search) => collectionDetailSearchSchema.parse(search),
   component: CollectionDetailPage,
-});
-
-const searchRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/search',
-  // 보호 라우트: 본인 소유 Record만 검색 대상이다(08_API_명세 6.1) — collectionDetailRoute(140, 공개
-  // 진입점)와 달리 개인 데이터 조회라 requireLoggedIn을 건다. recordDetailRoute와 동일 패턴.
-  beforeLoad: requireLoggedIn,
-  component: SearchPage,
 });
 
 const shelfRoute = createRoute({
@@ -156,8 +136,6 @@ const routeTree = rootRoute.addChildren([
   privacyRoute,
   recordDetailRoute,
   collectionDetailRoute,
-  searchRoute,
-  mapRoute,
   shelfRoute,
   feedRoute,
   libraryRoute,

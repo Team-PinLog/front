@@ -11,8 +11,8 @@ type SdkStatus = 'loading' | 'ready' | 'error';
 
 interface RecordMapViewProps {
   /**
-   * 마커 클릭 시 동작을 오버라이드한다. 전달하지 않으면 기존처럼 /records/$recordId로 이동한다
-   * (MapPage/150). HomePage(166)는 이 prop으로 RecordDetailOverlay를 여는 동작을 주입한다.
+   * 마커 클릭 시 동작을 오버라이드한다. 전달하지 않으면 기본값으로 /records/$recordId로 이동한다.
+   * HomePage(166)는 이 prop으로 RecordDetailOverlay를 여는 동작을 주입한다.
    */
   onMarkerClick?: (recordId: number) => void;
 }

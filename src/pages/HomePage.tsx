@@ -27,8 +27,8 @@ function AddPlaceRecordButton() {
 
 /**
  * 홈 화면: 스마트 검색(149)과 지도(150)를 하나의 화면에서 상호 배타적으로 전환한다.
- * 근거: Jira S15P11A705-165. 검색 mutation은 SearchPage.tsx(149)와 동일하게 여기서 한 번만
- * 호출해 SmartSearchPanel·SearchResultGallery 형제 컴포넌트에 나눠 내려준다.
+ * 근거: Jira S15P11A705-165. 검색 mutation은 SmartSearchPanel·SearchResultGallery 형제
+ * 컴포넌트가 같은 상태를 공유해야 해서 여기서 한 번만 호출해 나눠 내려준다.
  * 지도 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 연다
  * (Jira S15P11A705-166). openRecordId는 SearchResultGallery 카드 클릭과 동일한 상태를 공유한다.
  */
