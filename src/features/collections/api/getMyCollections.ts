@@ -13,8 +13,6 @@ const collectionSummarySchema = z.object({
   collectionId: z.number(),
   title: z.string(),
   recordCount: z.number(),
-  // keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 오류로 처리하지 않는다.
-  keywords: z.array(z.string()),
   createdAt: z.string(),
 });
 
