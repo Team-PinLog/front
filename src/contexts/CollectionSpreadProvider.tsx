@@ -14,6 +14,7 @@ export function CollectionSpreadProvider({ children }: { children: ReactNode }) 
       ...state,
       goToNext: () => setState((prev) => ({ spreadIndex: prev.spreadIndex + 1 })),
       goToPrevious: () => setState((prev) => ({ spreadIndex: Math.max(0, prev.spreadIndex - 1) })),
+      goToIndex: (index) => setState({ spreadIndex: Math.max(0, index) }),
     }),
     [state],
   );
