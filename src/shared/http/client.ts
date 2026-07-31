@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '@/config/constants';
+import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
 import type { ApiError, ApiResponse, ServerApiError } from './types';
 
 /**
@@ -130,9 +131,20 @@ function refreshAccessToken(): Promise<void> {
 }
 
 /**
+ * 재발급 자체가 401로 실패했을 때 재로그인 화면으로 유도한다(architecture.md 1-1).
+ * router.tsx를 정적 import하면 router.tsx → (pages) → ... → client.ts 기존 의존 체인과
+ * 순환 참조가 생기므로 호출 시점에 동적 import로 가져온다.
+ */
+function redirectToLogin(): void {
+  savePreLoginPath();
+  void import('@/app/router').then(({ router }) => router.navigate({ to: '/login' }));
+}
+
+/**
  * 실패 응답 처리.
  * - 401이면 /auth/refresh(single-flight)로 재발급 후 원 요청을 1회 재시도한다.
- * - 재발급 자체가 401이거나, 재시도한 요청이 다시 401이면 더 이상 재시도하지 않고 ApiError(status:401)로 reject한다.
+ * - 재발급 자체가 401이거나, 재시도한 요청이 다시 401이면 더 이상 재시도하지 않고
+ *   재로그인 화면으로 유도한 뒤 ApiError(status:401)로 reject한다.
  * - 401이 아닌 실패는 원인에 관계없이 항상 ApiError로 통일해서 reject한다 — 호출부는 항상 ApiError를 받는다고 가정할 수 있다.
  */
 export function handleResponseError(error: AxiosError): Promise<AxiosResponse> | never {
@@ -144,7 +156,7 @@ export function handleResponseError(error: AxiosError): Promise<AxiosResponse> |
     return refreshAccessToken().then(
       () => httpClient.request(config),
       (refreshError: AxiosError) => {
-        // TODO: 로그인 리다이렉트 - 다음 auth 티켓에서 처리
+        redirectToLogin();
         throw buildApiError(
           toServerError(refreshError.response?.data),
           refreshError.response?.status ?? 401,

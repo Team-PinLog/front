@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import axios, { AxiosHeaders, type AxiosError, type AxiosResponse } from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
+import { getPreLoginPath } from '@/features/auth/lib/preLoginPath';
 import {
   attachXsrfHeader,
   extractXsrfTokenFromCookie,
@@ -8,6 +9,11 @@ import {
   handleResponseSuccess,
   httpClient,
 } from './client';
+
+const navigateMock = vi.fn();
+vi.mock('@/app/router', () => ({
+  router: { navigate: (...args: unknown[]) => navigateMock(...args) },
+}));
 
 function clearCookies() {
   for (const pair of document.cookie.split('; ')) {
@@ -213,6 +219,11 @@ describe('handleResponseError', () => {
 });
 
 describe('handleResponseError - 401 single-flight 재발급', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    navigateMock.mockClear();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -274,6 +285,21 @@ describe('handleResponseError - 401 single-flight 재발급', () => {
       expect(apiError).toMatchObject({ code: 'UNAUTHORIZED', status: 401 });
     }
     expect(requestSpy).not.toHaveBeenCalled();
+  });
+
+  it('refresh 요청 자체가 401이면 현재 경로를 저장하고 /login으로 재로그인 유도한다', async () => {
+    const refreshError = fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData() });
+    vi.spyOn(axios, 'post').mockRejectedValue(refreshError);
+
+    const config = fakeRequestConfig('get', '/records/1');
+    const error = fakeAxiosError({ status: 401, data: fakeUnauthorizedErrorData(), config });
+
+    await expect(handleResponseError(error)).rejects.toMatchObject({ status: 401 });
+    // redirectToLogin은 동적 import(비동기 모듈 로드) 이후 navigate를 호출하므로 완료될 때까지 기다린다.
+    await vi.waitFor(() => expect(navigateMock).toHaveBeenCalled());
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/login' });
+    expect(getPreLoginPath()).toBe(window.location.pathname);
   });
 
   it('재시도한 요청도 401이면 더 이상 재시도하지 않고 reject한다(무한 루프 방지)', async () => {
