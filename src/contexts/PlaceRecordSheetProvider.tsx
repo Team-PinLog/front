@@ -24,6 +24,16 @@ export function PlaceRecordSheetProvider({ children }: { children: ReactNode }) 
           searchQuery: place ? place.name : prev.searchQuery,
         })),
       setContextBody: (body) => setState((prev) => ({ ...prev, contextBody: body })),
+      stageCollectionTitle: (title) =>
+        setState((prev) => ({
+          ...prev,
+          stagedCollectionTitles: [...prev.stagedCollectionTitles, title],
+        })),
+      unstageCollectionTitle: (index) =>
+        setState((prev) => ({
+          ...prev,
+          stagedCollectionTitles: prev.stagedCollectionTitles.filter((_, i) => i !== index),
+        })),
     }),
     [state],
   );

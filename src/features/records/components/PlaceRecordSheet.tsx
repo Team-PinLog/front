@@ -5,10 +5,15 @@ import { KakaoPlaceMap } from '@/features/places/components/KakaoPlaceMap';
 import type { KakaoPlace } from '@/features/places/api/searchKakaoPlaces';
 import { useMyCollectionsQuery } from '@/features/collections/hooks/useMyCollectionsQuery';
 import { useAddRecordsToCollectionMutation } from '@/features/collections/hooks/useAddRecordsToCollectionMutation';
+import { useCreateCollectionMutation } from '@/features/collections/hooks/useCreateCollectionMutation';
 import { NewCollectionModal } from '@/features/collections/components/NewCollectionModal';
 import { useCreateRecordMutation } from '../hooks/useCreateRecordMutation';
 import type { CreateRecordResponse } from '../api/createRecord';
-import { PlaceRecordResult, type CollectionAddResult } from './PlaceRecordResult';
+import {
+  PlaceRecordResult,
+  type CollectionCreationOutcome,
+  type ExistingCollectionAddOutcome,
+} from './PlaceRecordResult';
 
 const CONTEXT_BODY_MAX_LENGTH = 500;
 
@@ -34,15 +39,23 @@ export function PlaceRecordSheet() {
   const createMutation = useCreateRecordMutation();
   const myCollectionsQuery = useMyCollectionsQuery(sheet.isOpen);
   const addToCollectionMutation = useAddRecordsToCollectionMutation();
+  const createCollectionMutation = useCreateCollectionMutation();
 
-  // 168: 저장 시 함께 담을 Collection — 서버 상태가 아닌 이 시트에서만 쓰는 UI 상태라 Context가 아닌 로컬 state로 둔다.
+  // 168: 저장 시 함께 담을 기존 Collection — 서버 상태가 아닌 이 시트에서만 쓰는 UI 상태라 Context가 아닌 로컬 state로 둔다.
+  // 178: 새로 만들 Collection 제목(sheet.stagedCollectionTitles)은 record가 아직 없어 함께 선택할 수 없으므로
+  // 별도 흐름으로 분리했다 — PlaceRecordSheetContext에서 관리한다(sheet.close()에서 자동 리셋).
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
   const [selectedCollectionTitles, setSelectedCollectionTitles] = useState<Record<number, string>>(
     {},
   );
   const [isNewCollectionModalOpen, setIsNewCollectionModalOpen] = useState(false);
   const [isAddingToCollections, setIsAddingToCollections] = useState(false);
-  const [collectionAddResult, setCollectionAddResult] = useState<CollectionAddResult | null>(null);
+  const [existingCollectionAddResults, setExistingCollectionAddResults] = useState<
+    ExistingCollectionAddOutcome[] | null
+  >(null);
+  const [collectionCreationResults, setCollectionCreationResults] = useState<
+    CollectionCreationOutcome[] | null
+  >(null);
 
   if (!sheet.isOpen) {
     return null;
@@ -56,7 +69,8 @@ export function PlaceRecordSheet() {
     setSelectedCollectionTitles({});
     setIsNewCollectionModalOpen(false);
     setIsAddingToCollections(false);
-    setCollectionAddResult(null);
+    setExistingCollectionAddResults(null);
+    setCollectionCreationResults(null);
   };
 
   const toggleCollection = (collectionId: number, title: string) => {
@@ -66,16 +80,6 @@ export function PlaceRecordSheet() {
         : [...prev, collectionId],
     );
     setSelectedCollectionTitles((prev) => ({ ...prev, [collectionId]: title }));
-  };
-
-  const handleCollectionCreated = (collection: { collectionId: number; title: string }) => {
-    setSelectedCollectionIds((prev) =>
-      prev.includes(collection.collectionId) ? prev : [...prev, collection.collectionId],
-    );
-    setSelectedCollectionTitles((prev) => ({
-      ...prev,
-      [collection.collectionId]: collection.title,
-    }));
   };
 
   const handleSearch = () => {
@@ -105,41 +109,52 @@ export function PlaceRecordSheet() {
       return;
     }
 
-    if (selectedCollectionIds.length === 0) {
-      setCollectionAddResult({ selectedCount: 0, succeededTitles: [], failedCount: 0 });
-      return;
-    }
+    // 178: stagedCollectionTitles가 비어있으면 map이 빈 배열이라 mutateAsync가 전혀 호출되지 않는다
+    // (컬렉션 생성 API 호출 없음). 기록 저장은 이미 성공했으므로 아래 컬렉션 작업의 성패와 무관하게 롤백하지 않는다.
+    const stagedTitles = sheet.stagedCollectionTitles;
 
     setIsAddingToCollections(true);
-    const results = await Promise.allSettled(
-      selectedCollectionIds.map((collectionId) =>
-        addToCollectionMutation.mutateAsync({ collectionId, recordId: created.recordId }),
+    const [addResults, createResults] = await Promise.all([
+      Promise.allSettled(
+        selectedCollectionIds.map((collectionId) =>
+          addToCollectionMutation.mutateAsync({ collectionId, recordId: created.recordId }),
+        ),
       ),
-    );
+      Promise.allSettled(
+        stagedTitles.map((title) =>
+          createCollectionMutation.mutateAsync({ title, recordIds: [created.recordId] }),
+        ),
+      ),
+    ]);
     setIsAddingToCollections(false);
 
-    const succeededTitles: string[] = [];
-    let failedCount = 0;
-    results.forEach((result, index) => {
-      const collectionId = selectedCollectionIds[index];
-      if (result.status === 'fulfilled') {
-        succeededTitles.push(selectedCollectionTitles[collectionId] ?? '컬렉션');
-      } else {
-        failedCount += 1;
-      }
-    });
-    setCollectionAddResult({
-      selectedCount: selectedCollectionIds.length,
-      succeededTitles,
-      failedCount,
-    });
+    setExistingCollectionAddResults(
+      addResults.map((result, index) => {
+        const collectionId = selectedCollectionIds[index];
+        return {
+          collectionId,
+          title: selectedCollectionTitles[collectionId] ?? '컬렉션',
+          status: result.status === 'fulfilled' ? 'success' : 'error',
+        };
+      }),
+    );
+
+    setCollectionCreationResults(
+      createResults.map((result, index) => ({
+        title: stagedTitles[index],
+        status: result.status === 'fulfilled' ? 'success' : 'error',
+      })),
+    );
   };
 
   const searchResults = searchMutation.data ?? [];
   const showResults = searchMutation.isSuccess && !sheet.selectedPlace && searchResults.length > 0;
   const showEmptyResult =
     searchMutation.isSuccess && !sheet.selectedPlace && searchResults.length === 0;
-  const savedRecord = createMutation.isSuccess && collectionAddResult ? createMutation.data : null;
+  const savedRecord =
+    createMutation.isSuccess && existingCollectionAddResults && collectionCreationResults
+      ? createMutation.data
+      : null;
   const isSaving = createMutation.isPending || isAddingToCollections;
   const myCollections = myCollectionsQuery.isSuccess
     ? myCollectionsQuery.data.pages.flatMap((page) => page.items)
@@ -161,10 +176,11 @@ export function PlaceRecordSheet() {
           </div>
 
           <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-xl md:w-[420px] md:flex-none">
-            {savedRecord && collectionAddResult ? (
+            {savedRecord && existingCollectionAddResults && collectionCreationResults ? (
               <PlaceRecordResult
                 data={savedRecord}
-                collectionAddResult={collectionAddResult}
+                existingCollectionAddResults={existingCollectionAddResults}
+                collectionCreationResults={collectionCreationResults}
                 onClose={handleClose}
               />
             ) : (
@@ -287,6 +303,27 @@ export function PlaceRecordSheet() {
                     </button>
                   </div>
 
+                  {sheet.stagedCollectionTitles.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {sheet.stagedCollectionTitles.map((title, index) => (
+                        <span
+                          key={`${title}-${index}`}
+                          className="flex items-center gap-1.5 rounded-full border border-dashed border-log-mint px-3 py-1.5 text-xs font-bold text-log-mint"
+                        >
+                          {title}
+                          <button
+                            type="button"
+                            onClick={() => sheet.unstageCollectionTitle(index)}
+                            aria-label={`${title} 컬렉션 생성 취소`}
+                            className="text-log-mint/70 hover:text-log-mint"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {myCollectionsQuery.isPending && (
                     <p className="text-xs text-ink-gray">컬렉션을 불러오는 중…</p>
                   )}
@@ -344,8 +381,9 @@ export function PlaceRecordSheet() {
 
       <NewCollectionModal
         isOpen={isNewCollectionModalOpen}
+        mode="fromNewRecord"
         onClose={() => setIsNewCollectionModalOpen(false)}
-        onCreated={handleCollectionCreated}
+        onTitleStaged={(title) => sheet.stageCollectionTitle(title)}
       />
     </>
   );

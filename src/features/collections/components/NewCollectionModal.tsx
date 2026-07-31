@@ -6,24 +6,40 @@ import type { CreateCollectionResponse } from '../api/createCollection';
 
 const TITLE_MAX_LENGTH = 20;
 
+type NewCollectionModalMode = 'library' | 'fromNewRecord';
+
 interface NewCollectionModalProps {
   isOpen: boolean;
+  mode?: NewCollectionModalMode;
   onClose: () => void;
   onCreated?: (collection: { collectionId: number; title: string }) => void;
+  onTitleStaged?: (title: string) => void;
 }
 
 /**
- * 내 Record 다중 선택 기반 새 컬렉션 생성 모달.
- * 근거: Jira S15P11A705-167, docs/reference/08_API_명세.md 7.1.
- * 168(Record 저장 시트)·169(Library "+새 컬렉션")에서 재사용된다 — isOpen/onClose/onCreated로 제어되는
- * 순수 controlled 컴포넌트이며(139의 CreateCollectionDialog처럼 전역 Context를 갖지 않는다), 책등 색상은
- * 고정 브랜드 색상(pin-navy)만 쓰고 선택 UI는 두지 않는다(색상별 책 이미지 확장은 범위 밖).
+ * 새 컬렉션 생성 모달.
+ * 근거: Jira S15P11A705-167·178, docs/reference/08_API_명세.md 7.1.
+ * 169(Library "+새 컬렉션")는 기본값인 mode="library"를 쓴다 — 내 Record 다중 선택 후 "만들기" 시
+ * 즉시 createCollection을 호출하는 기존 동작 그대로다.
+ * 168(Record 저장 시트)은 mode="fromNewRecord"를 쓴다 — 저장 대상 record가 아직 서버에 없어(생성 전)
+ * record 선택 목록 자체가 성립하지 않으므로, 목록 조회(useMyRecordListQuery)를 건너뛰고 제목만 받아
+ * onTitleStaged로 돌려준다. API 호출은 record 저장 성공 이후 호출부(PlaceRecordSheet)가 담당한다.
+ * isOpen/onClose로 제어되는 순수 controlled 컴포넌트다(139의 CreateCollectionDialog처럼 전역 Context를
+ * 갖지 않는다). 책등 색상은 고정 브랜드 색상(pin-navy)만 쓰고 선택 UI는 두지 않는다(색상별 책 이미지
+ * 확장은 범위 밖).
  */
-export function NewCollectionModal({ isOpen, onClose, onCreated }: NewCollectionModalProps) {
+export function NewCollectionModal({
+  isOpen,
+  mode = 'library',
+  onClose,
+  onCreated,
+  onTitleStaged,
+}: NewCollectionModalProps) {
   const [title, setTitle] = useState('');
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
 
-  const recordListQuery = useMyRecordListQuery(isOpen);
+  const isLibraryMode = mode === 'library';
+  const recordListQuery = useMyRecordListQuery(isOpen && isLibraryMode);
   const createCollectionMutation = useCreateCollectionMutation();
 
   if (!isOpen) {
@@ -48,13 +64,22 @@ export function NewCollectionModal({ isOpen, onClose, onCreated }: NewCollection
   };
 
   const trimmedTitle = title.trim();
-  const canSubmit =
-    trimmedTitle.length > 0 && selectedRecordIds.length > 0 && !createCollectionMutation.isPending;
+  const canSubmit = isLibraryMode
+    ? trimmedTitle.length > 0 && selectedRecordIds.length > 0 && !createCollectionMutation.isPending
+    : trimmedTitle.length > 0;
 
   const handleSubmit = () => {
     if (!canSubmit) {
       return;
     }
+
+    if (!isLibraryMode) {
+      onTitleStaged?.(trimmedTitle);
+      resetState();
+      onClose();
+      return;
+    }
+
     createCollectionMutation.mutate(
       { title: trimmedTitle, recordIds: selectedRecordIds },
       {
@@ -99,49 +124,55 @@ export function NewCollectionModal({ isOpen, onClose, onCreated }: NewCollection
           {title.length}/{TITLE_MAX_LENGTH}
         </p>
 
-        <p className="mt-3 flex-none text-xs font-bold text-pin-navy">
-          담을 장소 선택 ({selectedRecordIds.length}개 선택됨)
-        </p>
+        {isLibraryMode && (
+          <>
+            <p className="mt-3 flex-none text-xs font-bold text-pin-navy">
+              담을 장소 선택 ({selectedRecordIds.length}개 선택됨)
+            </p>
 
-        <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-line-card">
-          {recordListQuery.isPending && <p className="p-4 text-sm text-ink-gray">불러오는 중…</p>}
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-line-card">
+              {recordListQuery.isPending && (
+                <p className="p-4 text-sm text-ink-gray">불러오는 중…</p>
+              )}
 
-          {recordListQuery.isError && (
-            <div className="p-4">
-              <ErrorState
-                title="장소 목록을 불러오지 못했어요"
-                description="잠시 후 다시 시도해 주세요."
-              />
+              {recordListQuery.isError && (
+                <div className="p-4">
+                  <ErrorState
+                    title="장소 목록을 불러오지 못했어요"
+                    description="잠시 후 다시 시도해 주세요."
+                  />
+                </div>
+              )}
+
+              {recordListQuery.isSuccess && recordListQuery.data.items.length === 0 && (
+                <p className="p-4 text-sm text-ink-gray">저장한 장소가 없어요.</p>
+              )}
+
+              {recordListQuery.isSuccess && recordListQuery.data.items.length > 0 && (
+                <ul>
+                  {recordListQuery.data.items.map((item) => (
+                    <li key={item.recordId} className="border-b border-line-subtle last:border-b-0">
+                      <label className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm text-pin-navy">
+                        <input
+                          type="checkbox"
+                          checked={selectedRecordIds.includes(item.recordId)}
+                          onChange={() => toggleRecord(item.recordId)}
+                          className="h-4 w-4 flex-none accent-log-mint"
+                        />
+                        {item.name}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-          )}
 
-          {recordListQuery.isSuccess && recordListQuery.data.items.length === 0 && (
-            <p className="p-4 text-sm text-ink-gray">저장한 장소가 없어요.</p>
-          )}
-
-          {recordListQuery.isSuccess && recordListQuery.data.items.length > 0 && (
-            <ul>
-              {recordListQuery.data.items.map((item) => (
-                <li key={item.recordId} className="border-b border-line-subtle last:border-b-0">
-                  <label className="flex cursor-pointer items-center gap-3 px-4 py-3 text-sm text-pin-navy">
-                    <input
-                      type="checkbox"
-                      checked={selectedRecordIds.includes(item.recordId)}
-                      onChange={() => toggleRecord(item.recordId)}
-                      className="h-4 w-4 flex-none accent-log-mint"
-                    />
-                    {item.name}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {createCollectionMutation.isError && (
-          <p className="mt-2 flex-none text-xs text-red-600">
-            {createCollectionMutation.error.message}
-          </p>
+            {createCollectionMutation.isError && (
+              <p className="mt-2 flex-none text-xs text-red-600">
+                {createCollectionMutation.error.message}
+              </p>
+            )}
+          </>
         )}
 
         <div className="mt-4 flex flex-none gap-2">

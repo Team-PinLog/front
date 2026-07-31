@@ -11,6 +11,9 @@ export interface PlaceRecordSheetState {
   searchQuery: string;
   selectedPlace: KakaoPlace | null;
   contextBody: string;
+  // 178: "+ 컬렉션 생성"으로 입력만 받아둔 제목들 — 아직 서버에 없는 record 대상이라 서버 상태가 아닌
+  // 이 시트 전용 UI 상태다. record 저장 성공 후 호출부가 각 제목으로 createCollection을 호출한다.
+  stagedCollectionTitles: string[];
 }
 
 export interface PlaceRecordSheetValue extends PlaceRecordSheetState {
@@ -19,6 +22,8 @@ export interface PlaceRecordSheetValue extends PlaceRecordSheetState {
   setSearchQuery(query: string): void;
   selectPlace(place: KakaoPlace | null): void;
   setContextBody(body: string): void;
+  stageCollectionTitle(title: string): void;
+  unstageCollectionTitle(index: number): void;
 }
 
 export const initialPlaceRecordSheetState: PlaceRecordSheetState = {
@@ -26,6 +31,7 @@ export const initialPlaceRecordSheetState: PlaceRecordSheetState = {
   searchQuery: '',
   selectedPlace: null,
   contextBody: '',
+  stagedCollectionTitles: [],
 };
 
 export const PlaceRecordSheetContext = createContext<PlaceRecordSheetValue | null>(null);
