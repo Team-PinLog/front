@@ -13,6 +13,11 @@ export interface KakaoMarker {
   setMap(map: KakaoMap | null): void;
 }
 
+export interface KakaoCustomOverlay {
+  setMap(map: KakaoMap | null): void;
+  setPosition(position: KakaoLatLng): void;
+}
+
 export interface KakaoBounds {
   getSouthWest(): KakaoLatLng;
   getNorthEast(): KakaoLatLng;
@@ -36,6 +41,14 @@ export interface KakaoMapsNamespace {
   LatLngBounds: new (sw: KakaoLatLng, ne: KakaoLatLng) => KakaoBounds;
   Map: new (container: HTMLElement, options: { center: KakaoLatLng; level?: number }) => KakaoMap;
   Marker: new (options: { map?: KakaoMap; position: KakaoLatLng; title?: string }) => KakaoMarker;
+  CustomOverlay: new (options: {
+    map?: KakaoMap;
+    position: KakaoLatLng;
+    content: HTMLElement | string;
+    xAnchor?: number;
+    yAnchor?: number;
+    zIndex?: number;
+  }) => KakaoCustomOverlay;
   event: KakaoEventNamespace;
 }
 
