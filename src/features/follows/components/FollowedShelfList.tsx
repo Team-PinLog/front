@@ -1,3 +1,4 @@
+import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useFollowsQuery } from '../hooks/useFollowsQuery';
 import { FollowedShelfCard } from './FollowedShelfCard';
@@ -30,7 +31,11 @@ export function FollowedShelfList() {
   const hasNext = pages[pages.length - 1].hasNext;
 
   if (follows.length === 0) {
-    return <p className="p-8 text-sm text-ink-gray">아직 팔로우한 책장이 없어요</p>;
+    return (
+      <div className="p-8">
+        <EmptyState title="아직 팔로우한 책장이 없어요" />
+      </div>
+    );
   }
 
   return (
