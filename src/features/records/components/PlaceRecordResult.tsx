@@ -168,7 +168,7 @@ export function PlaceRecordResult({
       prev.map((item) => (item.id === id ? { ...item, status: 'pending' } : item)),
     );
     addToCollectionMutation.mutate(
-      { collectionId: target.collectionId, recordId: data.recordId },
+      { collectionId: target.collectionId, recordIds: [data.recordId] },
       {
         onSuccess: () => {
           setAddItems((prev) =>

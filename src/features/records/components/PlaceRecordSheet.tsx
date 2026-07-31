@@ -117,7 +117,7 @@ export function PlaceRecordSheet() {
     const [addResults, createResults] = await Promise.all([
       Promise.allSettled(
         selectedCollectionIds.map((collectionId) =>
-          addToCollectionMutation.mutateAsync({ collectionId, recordId: created.recordId }),
+          addToCollectionMutation.mutateAsync({ collectionId, recordIds: [created.recordId] }),
         ),
       ),
       Promise.allSettled(
