@@ -9,8 +9,7 @@ interface HomeMapSectionProps {
  * 검색 결과가 없을 때(idle·pending·error·빈 결과) 노출하는 홈 지도 섹션.
  * 근거: Jira S15P11A705-165, mockup(PinLog.responsive.dc.html) home-idle-layout(1106~1116행).
  * 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 열도록
- * onMarkerClick을 RecordMapView(150)에 그대로 전달한다(Jira S15P11A705-166).
- * /map 페이지(MapPage)는 이 prop 없이 RecordMapView를 써서 기존 이동 동작을 유지한다.
+ * onMarkerClick을 RecordMapView에 그대로 전달한다(Jira S15P11A705-166).
  */
 export function HomeMapSection({ onMarkerClick }: HomeMapSectionProps) {
   return (
