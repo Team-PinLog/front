@@ -104,7 +104,7 @@ export function FeedList() {
             </button>
 
             <span className="rounded-full bg-line-subtle px-2.5 py-0.5 text-[10px] font-semibold text-ink-gray">
-              {item.position}
+              {item.position + 1}
             </span>
           </div>
         ))}
