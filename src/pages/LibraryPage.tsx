@@ -18,7 +18,6 @@ export function LibraryPage() {
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-bold text-ink-gray">팔로우한 책장</h2>
         <FollowedShelfList />
       </section>
     </main>
