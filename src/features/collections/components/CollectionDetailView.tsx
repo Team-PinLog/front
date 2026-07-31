@@ -2,9 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useEditCollectionTitle } from '@/contexts/useEditCollectionTitle';
 import { useCollectionDeleteConfirm } from '@/contexts/useCollectionDeleteConfirm';
 import { useCollectionSpread } from '@/contexts/useCollectionSpread';
+import { useDeleteConfirm } from '@/contexts/useDeleteConfirm';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSection';
 import { ContextCard } from '@/features/records/components/ContextCard';
+import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
 import { RecordRemoveButton } from './RecordRemoveButton';
@@ -47,8 +49,11 @@ export function CollectionDetailView({
 }: CollectionDetailViewProps) {
   const detailQuery = useCollectionDetailQuery(collectionId);
   const editTitleState = useEditCollectionTitle();
-  const deleteConfirm = useCollectionDeleteConfirm();
+  const collectionDeleteConfirm = useCollectionDeleteConfirm();
   const spreadState = useCollectionSpread();
+  // Record의 마지막 Context 삭제 확인(409) 상태. 스프레드 네비게이션과 레이스가 나지 않도록
+  // 이 상태가 열려 있는 동안은 다음/이전 이동을 막는다(아래 handleNext/handlePrevious, 203 논의).
+  const recordDeleteConfirm = useDeleteConfirm();
 
   // 진입 시 hasNextPage가 false가 될 때까지 자동으로 순차 로드한다 — 왼쪽 지도가 Collection의 모든 record를
   // 한 번에 보여줘야 하기 때문이다(넘길 때마다 핀이 하나씩 느는 방식이 아님). 사용자 조작(다음 버튼)과
@@ -106,7 +111,7 @@ export function CollectionDetailView({
           </button>
           <button
             type="button"
-            onClick={() => deleteConfirm.open('direct')}
+            onClick={() => collectionDeleteConfirm.open('direct')}
             className="h-9 rounded-lg border border-red-400/50 px-3 text-xs font-bold text-red-300"
           >
             삭제
@@ -136,14 +141,19 @@ export function CollectionDetailView({
   const canGoNext = currentIndex < flatRecords.length - 1;
   const canGoPrevious = currentIndex > 0;
 
+  // Record 강제 삭제 확인(409) 모달이 열려 있는 동안 스프레드를 넘기면 confirm 상태(targetContextId·impact)는
+  // 이전 record 것인데 DeleteConfirmDialog에 넘기는 recordId는 새 record 것이 되는 레이스가 생긴다
+  // (203 논의). 확인/취소로 닫히기 전까지 이동 자체를 막아 차단한다.
+  const isRecordDeleteConfirmOpen = recordDeleteConfirm.isOpen;
+
   const handleNext = () => {
-    if (canGoNext) {
+    if (canGoNext && !isRecordDeleteConfirmOpen) {
       spreadState.goToNext();
     }
   };
 
   const handlePrevious = () => {
-    if (canGoPrevious) {
+    if (canGoPrevious && !isRecordDeleteConfirmOpen) {
       spreadState.goToPrevious();
     }
   };
@@ -234,7 +244,7 @@ export function CollectionDetailView({
         <button
           type="button"
           onClick={handlePrevious}
-          disabled={!canGoPrevious}
+          disabled={!canGoPrevious || isRecordDeleteConfirmOpen}
           className="h-10 rounded-lg border border-pin-navy/15 px-4 text-sm font-bold text-pin-navy disabled:opacity-40"
         >
           ‹ 이전
@@ -246,7 +256,7 @@ export function CollectionDetailView({
         <button
           type="button"
           onClick={handleNext}
-          disabled={!canGoNext}
+          disabled={!canGoNext || isRecordDeleteConfirmOpen}
           className="h-10 rounded-lg border border-pin-navy/15 px-4 text-sm font-bold text-pin-navy disabled:opacity-40"
         >
           다음 ›
@@ -255,6 +265,12 @@ export function CollectionDetailView({
 
       {/* 타인 Collection에서만 책장 탐색·Follow를 노출한다(143) — 자기 자신 책장 탐색은 대상이 아니다. */}
       {!ownedByMe && <ShelfExploreSection collectionId={collectionId} />}
+
+      {/* 마지막 Context 삭제(409) 확인 모달. currentRecord는 이 컴포넌트가 관리하는 스프레드 상태의
+          파생값이라 여기서 recordId를 직접 넘긴다 — 페이지(CollectionDetailPage)까지 끌어올리려면
+          currentRecord를 새 전역 상태로 만들어야 해서(203 지시사항) 하지 않았다. 위 네비게이션 가드가
+          열려 있는 동안 currentRecord 자체를 고정하므로 recordId는 항상 confirm 대상과 일치한다. */}
+      {ownedByMe && <DeleteConfirmDialog recordId={currentRecord.recordId} />}
     </main>
   );
 }
