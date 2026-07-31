@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
+import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
 import type { FeedCollectionItem } from '../api/getFeedCollections';
@@ -54,10 +55,12 @@ export function FeedList() {
       placeId: null,
       position: item.position,
     });
+    markCollectionOverlayIntent();
     void navigate({
       to: '/collections/$collectionId',
       params: { collectionId: item.collectionId },
       search: { feedRequestId: item.requestId, feedPosition: item.position },
+      state: { collectionOverlay: true },
     });
   };
 

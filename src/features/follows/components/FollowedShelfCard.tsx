@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import {
   ShelfBoard,
   ShelfBookSpine,
@@ -156,9 +157,14 @@ export function FollowedShelfCard({ followId, alias }: FollowedShelfCardProps) {
         ) : (
           <FollowedShelfCollections
             collectionsQuery={collectionsQuery}
-            onSelectCollection={(collectionId) =>
-              void navigate({ to: '/collections/$collectionId', params: { collectionId } })
-            }
+            onSelectCollection={(collectionId) => {
+              markCollectionOverlayIntent();
+              void navigate({
+                to: '/collections/$collectionId',
+                params: { collectionId },
+                state: { collectionOverlay: true },
+              });
+            }}
           />
         )}
       </ShelfCabinet>
