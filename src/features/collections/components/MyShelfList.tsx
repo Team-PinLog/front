@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import {
   ShelfAddSlot,
   ShelfBoard,
@@ -57,12 +58,14 @@ export function MyShelfList() {
               index={index}
               title={collection.title}
               recordCount={collection.recordCount}
-              onClick={() =>
+              onClick={() => {
+                markCollectionOverlayIntent();
                 void navigate({
                   to: '/collections/$collectionId',
                   params: { collectionId: collection.collectionId },
-                })
-              }
+                  state: { collectionOverlay: true },
+                });
+              }}
             />
           ))}
           <ShelfAddSlot onClick={() => setIsNewCollectionModalOpen(true)} />

@@ -151,3 +151,13 @@ declare module '@tanstack/react-router' {
     router: typeof router;
   }
 }
+
+// 컬렉션 상세를 오버레이로 열었는지 표시하는 history state 마커(207). navigate({ state })로 심고
+// CollectionDetailPage가 useRouterState로 읽는다. HistoryState는 기본이 빈 인터페이스라 값을 갖는
+// 필드를 쓰려면 원본 선언 모듈(@tanstack/history)을 증강해야 한다 — react-router는 재수출만 할 뿐이라
+// 여기(react-router 쪽)를 증강하면 병합되지 않는다.
+declare module '@tanstack/history' {
+  interface HistoryState {
+    collectionOverlay?: true;
+  }
+}

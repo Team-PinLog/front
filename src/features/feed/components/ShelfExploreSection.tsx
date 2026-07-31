@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { getIsLoggedIn } from '@/features/auth/lib/getIsLoggedIn';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
+import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useShelfExploreQuery } from '../hooks/useShelfExploreQuery';
 import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
 import { useUnfollowMutation } from '@/features/follows/hooks/useUnfollowMutation';
@@ -99,12 +100,14 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
             <button
               key={collection.collectionId}
               type="button"
-              onClick={() =>
+              onClick={() => {
+                markCollectionOverlayIntent();
                 void navigate({
                   to: '/collections/$collectionId',
                   params: { collectionId: collection.collectionId },
-                })
-              }
+                  state: { collectionOverlay: true },
+                });
+              }}
               className="flex flex-col gap-2 rounded-lg border border-line-card bg-white p-4 text-left"
             >
               <div className="flex items-start justify-between gap-4">
