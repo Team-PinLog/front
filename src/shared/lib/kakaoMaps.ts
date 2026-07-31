@@ -28,7 +28,13 @@ export interface KakaoMap {
   setLevel(level: number): void;
   relayout(): void;
   getBounds(): KakaoBounds;
-  setBounds(bounds: KakaoBounds): void;
+  setBounds(
+    bounds: KakaoBounds,
+    paddingTop?: number,
+    paddingRight?: number,
+    paddingBottom?: number,
+    paddingLeft?: number,
+  ): void;
 }
 
 export interface KakaoEventNamespace {

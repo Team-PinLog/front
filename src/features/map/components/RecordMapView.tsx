@@ -7,6 +7,11 @@ import type { RecordMapBbox } from '../api/getRecordMapMarkers';
 // 마커가 없을 때(최초 SDK 로드 등) 지도 기본 중심(서울시청). KakaoPlaceMap.tsx와 동일 기본값.
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 
+// 최초 진입 fitBounds 여유(px). 근거: docs/reference/08_API_명세.md 4.2
+// "fitBounds(bounds, padding)으로 모든 마커가 한눈에 보이는 최소 화면(여유 포함)을 만든다."
+// 경계에 걸친 마커 아이콘이 뷰포트 가장자리에서 잘리지 않도록 사방에 동일하게 적용한다.
+const FIT_BOUNDS_PADDING = 48;
+
 type SdkStatus = 'loading' | 'ready' | 'error';
 
 interface RecordMapViewProps {
@@ -87,7 +92,13 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
       if (data.bounds) {
         const sw = new kakao.maps.LatLng(data.bounds.swLat, data.bounds.swLng);
         const ne = new kakao.maps.LatLng(data.bounds.neLat, data.bounds.neLng);
-        map.setBounds(new kakao.maps.LatLngBounds(sw, ne));
+        map.setBounds(
+          new kakao.maps.LatLngBounds(sw, ne),
+          FIT_BOUNDS_PADDING,
+          FIT_BOUNDS_PADDING,
+          FIT_BOUNDS_PADDING,
+          FIT_BOUNDS_PADDING,
+        );
       }
       hasFitInitialBoundsRef.current = true;
     }
