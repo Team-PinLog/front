@@ -5,6 +5,7 @@ on:
     branches: [dev, main]
   push:
     branches: [dev]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,6 +24,17 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+
+      - name: Guard manual dispatch at current dev HEAD
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/dev
+          dev_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')
+          [[ "$dev_sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$dev_sha" = "$GITHUB_SHA"
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -49,7 +61,7 @@ jobs:
         run: npm run typecheck
 
       - name: Validate dev public build variables
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' }}
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
@@ -155,7 +167,7 @@ jobs:
 
   image-publish:
     name: frontend-image / publish
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/dev' }}
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -163,6 +175,10 @@ jobs:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
       - name: Download validated frontend image context
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -178,51 +194,44 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Refuse to overwrite existing commit tag
+      - name: Resolve run-bound immutable image identity
+        id: identity
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
+          VITE_KAKAO_JS_KEY: ${{ vars.VITE_KAKAO_JS_KEY }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          : "${VITE_API_BASE_URL:?missing variable}"
+          : "${VITE_KAKAO_REST_KEY:?missing variable}"
+          : "${VITE_KAKAO_JS_KEY:?missing variable}"
+          fingerprint=$(python3 - <<'PY'
+          import hashlib, os, sys
+          names = ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY")
+          out = bytearray()
+          for name in names:
+              key = name.encode()
+              value = os.environ[name].encode()
+              out += len(key).to_bytes(4, "big") + key + len(value).to_bytes(8, "big") + value
+          sys.stdout.write(hashlib.sha256(out).hexdigest())
+          PY
+          )
+          test "$(printf '%s' "$fingerprint" | sha256sum | cut -d' ' -f1 | wc -c)" -eq 65
+          [[ "$fingerprint" =~ ^[0-9a-f]{64}$ ]]
+          config_id=${fingerprint:0:20}
+          IMAGE_TAG="${GITHUB_SHA}-cfg-${config_id}-run-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*$ ]]
+          test "${#IMAGE_TAG}" -le 128
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "config_fingerprint=$config_id" >> "$GITHUB_OUTPUT"
 
-          registry_token=$(curl --fail --silent --show-error \
-            --user "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
-            --get \
-            --data-urlencode 'service=ghcr.io' \
-            --data-urlencode 'scope=repository:team-pinlog/front:pull,push' \
-            'https://ghcr.io/token' | jq -er '.token')
 
-          set +e
-          http_status=$(curl --silent --show-error \
-            --output /dev/null \
-            --write-out '%{http_code}' \
-            --head \
-            --header "Authorization: Bearer ${registry_token}" \
-            --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
-            "https://ghcr.io/v2/team-pinlog/front/manifests/${GITHUB_SHA}")
-          curl_status=$?
-          set -e
-
-          if [ "$curl_status" -ne 0 ]; then
-            echo "::error::Registry preflight request failed"
-            exit 1
-          fi
-          case "$http_status" in
-            404)
-              echo "Commit tag is available"
-              ;;
-            200)
-              echo "::error::Commit tag already exists; refusing to overwrite"
-              exit 1
-              ;;
-            *)
-              echo "::error::Registry preflight returned unexpected HTTP ${http_status}"
-              exit 1
-              ;;
-          esac
-
-      - name: Build and publish immutable frontend image
+      - name: Build and publish run-bound immutable frontend image
         id: publish
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
@@ -230,24 +239,41 @@ jobs:
           file: .ci-image/context/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/team-pinlog/front:${{ github.sha }}
+          tags: ghcr.io/team-pinlog/front:${{ steps.identity.outputs.image_tag }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Verify published image digest
+      - name: Verify immutable image and write provenance
         env:
-          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+          IMAGE_TAG: ${{ steps.identity.outputs.image_tag }}
+          CONFIG_FINGERPRINT: ${{ steps.identity.outputs.config_fingerprint }}
+          BUILT_DIGEST: ${{ steps.publish.outputs.digest }}
+
         run: |
           set -euo pipefail
-          test -n "$IMAGE_DIGEST"
+          IMAGE_DIGEST=$BUILT_DIGEST
+
           [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          inspection=$(docker buildx imagetools inspect "ghcr.io/team-pinlog/front:${GITHUB_SHA}")
-          RESOLVED_DIGEST=$(printf '%s\n' "$inspection" \
-            | sed -nE 's/^Digest:[[:space:]]+(sha256:[0-9a-f]{64})$/\1/p' \
-            | head -n 1)
+          inspection=$(docker buildx imagetools inspect "ghcr.io/team-pinlog/front:${IMAGE_TAG}")
+          RESOLVED_DIGEST=$(printf '%s\n' "$inspection" | sed -nE 's/^Digest:[[:space:]]+(sha256:[0-9a-f]{64})$/\1/p' | head -n 1)
           [[ "$RESOLVED_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           test "$RESOLVED_DIGEST" = "$IMAGE_DIGEST"
-          docker buildx imagetools inspect "ghcr.io/team-pinlog/front@${IMAGE_DIGEST}"
-          echo "Published digest: $IMAGE_DIGEST"
+          docker buildx imagetools inspect "ghcr.io/team-pinlog/front@${IMAGE_DIGEST}" >/dev/null
+          mkdir -p .ci-provenance
+          jq -n --argjson schema_version 1 --arg source_repository "$GITHUB_REPOSITORY" --arg source_sha "$GITHUB_SHA" \
+            --arg source_ref dev --arg image_repository ghcr.io/team-pinlog/front --arg image_tag "$IMAGE_TAG" \
+            --arg image_digest "$IMAGE_DIGEST" --arg config_fingerprint "$CONFIG_FINGERPRINT" --argjson workflow_run_id "$GITHUB_RUN_ID" --argjson workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{schema_version:$schema_version,source_repository:$source_repository,source_sha:$source_sha,source_ref:$source_ref,image_repository:$image_repository,image_tag:$image_tag,image_digest:$image_digest,config_fingerprint:$config_fingerprint,workflow_run_id:$workflow_run_id,workflow_run_attempt:$workflow_run_attempt}' \
+            > .ci-provenance/frontend-image-provenance.json
+          python3 tools/validate_frontend_provenance.py .ci-provenance/frontend-image-provenance.json
+          echo "Verified image: $IMAGE_TAG@$IMAGE_DIGEST"
+
+      - name: Upload run-bound image provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-image-provenance
+          path: .ci-provenance/frontend-image-provenance.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Request trusted Infra image promotion
         continue-on-error: true

@@ -42,6 +42,7 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
             {
                 "pull_request": {"branches": ["dev", "main"]},
                 "push": {"branches": ["dev"]},
+                "workflow_dispatch": "",
             },
         )
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
@@ -97,7 +98,7 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         validation = named_step(check, "Validate dev public build variables")
         self.assertEqual(
             validation["if"],
-            "${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}",
+            "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' }}",
         )
         self.assertEqual(
             validation["env"],
@@ -223,7 +224,7 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         self.assertEqual(publish["needs"], "check")
         self.assertEqual(
             publish["if"],
-            "${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}",
+            "${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/dev' }}",
         )
         self.assertEqual(
             publish["permissions"], {"contents": "read", "packages": "write"}
@@ -235,49 +236,44 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         download = named_step(publish, "Download validated frontend image context")
         self.assertEqual(download["with"]["name"], "frontend-image-${{ github.sha }}")
 
-    def test_publish_refuses_to_overwrite_an_existing_commit_tag(self):
+    def test_publish_checks_out_validator_before_downloading_image_context(self):
         publish = self.jobs["image-publish"]
-        preflight = named_step(publish, "Refuse to overwrite existing commit tag")
+        checkout = publish["steps"][0]
         self.assertEqual(
-            preflight["env"]["GITHUB_TOKEN"], "${{ secrets.GITHUB_TOKEN }}"
+            checkout["uses"],
+            "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
         )
-        script = preflight["run"]
-        self.assertIn("https://ghcr.io/token", script)
+        self.assertEqual(checkout["with"], {"persist-credentials": "false"})
+        names = [step.get("name") for step in publish["steps"]]
+        self.assertLess(0, names.index("Download validated frontend image context"))
+        verify = named_step(publish, "Verify immutable image and write provenance")
         self.assertIn(
-            "https://ghcr.io/v2/team-pinlog/front/manifests/${GITHUB_SHA}",
-            script,
+            "python3 tools/validate_frontend_provenance.py",
+            verify["run"],
         )
-        self.assertIn('case "$http_status" in', script)
-        self.assertIn("404)", script)
-        self.assertIn("200)", script)
-        self.assertIn("curl_status", script)
-        self.assertNotIn("manifest unknown|not found", script)
 
-    def test_publish_uses_full_commit_sha_tag_and_verifies_returned_digest(self):
-        self.assertIn("image-publish", self.jobs)
+    def test_publish_has_no_registry_preflight_or_tag_reuse(self):
         publish = self.jobs["image-publish"]
-        build = named_step(publish, "Build and publish immutable frontend image")
+        identity = named_step(publish, "Resolve run-bound immutable image identity")
+        script = identity["run"]
+        workflow_text = WORKFLOW.read_text()
+        self.assertNotIn("ghcr.io/token", script)
+        self.assertNotIn("manifests/", script)
+        self.assertNotIn("reused", workflow_text)
+        self.assertNotIn("Bearer ***", workflow_text)
+        self.assertIn("-run-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}", script)
+
+    def test_publish_uses_composite_tag_and_verifies_returned_digest(self):
+        publish = self.jobs["image-publish"]
+        build = named_step(publish, "Build and publish run-bound immutable frontend image")
         self.assertEqual(build["with"]["push"], "true")
-        self.assertEqual(build["with"]["tags"], f"{IMAGE}:${{{{ github.sha }}}}")
+        self.assertEqual(build["with"]["tags"], f"{IMAGE}:${{{{ steps.identity.outputs.image_tag }}}}")
         self.assertEqual(build["with"]["context"], ".ci-image/context")
-        self.assertEqual(build["with"]["file"], ".ci-image/context/Dockerfile")
-
-        verify = named_step(publish, "Verify published image digest")
-        self.assertEqual(
-            verify["env"], {"IMAGE_DIGEST": "${{ steps.publish.outputs.digest }}"}
-        )
+        verify = named_step(publish, "Verify immutable image and write provenance")
         command = verify["run"]
-        self.assertIn('test -n "$IMAGE_DIGEST"', command)
-        self.assertIn(
-            f'inspection=$(docker buildx imagetools inspect "{IMAGE}:${{GITHUB_SHA}}")',
-            command,
-        )
         self.assertIn('test "$RESOLVED_DIGEST" = "$IMAGE_DIGEST"', command)
-        self.assertIn(
-            f'docker buildx imagetools inspect "{IMAGE}@${{IMAGE_DIGEST}}"',
-            command,
-        )
-        self.assertIn('echo "Published digest: $IMAGE_DIGEST"', command)
+        self.assertIn(f'docker buildx imagetools inspect "{IMAGE}@${{IMAGE_DIGEST}}"', command)
+        self.assertIn('echo "Verified image: $IMAGE_TAG@$IMAGE_DIGEST"', command)
 
     def test_successful_publish_dispatches_the_trusted_infra_updater(self):
         publish = self.jobs["image-publish"]
@@ -297,6 +293,30 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         self.assertIn("--ref main", command)
         self.assertNotIn("IMAGE_DIGEST", command)
         self.assertNotIn("pull request", command.lower())
+
+    def test_manual_composite_publish_contract(self):
+        check = self.jobs["check"]
+        guard = named_step(check, "Guard manual dispatch at current dev HEAD")
+        self.assertIn("github.event_name == 'workflow_dispatch'", guard["if"])
+        self.assertIn("git/ref/heads/dev", guard["run"])
+        self.assertIn('test "$dev_sha" = "$GITHUB_SHA"', guard["run"])
+
+        publish = self.jobs["image-publish"]
+        identity = named_step(publish, "Resolve run-bound immutable image identity")
+        script = identity["run"]
+        for contract in ("sha256sum", "VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "IMAGE_TAG"):
+            self.assertIn(contract, script)
+        self.assertNotIn('echo "$VITE_', script)
+        build = named_step(publish, "Build and publish run-bound immutable frontend image")
+        self.assertIn("steps.identity.outputs.image_tag", build["with"]["tags"])
+        verify = named_step(publish, "Verify immutable image and write provenance")
+        for key in ("schema_version", "source_repository", "source_sha", "source_ref", "image_repository", "image_tag", "image_digest", "config_fingerprint", "workflow_run_id", "workflow_run_attempt"):
+            self.assertIn(key, verify["run"])
+        self.assertIn("tools/validate_frontend_provenance.py", verify["run"])
+        names = [step.get("name") for step in publish["steps"]]
+        self.assertLess(names.index("Upload run-bound image provenance"), names.index("Request trusted Infra image promotion"))
+        artifact = named_step(publish, "Upload run-bound image provenance")
+        self.assertEqual(artifact["with"]["name"], "frontend-image-provenance")
 
     def test_all_third_party_actions_are_pinned_to_full_commit_shas(self):
         for job_name, job in self.jobs.items():

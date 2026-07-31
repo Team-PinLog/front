@@ -13,4 +13,6 @@ The `dev` frontend image is built with the public configuration declared in
 - Liveness/readiness/startup probes must use exact path `GET /healthz` on port `8080`. It returns static `200 text/plain`; `/api/*` returns `404` from this frontend image and never falls through to `index.html`.
 - `/` and client-side SPA routes are served from the immutable `dist` artifact.
 
-Rollback: redeploy the previous immutable `ghcr.io/team-pinlog/front:<40-character-commit-sha>` (or its recorded digest) and restore its matching Infra `targetPort`/probe contract. Do not retag or overwrite an existing commit tag.
+- Every `dev` push or trusted manual rebuild publishes a fresh run-bound tag `<40sha>-cfg-<20hex>-run-<GITHUB_RUN_ID>-a<GITHUB_RUN_ATTEMPT>`. Repeating the same variables intentionally creates another immutable tag: safety and auditability take precedence over registry preflight reuse or no-op behavior.
+
+Rollback: redeploy a previously recorded immutable run-bound tag (or its recorded digest) and restore its matching Infra `targetPort`/probe contract. Do not retag or overwrite an existing tag.
