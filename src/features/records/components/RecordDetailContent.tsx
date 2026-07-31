@@ -1,8 +1,8 @@
 import { DeleteConfirmProvider } from '@/contexts/DeleteConfirmProvider';
-import { CreateCollectionProvider } from '@/contexts/CreateCollectionProvider';
+import { AddToCollectionProvider } from '@/contexts/AddToCollectionProvider';
 import { RecordDetailView } from './RecordDetailView';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
-import { CreateCollectionDialog } from '@/features/collections/components/CreateCollectionDialog';
+import { AddToCollectionDialog } from '@/features/collections/components/AddToCollectionDialog';
 
 interface RecordDetailContentProps {
   recordId: number;
@@ -17,11 +17,11 @@ interface RecordDetailContentProps {
 export function RecordDetailContent({ recordId, onRecordDeleted }: RecordDetailContentProps) {
   return (
     <DeleteConfirmProvider>
-      <CreateCollectionProvider>
+      <AddToCollectionProvider>
         <RecordDetailView recordId={recordId} />
         <DeleteConfirmDialog recordId={recordId} onRecordDeleted={onRecordDeleted} />
-        <CreateCollectionDialog recordId={recordId} />
-      </CreateCollectionProvider>
+        <AddToCollectionDialog recordId={recordId} />
+      </AddToCollectionProvider>
     </DeleteConfirmProvider>
   );
 }

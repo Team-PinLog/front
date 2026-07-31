@@ -23,7 +23,7 @@ interface EditCollectionTitleDialogProps {
 }
 
 /**
- * Collection 제목 수정 모달. CreateCollectionDialog.tsx(139)와 동일 패턴(RHF+Zod).
+ * Collection 제목 수정 모달. RHF+Zod로 폼을 검증한다.
  * 근거: Jira S15P11A705-140, docs/reference/08_API_명세.md 7.4.
  * 상세 쿼리는 CollectionDetailView가 이미 구독 중이라 여기서 다시 호출해도 캐시를 공유해 추가 요청이 없다
  * — 현재 제목을 defaultValue로 채우는 용도로만 읽는다.
