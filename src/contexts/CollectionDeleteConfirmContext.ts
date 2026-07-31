@@ -8,7 +8,7 @@ import { createContext } from 'react';
  * - 'direct': 상세 화면의 삭제 버튼.
  * - 'lastRecordRemoval': 마지막 Record 제거 시도(409 DELETE_CONFIRMATION_REQUIRED).
  * 어느 쪽이든 확인 시 호출하는 API(DELETE /collections/{collectionId})는 동일해 targetCollectionId는 두지 않는다
- * — 이 모달이 마운트된 화면(CollectionDetailPage)에 collectionId가 이미 고정돼 있다(CreateCollectionContext의
+ * — 이 모달이 마운트된 화면(CollectionDetailPage)에 collectionId가 이미 고정돼 있다(AddToCollectionContext의
  * recordId와 동일한 이유). 삭제 자체의 성공/실패(서버 상태)는 useDeleteCollectionMutation(TanStack Query)이 소유한다.
  */
 export type CollectionDeleteConfirmTrigger = 'direct' | 'lastRecordRemoval';
