@@ -7,11 +7,14 @@ import { ErrorState } from '@/shared/ui/ErrorState';
 import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSection';
 import { ContextCard } from '@/features/records/components/ContextCard';
 import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
+import type { CollectionDetail } from '../api/getCollectionDetail';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
 import { AddRecordToCollectionDialog } from './AddRecordToCollectionDialog';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
 import { RecordRemoveButton } from './RecordRemoveButton';
 import { RecordSaveButton } from './RecordSaveButton';
+
+type CollectionRecordItem = CollectionDetail['records']['items'][number];
 
 interface CollectionDetailViewProps {
   collectionId: number;
@@ -37,6 +40,42 @@ function SpreadFadeIn({ children }: { children: ReactNode }) {
   );
 }
 
+interface CollectionTocProps {
+  records: CollectionRecordItem[];
+  activeIndex: number;
+  onSelect: (index: number) => void;
+}
+
+// 목업 book-spread의 "목차(CONTENTS)" 페이지 참고 — 전체 record를 순서대로 나열해 클릭 시 해당
+// 스프레드로 바로 이동한다(goToIndex). place·keywords는 공개 정보라 ownedByMe와 무관하게 항상 보여줄 수
+// 있다(privacy-rules.md 1장이 막는 건 Context 원문·member.id·keyword code뿐이며, 여기서는 다루지 않는다).
+function CollectionToc({ records, activeIndex, onSelect }: CollectionTocProps) {
+  return (
+    <div className="flex h-full flex-col gap-4">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-log-mint">Contents</p>
+        <p className="text-2xl font-bold text-pin-navy">목차</p>
+      </div>
+      <div className="flex flex-1 flex-col overflow-y-auto">
+        {records.map((record, index) => (
+          <button
+            key={record.recordId}
+            type="button"
+            onClick={() => onSelect(index)}
+            aria-current={index === activeIndex}
+            className={`flex items-center gap-3 border-b border-line-card px-1 py-3 text-left transition-colors ${
+              index === activeIndex ? 'bg-log-mint/10' : 'hover:bg-line-subtle'
+            }`}
+          >
+            <span className="text-xs font-bold text-log-mint">{index + 1}</span>
+            <span className="text-sm font-semibold text-pin-navy">{record.place.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Collection 상세: 펼친 책(플립북) 스타일. 근거: Jira S15P11A705-171, 목업 book-spread/openBook(UI만 참고).
  * 스프레드 하나 = record 하나. 왼쪽 페이지는 로드된 모든 record 위치를 지도에 고정 표시하고 현재 record만
@@ -58,6 +97,9 @@ export function CollectionDetailView({
   // 217: "내 레코드 추가" 다이얼로그 open 상태. AddToCollectionDialog(216)와 달리 이 화면에서만 열리므로
   // 전역 Context 없이 로컬 state로 둔다(NewCollectionModal과 동일 패턴).
   const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
+  // 218: 목차 화면 노출 여부. spreadIndex(CollectionSpreadContext)와 달리 이 화면 안에서만 의미가 있는
+  // 토글이라 전역 Context로 올리지 않는다(isAddRecordOpen과 동일한 판단).
+  const [isTocOpen, setIsTocOpen] = useState(false);
 
   // 진입 시 hasNextPage가 false가 될 때까지 자동으로 순차 로드한다 — 왼쪽 지도가 Collection의 모든 record를
   // 한 번에 보여줘야 하기 때문이다(넘길 때마다 핀이 하나씩 느는 방식이 아님). 사용자 조작(다음 버튼)과
@@ -172,15 +214,32 @@ export function CollectionDetailView({
   const isRecordDeleteConfirmOpen = recordDeleteConfirm.isOpen;
 
   const handleNext = () => {
-    if (canGoNext && !isRecordDeleteConfirmOpen) {
+    if (canGoNext && !isRecordDeleteConfirmOpen && !isTocOpen) {
       spreadState.goToNext();
     }
   };
 
   const handlePrevious = () => {
-    if (canGoPrevious && !isRecordDeleteConfirmOpen) {
+    if (canGoPrevious && !isRecordDeleteConfirmOpen && !isTocOpen) {
       spreadState.goToPrevious();
     }
+  };
+
+  // 전체 로드가 끝나기 전에는 목차 목록이 불완전해 열지 못하게 막는다(217의 "레코드 추가"
+  // 버튼과 동일한 isLoadingAllPlaces 가드). 이미 열려 있는 상태를 닫는 동작은 항상 허용한다.
+  const handleToggleToc = () => {
+    if (isTocOpen) {
+      setIsTocOpen(false);
+      return;
+    }
+    if (!isLoadingAllPlaces) {
+      setIsTocOpen(true);
+    }
+  };
+
+  const handleSelectFromToc = (index: number) => {
+    spreadState.goToIndex(index);
+    setIsTocOpen(false);
   };
 
   const mapPlaces = flatRecords.map((record) => ({
@@ -194,8 +253,10 @@ export function CollectionDetailView({
     <main className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
       {titleHeader}
 
-      <div className="relative flex flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-lg md:h-[520px] md:flex-row md:divide-x md:divide-line-card">
-        <div className="h-72 flex-none p-4 md:h-auto md:flex-1 md:p-6">
+      {/* 목업 book-spread(1290-1299행) 참고 — 좌우 페이지 안쪽에 그림자를 넣어 책 가운데 골(gutter)처럼
+          보이게 하고, 바깥쪽 모서리만 둥글게 남겨 펼친 책 프레임을 흉내낸다. 데이터 흐름은 그대로다. */}
+      <div className="relative flex flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-[0_30px_60px_-24px_rgba(4,33,66,0.35)] md:h-[520px] md:flex-row">
+        <div className="h-72 flex-none bg-paper-white p-4 md:h-auto md:flex-1 md:rounded-l-2xl md:p-6 md:shadow-[inset_-18px_0_24px_-16px_rgba(4,33,66,0.14)]">
           {/* 전체 로드가 끝나기 전에는 마커를 하나도 그리지 않고 로딩 표시만 한다(가벼운 표시, 화면
               전체를 막지 않음) — 넘길 때마다 핀이 하나씩 느는 방식을 피하기 위함. */}
           <CollectionSpreadMap
@@ -205,63 +266,71 @@ export function CollectionDetailView({
           />
         </div>
 
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6">
-          <SpreadFadeIn key={currentRecord.recordId}>
-            <div className="flex flex-col gap-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-lg font-bold text-pin-navy">{currentRecord.place.name}</p>
-                  <p className="text-xs font-semibold text-log-mint">
-                    {currentRecord.place.address}
-                  </p>
-                </div>
-                {ownedByMe ? (
-                  <RecordRemoveButton
-                    collectionId={collectionId}
-                    recordId={currentRecord.recordId}
-                  />
-                ) : (
-                  <RecordSaveButton
-                    place={currentRecord.place}
-                    collectionId={collectionId}
-                    feedRequestId={feedRequestId}
-                    feedPosition={feedPosition}
-                  />
-                )}
-              </div>
-
-              {currentRecord.keywords.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {currentRecord.keywords.map((keyword) => (
-                    <span
-                      key={keyword}
-                      className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
-                    >
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다(privacy-rules.md 1장) — null이면
-                  이 영역 자체를 렌더하지 않는다(런타임 접근도 하지 않는다). */}
-              {ownedByMe && currentRecord.contexts && (
-                <div className="flex flex-col gap-3">
-                  {currentRecord.contexts.length === 0 ? (
-                    <p className="text-xs text-ink-gray-light">아직 기록된 맥락이 없어요.</p>
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-paper-white p-6 md:rounded-r-2xl md:shadow-[inset_18px_0_24px_-16px_rgba(4,33,66,0.12)]">
+          {isTocOpen ? (
+            <CollectionToc
+              records={flatRecords}
+              activeIndex={currentIndex}
+              onSelect={handleSelectFromToc}
+            />
+          ) : (
+            <SpreadFadeIn key={currentRecord.recordId}>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-bold text-pin-navy">{currentRecord.place.name}</p>
+                    <p className="text-xs font-semibold text-log-mint">
+                      {currentRecord.place.address}
+                    </p>
+                  </div>
+                  {ownedByMe ? (
+                    <RecordRemoveButton
+                      collectionId={collectionId}
+                      recordId={currentRecord.recordId}
+                    />
                   ) : (
-                    currentRecord.contexts.map((context) => (
-                      <ContextCard
-                        key={context.contextId}
-                        recordId={currentRecord.recordId}
-                        context={context}
-                      />
-                    ))
+                    <RecordSaveButton
+                      place={currentRecord.place}
+                      collectionId={collectionId}
+                      feedRequestId={feedRequestId}
+                      feedPosition={feedPosition}
+                    />
                   )}
                 </div>
-              )}
-            </div>
-          </SpreadFadeIn>
+
+                {currentRecord.keywords.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {currentRecord.keywords.map((keyword) => (
+                      <span
+                        key={keyword}
+                        className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
+                      >
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다(privacy-rules.md 1장) — null이면
+                    이 영역 자체를 렌더하지 않는다(런타임 접근도 하지 않는다). */}
+                {ownedByMe && currentRecord.contexts && (
+                  <div className="flex flex-col gap-3">
+                    {currentRecord.contexts.length === 0 ? (
+                      <p className="text-xs text-ink-gray-light">아직 기록된 맥락이 없어요.</p>
+                    ) : (
+                      currentRecord.contexts.map((context) => (
+                        <ContextCard
+                          key={context.contextId}
+                          recordId={currentRecord.recordId}
+                          context={context}
+                        />
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </SpreadFadeIn>
+          )}
         </div>
       </div>
 
@@ -269,7 +338,7 @@ export function CollectionDetailView({
         <button
           type="button"
           onClick={handlePrevious}
-          disabled={!canGoPrevious || isRecordDeleteConfirmOpen}
+          disabled={!canGoPrevious || isRecordDeleteConfirmOpen || isTocOpen}
           className="h-10 rounded-lg border border-pin-navy/15 px-4 text-sm font-bold text-pin-navy disabled:opacity-40"
         >
           ‹ 이전
@@ -281,10 +350,18 @@ export function CollectionDetailView({
         <button
           type="button"
           onClick={handleNext}
-          disabled={!canGoNext || isRecordDeleteConfirmOpen}
+          disabled={!canGoNext || isRecordDeleteConfirmOpen || isTocOpen}
           className="h-10 rounded-lg border border-pin-navy/15 px-4 text-sm font-bold text-pin-navy disabled:opacity-40"
         >
           다음 ›
+        </button>
+        <button
+          type="button"
+          onClick={handleToggleToc}
+          disabled={(isLoadingAllPlaces && !isTocOpen) || isRecordDeleteConfirmOpen}
+          className="ml-2 h-10 rounded-lg border border-log-mint/40 px-4 text-sm font-bold text-log-mint disabled:opacity-40"
+        >
+          {isTocOpen ? '닫기' : isLoadingAllPlaces ? '목차 (불러오는 중…)' : '목차'}
         </button>
       </div>
 

@@ -14,6 +14,9 @@ export interface CollectionSpreadState {
 export interface CollectionSpreadValue extends CollectionSpreadState {
   goToNext(): void;
   goToPrevious(): void;
+  // 목차에서 임의 record로 바로 점프할 때 쓴다(순차 이동인 goToNext/goToPrevious와 달리 대상 인덱스를
+  // 직접 받는다). 상한(flatRecords.length) 검증은 호출부가 유효한 인덱스만 넘기는 방식으로 담당한다.
+  goToIndex(index: number): void;
 }
 
 export const initialCollectionSpreadState: CollectionSpreadState = {
