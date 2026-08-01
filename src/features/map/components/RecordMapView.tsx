@@ -12,6 +12,12 @@ const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 // 경계에 걸친 마커 아이콘이 뷰포트 가장자리에서 잘리지 않도록 사방에 동일하게 적용한다.
 const FIT_BOUNDS_PADDING = 48;
 
+// 지도 생성 직후(fitBounds 적용 전)와 bounds가 null(저장된 기록 없음)일 때 유지되는 고정 줌 레벨.
+// 카카오맵 레벨 6 ≈ 반경 500m. 근거: Jira S15P11A705-237 — 기존 레벨 7(약 1km 반경)이 초기
+// 진입 시 지나치게 넓게 보인다는 리포트에 따라 축소. bounds가 있는 경우는 docs/api-contract.md
+// "Place · 지도 · 검색"에 fitBounds 사용이 확정돼 있어 이 값과 무관하게 fitBounds가 우선 적용된다.
+const INITIAL_ZOOM_LEVEL = 6;
+
 type SdkStatus = 'loading' | 'ready' | 'error';
 
 interface RecordMapViewProps {
@@ -45,7 +51,7 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
         }
         const map = new kakao.maps.Map(containerRef.current, {
           center: new kakao.maps.LatLng(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng),
-          level: 7,
+          level: INITIAL_ZOOM_LEVEL,
         });
         mapRef.current = map;
         // 지도 이동/줌 변경은 즉시 재조회하지 않고 "이 지역에서 재검색" 버튼만 노출한다.
