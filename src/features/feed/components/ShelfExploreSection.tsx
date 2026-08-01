@@ -109,27 +109,35 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
                   state: { collectionOverlay: true },
                 });
               }}
-              className="flex flex-col gap-2 rounded-lg border border-line-card bg-white p-4 text-left"
+              className="flex h-[116px] flex-col gap-2 rounded-lg border border-line-card bg-white p-4 text-left"
             >
               <div className="flex items-start justify-between gap-4">
-                <p className="text-base font-bold text-pin-navy">{collection.title}</p>
+                <p className="min-w-0 flex-1 truncate text-base font-bold text-pin-navy">
+                  {collection.title}
+                </p>
                 <p className="flex-none text-xs font-semibold text-log-mint">
                   {collection.recordCount}개
                 </p>
               </div>
 
-              {collection.keywords.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {collection.keywords.map((keyword) => (
+              {/* keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 비워도 이 영역의
+                  높이(h-7)는 그대로 유지해 카드 전체 높이가 키워드 유무와 무관하게 고정되도록 한다. */}
+              <div className="flex h-7 items-center gap-2 overflow-x-auto">
+                {collection.keywords.length > 0 ? (
+                  collection.keywords.map((keyword) => (
                     <span
                       key={keyword}
-                      className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
+                      className="flex-none rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
                     >
                       {keyword}
                     </span>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <p className="truncate text-xs text-ink-gray-light">
+                    AI가 키워드를 분석 중이에요
+                  </p>
+                )}
+              </div>
 
               <p className="text-xs text-ink-gray">{formatDate(collection.createdAt)}</p>
             </button>
