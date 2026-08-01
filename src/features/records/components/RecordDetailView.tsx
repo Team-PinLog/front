@@ -3,7 +3,7 @@ import { ErrorState } from '@/shared/ui/ErrorState';
 import { AddToCollectionButton } from '@/features/collections/components/AddToCollectionButton';
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
 import { useAddRecordContextMutation } from '../hooks/useAddRecordContextMutation';
-import { ContextCard } from './ContextCard';
+import { ContextStickyNoteCard } from './ContextStickyNoteCard';
 
 const CONTEXT_BODY_MAX_LENGTH = 500;
 
@@ -86,10 +86,19 @@ export function RecordDetailView({ recordId }: RecordDetailViewProps) {
         {isOwner && record.contexts!.length === 0 && (
           <p className="text-xs text-ink-gray-light">아직 기록된 맥락이 없어요.</p>
         )}
-        {isOwner &&
-          record.contexts!.map((context) => (
-            <ContextCard key={context.contextId} recordId={recordId} context={context} />
-          ))}
+        {isOwner && record.contexts!.length > 0 && (
+          <div className="flex flex-col">
+            {record.contexts!.map((context, index) => (
+              <ContextStickyNoteCard
+                key={context.contextId}
+                recordId={recordId}
+                context={context}
+                ownedByMe={isOwner}
+                stackIndex={index}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
