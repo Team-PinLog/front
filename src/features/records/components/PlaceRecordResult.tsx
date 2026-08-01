@@ -105,7 +105,7 @@ function CollectionOutcomeSection({
   );
 }
 
-// keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 오류가 아니라 "잠시 후 채워짐" 안내로 처리한다.
+// keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 오류가 아니라 중립 안내로 처리한다.
 export function PlaceRecordResult({
   data,
   collectionCreationResults,
@@ -229,9 +229,7 @@ export function PlaceRecordResult({
           ))}
         </div>
       ) : (
-        <p className="mt-6 text-xs text-ink-gray-light">
-          키워드는 AI가 분석 중이에요. 잠시 후 자동으로 채워집니다.
-        </p>
+        <p className="mt-6 text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
       )}
 
       {savedContext && (
