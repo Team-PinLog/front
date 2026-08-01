@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Team-PinLog/mockup index.html .book-context-postit(라인 284)·hover(라인 289)를 그대로 옮긴 값이다.
+   회전각은 --note-rotate 커스텀 프로퍼티로 인스턴스마다 다르게 주입한다(ContextStickyNote 참고). */
+.context-sticky-note {
+  transform: rotate(var(--note-rotate, 0deg));
+  box-shadow: 0 12px 22px rgba(4, 33, 66, 0.16);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.context-sticky-note:hover,
+.context-sticky-note:focus-within {
+  z-index: 20;
+  transform: translateY(-7px) scale(1.05) rotate(0deg);
+  box-shadow: 0 18px 32px rgba(4, 33, 66, 0.22);
+}

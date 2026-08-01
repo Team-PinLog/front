@@ -2,8 +2,16 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ApiError } from '@/shared/http/types';
 import { getCollectionDetail, type CollectionDetail } from '../api/getCollectionDetail';
 
+// collectionId 없이 "모든 Collection 상세 쿼리"를 가리키는 접두사. TanStack Query의 invalidateQueries는
+// 기본적으로 접두사 일치(exact:false)라, 이 키만으로 마운트된 모든 collectionDetailQueryKey(...)를
+// 무효화할 수 있다 — Context를 어느 Collection이 보여주고 있는지 모르는 records 도메인 훅
+// (useUpdateContextMutation·useDeleteContextMutation)이 이 접두사를 가져다 쓴다.
+export function collectionDetailQueryKeyPrefix() {
+  return ['collections', 'detail'] as const;
+}
+
 export function collectionDetailQueryKey(collectionId: number) {
-  return ['collections', 'detail', collectionId] as const;
+  return [...collectionDetailQueryKeyPrefix(), collectionId] as const;
 }
 
 // PC 웹 펼침 UX: recordSize 기본값(1)은 모바일 책 넘김 기준이라, 웹은 2를 명시해서 요청한다

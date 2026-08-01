@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/shared/http/types';
 import { useDeleteConfirm } from '@/contexts/useDeleteConfirm';
+import { collectionDetailQueryKeyPrefix } from '@/features/collections/hooks/useCollectionDetailQuery';
 import { deleteRecordContext } from '../api/deleteRecordContext';
 import { recordDetailQueryKey } from './useRecordDetailQuery';
 
@@ -16,6 +17,9 @@ export function useDeleteContextMutation(recordId: number) {
     mutationFn: (contextId) => deleteRecordContext({ recordId, contextId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: recordDetailQueryKey(recordId) });
+      // useUpdateContextMutation과 동일한 이유로 Collection 상세 캐시도 접두사로 함께 무효화한다
+      // (이 Context를 보여주는 Collection이 무엇인지 이 훅은 모른다 — 위 파일 주석 참고).
+      queryClient.invalidateQueries({ queryKey: collectionDetailQueryKeyPrefix() });
     },
     onError: (error, contextId) => {
       if (error.code === 'DELETE_CONFIRMATION_REQUIRED' && error.impact) {

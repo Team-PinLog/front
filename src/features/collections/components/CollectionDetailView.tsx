@@ -5,7 +5,7 @@ import { useCollectionSpread } from '@/contexts/useCollectionSpread';
 import { useDeleteConfirm } from '@/contexts/useDeleteConfirm';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSection';
-import { ContextCard } from '@/features/records/components/ContextCard';
+import { ContextStickyNoteCard } from '@/features/records/components/ContextStickyNoteCard';
 import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
 import type { CollectionDetail } from '../api/getCollectionDetail';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
@@ -280,7 +280,7 @@ export function CollectionDetailView({
                   <div>
                     <p className="text-lg font-bold text-pin-navy">{currentRecord.place.name}</p>
                     <p className="text-xs font-semibold text-log-mint">
-                      {currentRecord.place.address}
+                      📍 {currentRecord.place.address}
                     </p>
                   </div>
                   {ownedByMe ? (
@@ -298,6 +298,8 @@ export function CollectionDetailView({
                   )}
                 </div>
 
+                {/* keywords: []는 AI 분석 미완료의 정상 상태다(architecture.md 5장) — 뱃지 영역 자체를
+                    생략해 빈 상태를 자연스럽게 처리한다(에러로 취급하지 않는다). */}
                 {currentRecord.keywords.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {currentRecord.keywords.map((keyword) => (
@@ -305,7 +307,7 @@ export function CollectionDetailView({
                         key={keyword}
                         className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
                       >
-                        {keyword}
+                        #{keyword}
                       </span>
                     ))}
                   </div>
@@ -314,15 +316,17 @@ export function CollectionDetailView({
                 {/* contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다(privacy-rules.md 1장) — null이면
                     이 영역 자체를 렌더하지 않는다(런타임 접근도 하지 않는다). */}
                 {ownedByMe && currentRecord.contexts && (
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col">
                     {currentRecord.contexts.length === 0 ? (
                       <p className="text-xs text-ink-gray-light">아직 기록된 맥락이 없어요.</p>
                     ) : (
-                      currentRecord.contexts.map((context) => (
-                        <ContextCard
+                      currentRecord.contexts.map((context, index) => (
+                        <ContextStickyNoteCard
                           key={context.contextId}
                           recordId={currentRecord.recordId}
                           context={context}
+                          ownedByMe={ownedByMe}
+                          stackIndex={index}
                         />
                       ))
                     )}
