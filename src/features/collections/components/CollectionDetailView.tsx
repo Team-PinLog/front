@@ -263,6 +263,7 @@ export function CollectionDetailView({
             places={isLoadingAllPlaces ? [] : mapPlaces}
             activeRecordId={currentRecord.recordId}
             isLoadingAll={isLoadingAllPlaces}
+            fitAllBounds={isTocOpen}
           />
         </div>
 

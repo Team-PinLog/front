@@ -10,7 +10,11 @@ import {
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 // 스프레드 전환마다 확대 레벨을 바꾸지 않고 고정한다 — 강조 마커로 이동(setCenter)만 하고, 레벨은
 // Collection 전체를 둘러보기 좋은 고정값으로 유지한다(구현 단순성 우선. 근거: Jira S15P11A705-171 논의).
+// 목차(fitAllBounds=true) 페이지에서는 이 고정 레벨 대신 전체 좌표 fitBounds를 우선 적용한다(245).
 const FIXED_LEVEL = 6;
+// 목차 페이지 fitBounds 여유(px). RecordMapView.tsx의 FIT_BOUNDS_PADDING과 동일한 근거
+// (docs/reference/08_API_명세.md 4.2) — 다른 화면이지만 "여백 포함 fitBounds" 의미가 같아 같은 값을 쓴다.
+const FIT_BOUNDS_PADDING = 48;
 
 type SdkStatus = 'loading' | 'ready' | 'error';
 
@@ -28,19 +32,24 @@ interface CollectionSpreadMapProps {
   // 이 동안 places는 항상 빈 배열로 전달돼(핀이 하나씩 느는 방식을 피하려는 의도) "장소 없음"과
   // "아직 불러오는 중"을 구분해서 안내해야 한다.
   isLoadingAll: boolean;
+  // true면 활성 record 중심의 고정 레벨 대신 places 전체 좌표를 감싸는 fitBounds를 적용한다.
+  // 목차(CollectionToc) 페이지 전용 모드다. 근거: Jira S15P11A705-245.
+  fitAllBounds: boolean;
 }
 
 /**
- * Collection 상세(플립북)의 왼쪽 페이지 지도. 근거: Jira S15P11A705-171.
+ * Collection 상세(플립북)의 왼쪽 페이지 지도. 근거: Jira S15P11A705-171, S15P11A705-245.
  * KakaoPlaceMap.tsx(단일 마커 전용)를 재사용하지 않고 새로 만든다 — 이 화면은 로드된 모든 record 위치를
  * 고정 마커로 유지한 채, 현재 오른쪽 페이지의 record만 강조 마커(CustomOverlay)로 구분해야 해서
  * 다중 마커 렌더링이 필요하다(마커 배열 관리는 features/map/components/RecordMapView.tsx 패턴 참고,
- * 단 이 화면은 클릭 인터랙션이 없다).
+ * 단 이 화면은 클릭 인터랙션이 없다). 목차 페이지(fitAllBounds)에서는 같은 마커 위에 fitBounds만
+ * RecordMapView.tsx의 setBounds+padding 패턴을 그대로 적용한다.
  */
 export function CollectionSpreadMap({
   places,
   activeRecordId,
   isLoadingAll,
+  fitAllBounds,
 }: CollectionSpreadMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
@@ -108,10 +117,28 @@ export function CollectionSpreadMap({
         xAnchor: 0.5,
         yAnchor: 0.5,
       });
-      map.setCenter(position);
+    }
+
+    // 목차 페이지: 활성 record 중심이 아니라 places 전체를 감싸는 최소 사각형으로 fitBounds한다.
+    // 1개면 sw=ne인 점 사각형이 되는데, 이는 08_API_명세.md 4.2가 문서화한 "1개면 점 사각형" 규칙과
+    // 같은 모양이라 RecordMapView.tsx와 동일하게 별도 분기 없이 setBounds에 그대로 넘긴다.
+    if (fitAllBounds && places.length > 0) {
+      const lats = places.map((place) => place.lat);
+      const lngs = places.map((place) => place.lng);
+      const sw = new kakao.maps.LatLng(Math.min(...lats), Math.min(...lngs));
+      const ne = new kakao.maps.LatLng(Math.max(...lats), Math.max(...lngs));
+      map.setBounds(
+        new kakao.maps.LatLngBounds(sw, ne),
+        FIT_BOUNDS_PADDING,
+        FIT_BOUNDS_PADDING,
+        FIT_BOUNDS_PADDING,
+        FIT_BOUNDS_PADDING,
+      );
+    } else if (activePlace) {
+      map.setCenter(new kakao.maps.LatLng(activePlace.lat, activePlace.lng));
     }
     map.relayout();
-  }, [places, activeRecordId, status]);
+  }, [places, activeRecordId, status, fitAllBounds]);
 
   const overlayMessage =
     status === 'error'
