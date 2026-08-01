@@ -10,11 +10,12 @@ import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirm
 import type { CollectionDetail } from '../api/getCollectionDetail';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
 import { AddRecordToCollectionDialog } from './AddRecordToCollectionDialog';
+import { CollectionIndexRail } from './CollectionIndexRail';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
 import { RecordRemoveButton } from './RecordRemoveButton';
 import { RecordSaveButton } from './RecordSaveButton';
 
-type CollectionRecordItem = CollectionDetail['records']['items'][number];
+export type CollectionRecordItem = CollectionDetail['records']['items'][number];
 
 interface CollectionDetailViewProps {
   collectionId: number;
@@ -242,6 +243,15 @@ export function CollectionDetailView({
     setIsTocOpen(false);
   };
 
+  // 246: 우측 인덱스 레일 탭 클릭. handlePrevious/handleNext(216-226행)와 같은 이유로 Context 강제
+  // 삭제 확인(409) 모달이 열려 있는 동안은 이동을 막는다 — currentRecord가 바뀌면 그 모달이 다루는
+  // recordId와 어긋나는 레이스가 생긴다(211-214행 주석 참고).
+  const handleSelectFromIndexRail = (index: number) => {
+    if (!isRecordDeleteConfirmOpen) {
+      spreadState.goToIndex(index);
+    }
+  };
+
   const mapPlaces = flatRecords.map((record) => ({
     recordId: record.recordId,
     name: record.place.name,
@@ -255,88 +265,101 @@ export function CollectionDetailView({
 
       {/* 목업 book-spread(1290-1299행) 참고 — 좌우 페이지 안쪽에 그림자를 넣어 책 가운데 골(gutter)처럼
           보이게 하고, 바깥쪽 모서리만 둥글게 남겨 펼친 책 프레임을 흉내낸다. 데이터 흐름은 그대로다. */}
-      <div className="relative flex flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-[0_30px_60px_-24px_rgba(4,33,66,0.35)] md:h-[520px] md:flex-row">
-        <div className="h-72 flex-none bg-paper-white p-4 md:h-auto md:flex-1 md:rounded-l-2xl md:p-6 md:shadow-[inset_-18px_0_24px_-16px_rgba(4,33,66,0.14)]">
-          {/* 전체 로드가 끝나기 전에는 마커를 하나도 그리지 않고 로딩 표시만 한다(가벼운 표시, 화면
-              전체를 막지 않음) — 넘길 때마다 핀이 하나씩 느는 방식을 피하기 위함. */}
-          <CollectionSpreadMap
-            places={isLoadingAllPlaces ? [] : mapPlaces}
-            activeRecordId={currentRecord.recordId}
-            isLoadingAll={isLoadingAllPlaces}
-            fitAllBounds={isTocOpen}
-          />
-        </div>
-
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-paper-white p-6 md:rounded-r-2xl md:shadow-[inset_18px_0_24px_-16px_rgba(4,33,66,0.12)]">
-          {isTocOpen ? (
-            <CollectionToc
-              records={flatRecords}
-              activeIndex={currentIndex}
-              onSelect={handleSelectFromToc}
+      <div className="flex items-start gap-3">
+        <div className="relative flex flex-1 flex-col overflow-hidden rounded-2xl border border-line-card bg-paper-white shadow-[0_30px_60px_-24px_rgba(4,33,66,0.35)] md:h-[520px] md:flex-row">
+          <div className="h-72 flex-none bg-paper-white p-4 md:h-auto md:flex-1 md:rounded-l-2xl md:p-6 md:shadow-[inset_-18px_0_24px_-16px_rgba(4,33,66,0.14)]">
+            {/* 전체 로드가 끝나기 전에는 마커를 하나도 그리지 않고 로딩 표시만 한다(가벼운 표시, 화면
+                전체를 막지 않음) — 넘길 때마다 핀이 하나씩 느는 방식을 피하기 위함. */}
+            <CollectionSpreadMap
+              places={isLoadingAllPlaces ? [] : mapPlaces}
+              activeRecordId={currentRecord.recordId}
+              isLoadingAll={isLoadingAllPlaces}
+              fitAllBounds={isTocOpen}
             />
-          ) : (
-            <SpreadFadeIn key={currentRecord.recordId}>
-              <div className="flex flex-col gap-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-lg font-bold text-pin-navy">{currentRecord.place.name}</p>
-                    <p className="text-xs font-semibold text-log-mint">
-                      📍 {currentRecord.place.address}
-                    </p>
-                  </div>
-                  {ownedByMe ? (
-                    <RecordRemoveButton
-                      collectionId={collectionId}
-                      recordId={currentRecord.recordId}
-                    />
-                  ) : (
-                    <RecordSaveButton
-                      place={currentRecord.place}
-                      collectionId={collectionId}
-                      feedRequestId={feedRequestId}
-                      feedPosition={feedPosition}
-                    />
-                  )}
-                </div>
+          </div>
 
-                {/* keywords: []는 AI 분석 미완료의 정상 상태다(architecture.md 5장) — 뱃지 영역 자체를
-                    생략해 빈 상태를 자연스럽게 처리한다(에러로 취급하지 않는다). */}
-                {currentRecord.keywords.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {currentRecord.keywords.map((keyword) => (
-                      <span
-                        key={keyword}
-                        className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
-                      >
-                        #{keyword}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다(privacy-rules.md 1장) — null이면
-                    이 영역 자체를 렌더하지 않는다(런타임 접근도 하지 않는다). */}
-                {ownedByMe && currentRecord.contexts && (
-                  <div className="flex flex-col">
-                    {currentRecord.contexts.length === 0 ? (
-                      <p className="text-xs text-ink-gray-light">아직 기록된 맥락이 없어요.</p>
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-paper-white p-6 md:rounded-r-2xl md:shadow-[inset_18px_0_24px_-16px_rgba(4,33,66,0.12)]">
+            {isTocOpen ? (
+              <CollectionToc
+                records={flatRecords}
+                activeIndex={currentIndex}
+                onSelect={handleSelectFromToc}
+              />
+            ) : (
+              <SpreadFadeIn key={currentRecord.recordId}>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-lg font-bold text-pin-navy">{currentRecord.place.name}</p>
+                      <p className="text-xs font-semibold text-log-mint">
+                        📍 {currentRecord.place.address}
+                      </p>
+                    </div>
+                    {ownedByMe ? (
+                      <RecordRemoveButton
+                        collectionId={collectionId}
+                        recordId={currentRecord.recordId}
+                      />
                     ) : (
-                      currentRecord.contexts.map((context, index) => (
-                        <ContextStickyNoteCard
-                          key={context.contextId}
-                          recordId={currentRecord.recordId}
-                          context={context}
-                          ownedByMe={ownedByMe}
-                          stackIndex={index}
-                        />
-                      ))
+                      <RecordSaveButton
+                        place={currentRecord.place}
+                        collectionId={collectionId}
+                        feedRequestId={feedRequestId}
+                        feedPosition={feedPosition}
+                      />
                     )}
                   </div>
-                )}
-              </div>
-            </SpreadFadeIn>
-          )}
+
+                  {/* keywords: []는 AI 분석 미완료의 정상 상태다(architecture.md 5장) — 뱃지 영역 자체를
+                      생략해 빈 상태를 자연스럽게 처리한다(에러로 취급하지 않는다). */}
+                  {currentRecord.keywords.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {currentRecord.keywords.map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
+                        >
+                          #{keyword}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다(privacy-rules.md 1장) — null이면
+                      이 영역 자체를 렌더하지 않는다(런타임 접근도 하지 않는다). */}
+                  {ownedByMe && currentRecord.contexts && (
+                    <div className="flex flex-col">
+                      {currentRecord.contexts.length === 0 ? (
+                        <p className="text-xs text-ink-gray-light">아직 기록된 맥락이 없어요.</p>
+                      ) : (
+                        currentRecord.contexts.map((context, index) => (
+                          <ContextStickyNoteCard
+                            key={context.contextId}
+                            recordId={currentRecord.recordId}
+                            context={context}
+                            ownedByMe={ownedByMe}
+                            stackIndex={index}
+                          />
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </SpreadFadeIn>
+            )}
+          </div>
         </div>
+
+        {/* 246: 목차(CollectionToc) 패널이 이미 같은 record 목록을 보여주므로, 목차가 열려 있는 동안은
+            이 레일을 렌더링하지 않아 중복 목록이 동시에 보이지 않게 한다. */}
+        {!isTocOpen && (
+          <CollectionIndexRail
+            records={flatRecords}
+            activeIndex={currentIndex}
+            disabled={isRecordDeleteConfirmOpen}
+            onSelect={handleSelectFromIndexRail}
+          />
+        )}
       </div>
 
       <div className="flex items-center justify-center gap-4">
