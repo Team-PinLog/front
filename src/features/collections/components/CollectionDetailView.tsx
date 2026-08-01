@@ -288,7 +288,7 @@ export function CollectionDetailView({
             ) : (
               <SpreadFadeIn key={currentRecord.recordId}>
                 <div className="flex flex-col gap-4">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <p className="text-lg font-bold text-pin-navy">{currentRecord.place.name}</p>
                       <p className="text-xs font-semibold text-log-mint">

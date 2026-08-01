@@ -99,17 +99,16 @@ export function RecordSaveButton({
   }
 
   return (
-    <div className="flex flex-none flex-col items-end gap-1">
-      <input
-        type="text"
+    <div className="flex w-full basis-full flex-col gap-1">
+      <textarea
         value={contextBody}
         onChange={(event) => setContextBody(event.target.value)}
         maxLength={CONTEXT_BODY_MAX_LENGTH}
         placeholder="이 장소에서 기억하고 싶은 맥락을 적어보세요"
         disabled={createMutation.isPending}
-        className="h-9 w-56 rounded-lg border border-pin-navy/15 bg-white px-2 text-xs text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20 disabled:opacity-40"
+        className="min-h-[80px] w-full resize-none rounded-lg border border-pin-navy/15 bg-white p-2 text-sm leading-relaxed text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20 disabled:opacity-40"
       />
-      <p className="text-[11px] text-ink-gray-light">
+      <p className="text-right text-[11px] text-ink-gray-light">
         {contextBody.length}/{CONTEXT_BODY_MAX_LENGTH}
       </p>
 
@@ -117,7 +116,7 @@ export function RecordSaveButton({
         <p className="text-xs text-red-600">{createMutation.error.message}</p>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2">
         <button
           type="button"
           onClick={handleCancel}
