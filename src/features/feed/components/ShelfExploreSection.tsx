@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { getIsLoggedIn } from '@/features/auth/lib/getIsLoggedIn';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
+import { formatDate } from '@/shared/lib/formatDate';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useShelfExploreQuery } from '../hooks/useShelfExploreQuery';
 import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
@@ -130,7 +131,7 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
                 </div>
               )}
 
-              <p className="text-xs text-ink-gray">{collection.createdAt}</p>
+              <p className="text-xs text-ink-gray">{formatDate(collection.createdAt)}</p>
             </button>
           ))}
         </div>

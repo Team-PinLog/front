@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { formatDate } from '@/shared/lib/formatDate';
 import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
@@ -99,7 +100,7 @@ export function FeedList() {
                 )}
 
                 <p className="text-[10px] font-semibold text-log-mint">{item.recordCount}개 장소</p>
-                <p className="text-[10px] text-ink-gray-light">{item.createdAt}</p>
+                <p className="text-[10px] text-ink-gray-light">{formatDate(item.createdAt)}</p>
               </div>
             </button>
 
