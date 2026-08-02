@@ -60,36 +60,37 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Load and mask dev public build variables
+      - name: Build frontend with dev repository secrets
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' }}
-        uses: ./.github/actions/load-masked-build-vars
-        with:
-          vite_api_base_url: ${{ vars.VITE_API_BASE_URL }}
-          vite_kakao_rest_key: ${{ vars.VITE_KAKAO_REST_KEY }}
-          vite_kakao_js_key: ${{ vars.VITE_KAKAO_JS_KEY }}
-
-      - name: Set pull request public build placeholders
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          set -euo pipefail
-          printf '%s=%s\n' VITE_API_BASE_URL /api/core/v1 >> "$GITHUB_ENV"
-          printf '%s=%s\n' VITE_KAKAO_REST_KEY ci-public-rest-key >> "$GITHUB_ENV"
-          printf '%s=%s\n' VITE_KAKAO_JS_KEY ci-public-js-key >> "$GITHUB_ENV"
-
-      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_KAKAO_REST_KEY: ${{ secrets.VITE_KAKAO_REST_KEY }}
+          VITE_KAKAO_JS_KEY: ${{ secrets.VITE_KAKAO_JS_KEY }}
         run: |
           set -euo pipefail
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL must be a non-empty build-time value}"
           : "${VITE_KAKAO_REST_KEY:?VITE_KAKAO_REST_KEY must be a non-empty build-time value}"
           : "${VITE_KAKAO_JS_KEY:?VITE_KAKAO_JS_KEY must be a non-empty build-time value}"
           npm run build
+          if ! grep --recursive --fixed-strings --quiet -- "$VITE_API_BASE_URL" dist; then
+            echo "::error::Built dist does not contain the configured API base URL"
+            exit 1
+          fi
 
-      - name: Assert API base URL in dist
+      - name: Build frontend with pull request placeholders
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          VITE_API_BASE_URL: /api/core/v1
+          VITE_KAKAO_REST_KEY: ci-public-rest-key
+          VITE_KAKAO_JS_KEY: ci-public-js-key
         run: |
           set -euo pipefail
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL must be a non-empty build-time value}"
+          : "${VITE_KAKAO_REST_KEY:?VITE_KAKAO_REST_KEY must be a non-empty build-time value}"
+          : "${VITE_KAKAO_JS_KEY:?VITE_KAKAO_JS_KEY must be a non-empty build-time value}"
+          npm run build
           if ! grep --recursive --fixed-strings --quiet -- "$VITE_API_BASE_URL" dist; then
-            echo "::error::Built dist does not contain the configured VITE_API_BASE_URL"
+            echo "::error::Built dist does not contain the configured API base URL"
             exit 1
           fi
 
@@ -193,17 +194,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Load and mask image identity variables
-        uses: ./.github/actions/load-masked-build-vars
-        with:
-          vite_api_base_url: ${{ vars.VITE_API_BASE_URL }}
-          vite_kakao_rest_key: ${{ vars.VITE_KAKAO_REST_KEY }}
-          vite_kakao_js_key: ${{ vars.VITE_KAKAO_JS_KEY }}
-          deploy_canary_rev: ${{ vars.DEPLOY_CANARY_REV }}
-
       - name: Resolve run-bound immutable image identity
         id: identity
         shell: bash
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_KAKAO_REST_KEY: ${{ secrets.VITE_KAKAO_REST_KEY }}
+          VITE_KAKAO_JS_KEY: ${{ secrets.VITE_KAKAO_JS_KEY }}
+          DEPLOY_CANARY_REV: ${{ secrets.DEPLOY_CANARY_REV }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
