@@ -60,23 +60,34 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Validate dev public build variables
+      - name: Load and mask dev public build variables
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' }}
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
-          VITE_KAKAO_JS_KEY: ${{ vars.VITE_KAKAO_JS_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          VITE_API_BASE_URL=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/VITE_API_BASE_URL" --jq .value)
+          printf '::add-mask::%s\n' "$VITE_API_BASE_URL"
+          VITE_KAKAO_REST_KEY=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/VITE_KAKAO_REST_KEY" --jq .value)
+          printf '::add-mask::%s\n' "$VITE_KAKAO_REST_KEY"
+          VITE_KAKAO_JS_KEY=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/VITE_KAKAO_JS_KEY" --jq .value)
+          printf '::add-mask::%s\n' "$VITE_KAKAO_JS_KEY"
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL GitHub Actions Variable must be configured}"
           : "${VITE_KAKAO_REST_KEY:?VITE_KAKAO_REST_KEY GitHub Actions Variable must be configured}"
           : "${VITE_KAKAO_JS_KEY:?VITE_KAKAO_JS_KEY GitHub Actions Variable must be configured}"
+          printf '%s=%s\n' VITE_API_BASE_URL "$VITE_API_BASE_URL" >> "$GITHUB_ENV"
+          printf '%s=%s\n' VITE_KAKAO_REST_KEY "$VITE_KAKAO_REST_KEY" >> "$GITHUB_ENV"
+          printf '%s=%s\n' VITE_KAKAO_JS_KEY "$VITE_KAKAO_JS_KEY" >> "$GITHUB_ENV"
+
+      - name: Set pull request public build placeholders
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          printf '%s=%s\n' VITE_API_BASE_URL /api/core/v1 >> "$GITHUB_ENV"
+          printf '%s=%s\n' VITE_KAKAO_REST_KEY ci-public-rest-key >> "$GITHUB_ENV"
+          printf '%s=%s\n' VITE_KAKAO_JS_KEY ci-public-js-key >> "$GITHUB_ENV"
 
       - name: Build frontend
-        env:
-          VITE_API_BASE_URL: ${{ github.event_name == 'pull_request' && '/api/core/v1' || vars.VITE_API_BASE_URL }}
-          VITE_KAKAO_REST_KEY: ${{ github.event_name == 'pull_request' && 'ci-public-rest-key' || vars.VITE_KAKAO_REST_KEY }}
-          VITE_KAKAO_JS_KEY: ${{ github.event_name == 'pull_request' && 'ci-public-js-key' || vars.VITE_KAKAO_JS_KEY }}
         run: |
           set -euo pipefail
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL must be a non-empty build-time value}"
@@ -85,8 +96,6 @@ jobs:
           npm run build
 
       - name: Assert API base URL in dist
-        env:
-          VITE_API_BASE_URL: ${{ github.event_name == 'pull_request' && '/api/core/v1' || vars.VITE_API_BASE_URL }}
         run: |
           set -euo pipefail
           : "${VITE_API_BASE_URL:?VITE_API_BASE_URL must be a non-empty build-time value}"
@@ -199,12 +208,17 @@ jobs:
         id: identity
         shell: bash
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
-          VITE_KAKAO_JS_KEY: ${{ vars.VITE_KAKAO_JS_KEY }}
-          DEPLOY_CANARY_REV: ${{ vars.DEPLOY_CANARY_REV }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          VITE_API_BASE_URL=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/VITE_API_BASE_URL" --jq .value)
+          printf '::add-mask::%s\n' "$VITE_API_BASE_URL"
+          VITE_KAKAO_REST_KEY=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/VITE_KAKAO_REST_KEY" --jq .value)
+          printf '::add-mask::%s\n' "$VITE_KAKAO_REST_KEY"
+          VITE_KAKAO_JS_KEY=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/VITE_KAKAO_JS_KEY" --jq .value)
+          printf '::add-mask::%s\n' "$VITE_KAKAO_JS_KEY"
+          DEPLOY_CANARY_REV=$(gh api "repos/$GITHUB_REPOSITORY/environments/dev/variables/DEPLOY_CANARY_REV" --jq .value)
+          printf '::add-mask::%s\n' "$DEPLOY_CANARY_REV"
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
@@ -213,6 +227,7 @@ jobs:
           : "${VITE_KAKAO_JS_KEY:?missing variable}"
           : "${DEPLOY_CANARY_REV:?missing variable}"
           [[ "$DEPLOY_CANARY_REV" =~ ^[A-Za-z0-9._-]+$ ]]
+          export VITE_API_BASE_URL VITE_KAKAO_REST_KEY VITE_KAKAO_JS_KEY DEPLOY_CANARY_REV
           fingerprint=$(python3 - <<'PY'
           import hashlib, os, sys
           names = ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY", "DEPLOY_CANARY_REV")
