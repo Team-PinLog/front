@@ -8,6 +8,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 RUNTIME_CONTRACT = ROOT / ".github" / "pinlog" / "runtime-config.dev.yaml"
+MASKED_VARS_ACTION = ROOT / ".github" / "actions" / "load-masked-build-vars"
 FULL_SHA = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 IMAGE = "ghcr.io/team-pinlog/front"
 BASE_IMAGE = (
@@ -89,20 +90,24 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual(spec["rollout"]["mode"], "image-rebuild")
 
-    def test_dev_push_fails_closed_when_public_github_variables_are_missing(self):
+    def test_dev_push_loads_public_variables_through_local_javascript_action(self):
         check = self.jobs["check"]
-        validation = named_step(check, "Load and mask dev public build variables")
+        loader = named_step(check, "Load and mask dev public build variables")
         self.assertEqual(
-            validation["if"],
+            loader["if"],
             "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' }}",
         )
+        self.assertEqual(loader["uses"], "./.github/actions/load-masked-build-vars")
+        self.assertNotIn("run", loader)
+        self.assertNotIn("env", loader)
         self.assertEqual(
-            validation["env"],
-            {"GH_TOKEN": "${{ github.token }}"},
+            loader["with"],
+            {
+                "vite_api_base_url": "${{ vars.VITE_API_BASE_URL }}",
+                "vite_kakao_rest_key": "${{ vars.VITE_KAKAO_REST_KEY }}",
+                "vite_kakao_js_key": "${{ vars.VITE_KAKAO_JS_KEY }}",
+            },
         )
-        for variable in ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY"):
-            self.assertIn(f"actions/variables/{variable}", validation["run"])
-            self.assertIn(f'"${{{variable}:?', validation["run"])
 
     def test_pull_request_build_uses_value_free_public_placeholders(self):
         check = self.jobs["check"]
@@ -288,60 +293,78 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
     def test_manual_publish_requires_canary_revision_in_config_fingerprint_only(self):
         publish = self.jobs["image-publish"]
         self.assertEqual(publish.get("environment"), "dev")
-        identity = named_step(publish, "Resolve run-bound immutable image identity")
-        self.assertEqual(identity["env"], {"GH_TOKEN": "${{ github.token }}"})
-        self.assertIn(
-            "environments/dev/variables/DEPLOY_CANARY_REV", identity["run"]
+        loader = named_step(publish, "Load and mask image identity variables")
+        self.assertEqual(loader["uses"], "./.github/actions/load-masked-build-vars")
+        self.assertNotIn("run", loader)
+        self.assertNotIn("env", loader)
+        self.assertEqual(
+            loader["with"]["deploy_canary_rev"],
+            "${{ vars.DEPLOY_CANARY_REV }}",
         )
+
+        identity = named_step(publish, "Resolve run-bound immutable image identity")
+        self.assertNotIn("env", identity)
         self.assertIn(': "${DEPLOY_CANARY_REV:?missing variable}"', identity["run"])
         self.assertIn(
             'names = ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", '
             '"VITE_KAKAO_JS_KEY", "DEPLOY_CANARY_REV")',
             identity["run"],
         )
+        self.assertIn('[[ "$DEPLOY_CANARY_REV" =~ ^[A-Za-z0-9._-]+$ ]]', identity["run"])
 
         check = self.jobs["check"]
         build = named_step(check, "Build frontend")
         self.assertNotIn("DEPLOY_CANARY_REV", build.get("env", {}))
         self.assertNotIn("DEPLOY_CANARY_REV", build["run"])
+        self.assertNotIn("deploy_canary_rev", named_step(check, "Load and mask dev public build variables")["with"])
         contract = yaml.safe_load(RUNTIME_CONTRACT.read_text())
         self.assertNotIn("DEPLOY_CANARY_REV", contract["spec"]["publicVariables"])
         self.assertNotIn("DEPLOY_CANARY_REV", RUNTIME_CONTRACT.read_text())
 
-    def test_variable_values_are_masked_before_entering_runner_renderable_channels(self):
+    def test_variables_use_local_javascript_action_without_runner_or_api_exposure(self):
         workflow_text = WORKFLOW.read_text()
-        variable_names = (
-            "VITE_API_BASE_URL",
-            "VITE_KAKAO_REST_KEY",
-            "VITE_KAKAO_JS_KEY",
-            "DEPLOY_CANARY_REV",
-        )
-        for name in variable_names:
-            self.assertNotIn(f"${{{{ vars.{name} }}}}", workflow_text)
+        self.assertNotIn("actions/variables/", workflow_text)
+        self.assertNotRegex(workflow_text, r"(?m)^\s*(?:run|env):.*\$\{\{\s*vars\.")
 
-        check = self.jobs["check"]
-        loader = named_step(check, "Load and mask dev public build variables")
-        self.assertEqual(
-            loader["if"],
-            "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' }}",
-        )
-        self.assertEqual(loader["env"], {"GH_TOKEN": "${{ github.token }}"})
-        for name in variable_names[:3]:
-            assignment = f'{name}=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/{name}" --jq .value)'
-            mask = f'printf \'::add-mask::%s\\n\' "${name}"'
-            export = f'printf \'%s=%s\\n\' {name} "${name}" >> "$GITHUB_ENV"'
-            self.assertIn(assignment, loader["run"])
-            self.assertLess(loader["run"].index(assignment), loader["run"].index(mask))
-            self.assertLess(loader["run"].index(mask), loader["run"].index(export))
+        allowed_step_names = {
+            "Load and mask dev public build variables",
+            "Load and mask image identity variables",
+        }
+        vars_steps = []
+        for job in self.jobs.values():
+            for step in job["steps"]:
+                rendered = yaml.safe_dump(step)
+                if "${{ vars." in rendered:
+                    vars_steps.append(step)
+                    self.assertIn(step.get("name"), allowed_step_names)
+                    self.assertEqual(step.get("uses"), "./.github/actions/load-masked-build-vars")
+                    self.assertNotIn("run", step)
+                    self.assertNotIn("env", step)
+        self.assertEqual({step["name"] for step in vars_steps}, allowed_step_names)
 
-        identity = named_step(
-            self.jobs["image-publish"], "Resolve run-bound immutable image identity"
+    def test_local_action_is_dependency_free_fail_closed_and_masks_before_env_write(self):
+        metadata = yaml.safe_load((MASKED_VARS_ACTION / "action.yml").read_text())
+        self.assertEqual(metadata["runs"], {"using": "node20", "main": "main.js"})
+        self.assertNotEqual(metadata["runs"]["using"], "composite")
+        self.assertNotIn("node_modules", metadata["runs"]["main"])
+        for name in (
+            "vite_api_base_url",
+            "vite_kakao_rest_key",
+            "vite_kakao_js_key",
+            "deploy_canary_rev",
+        ):
+            self.assertIn(name, metadata["inputs"])
+
+        source = (MASKED_VARS_ACTION / "main.js").read_text()
+        self.assertNotRegex(source, r'require\([\'\"]@actions/')
+        self.assertNotRegex(source, r'from [\'\"]@actions/')
+        self.assertIn("value.length === 0", source)
+        self.assertIn("::add-mask::", source)
+        self.assertIn("GITHUB_ENV", source)
+        self.assertLess(
+            source.index("writeSync(process.stdout.fd"),
+            source.index("appendFileSync(githubEnv"),
         )
-        self.assertEqual(identity["env"], {"GH_TOKEN": "${{ github.token }}"})
-        for name in variable_names:
-            mask = f'printf \'::add-mask::%s\\n\' "${name}"'
-            self.assertIn(mask, identity["run"])
-            self.assertLess(identity["run"].index(mask), identity["run"].index("fingerprint=$("))
 
     def test_manual_composite_publish_contract(self):
         check = self.jobs["check"]
@@ -371,7 +394,7 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
     def test_all_third_party_actions_are_pinned_to_full_commit_shas(self):
         for job_name, job in self.jobs.items():
             for step in job["steps"]:
-                if "uses" in step:
+                if "uses" in step and not step["uses"].startswith("./"):
                     with self.subTest(job=job_name, action=step["uses"]):
                         self.assertRegex(step["uses"], FULL_SHA)
 

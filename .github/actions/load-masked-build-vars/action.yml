@@ -1,0 +1,18 @@
+name: Load masked build variables
+description: Mask provided GitHub Actions variable inputs before exporting them to later steps.
+inputs:
+  vite_api_base_url:
+    description: Public Vite API base URL
+    required: true
+  vite_kakao_rest_key:
+    description: Public Kakao REST key
+    required: true
+  vite_kakao_js_key:
+    description: Public Kakao JavaScript key
+    required: true
+  deploy_canary_rev:
+    description: Optional deploy canary revision for image identity
+    required: false
+runs:
+  using: node20
+  main: main.js
