@@ -3,8 +3,10 @@
 The `dev` frontend image is built with the public configuration declared in
 `.github/pinlog/runtime-config.dev.yaml`:
 
-- `VITE_API_BASE_URL`, `VITE_KAKAO_REST_KEY`, and `VITE_KAKAO_JS_KEY` are public build configuration. Vite embeds every `VITE_*` value in the browser bundle, so these values must not be called or managed as Secrets or SealedSecrets.
-- The `dev` push workflow reads all three values from repository-level GitHub Actions Variables. A missing or empty variable fails the workflow before the build. The repository currently has no configured Actions Variables or Environment, so all three variables are a required deployment prerequisite; this PR does not create them.
+- `VITE_API_BASE_URL`, `VITE_KAKAO_REST_KEY`, and `VITE_KAKAO_JS_KEY` are public browser inputs, not confidential runtime credentials. Vite embeds every `VITE_*` value in the browser bundle; Kubernetes Secrets or SealedSecrets therefore cannot make the resulting values private.
+- The `dev` push and image-publish paths read all three values from repository-level GitHub Actions Secrets. Secret storage is used only to protect CI log handling: GitHub's automatic masking covers runner metadata and expression rendering, whereas Actions Variables and local-action `with` inputs can be rendered before masking. Run scripts validate nonempty values without printing them and do not rely on manual masking commands.
+- `DEPLOY_CANARY_REV` is read only by the `image-publish` job from the `dev` Environment Secret context. It participates in the image configuration fingerprint and tag, but is never injected into Vite or the browser bundle.
+- Missing or empty inputs fail closed before build or publish; the canary revision must also match `[A-Za-z0-9._-]+`. This PR does not create or modify repository Secrets, Environment Secrets, Variables, or Environments.
 - Pull-request CI uses non-sensitive placeholders and validates the contract without reading real key values. The contract declares `ownerSecretKeys: []`; therefore no sealing or dispatch action/job is invoked. A server-side runtime consumer must be introduced before adding a Secret handoff.
 - Kubernetes runtime environment variables cannot change an existing bundle. Changing one of these public variables requires an image rebuild; the resulting immutable image SHA/digest is then rolled out through Infra GitOps.
 - The image runs as UID/GID `101:101`, with `allowPrivilegeEscalation: false` and all Linux capabilities dropped.
