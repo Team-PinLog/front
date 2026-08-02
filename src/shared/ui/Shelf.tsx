@@ -93,11 +93,11 @@ export function ShelfBookSpine({ title, index, recordCount, onClick }: ShelfBook
       onClick={onClick}
       title={title}
       style={{ width, height, backgroundColor: getSpineColor(index) }}
-      className="flex flex-none flex-col items-center justify-start overflow-hidden rounded-t-sm rounded-b-[2px] border border-black/20 pb-2 pt-3 shadow-[2px_0_5px_rgba(0,0,0,.3)] transition-transform hover:-translate-y-2"
+      className="relative flex flex-none flex-col items-center justify-start overflow-hidden rounded-t-sm rounded-b-[2px] border border-black/20 pb-2 pt-3 shadow-[2px_0_5px_rgba(0,0,0,.3)] transition-transform before:pointer-events-none before:absolute before:inset-y-0 before:left-1 before:w-px before:bg-white/20 before:shadow-[2px_0_0_rgba(4,18,38,.13)] before:content-[''] after:pointer-events-none after:absolute after:inset-[8px_4px] after:border-y after:border-t-white/30 after:border-b-[rgba(4,18,38,.3)] after:shadow-[0_2px_0_rgba(4,18,38,.1),0_-2px_0_rgba(255,255,255,.1)] after:content-[''] hover:-translate-y-2"
     >
       <span
         style={{ maxHeight: height - 24 }}
-        className="[writing-mode:vertical-rl] overflow-hidden whitespace-nowrap text-[10px] font-bold text-white [text-shadow:0_1px_3px_rgba(4,18,38,.5)]"
+        className="relative z-[1] [writing-mode:vertical-rl] overflow-hidden whitespace-nowrap text-[10px] font-bold text-white [text-shadow:0_1px_3px_rgba(4,18,38,.5)]"
       >
         {title}
       </span>
@@ -105,13 +105,23 @@ export function ShelfBookSpine({ title, index, recordCount, onClick }: ShelfBook
   );
 }
 
-export function ShelfAddSlot({ onClick }: { onClick: () => void }) {
+interface ShelfAddSlotProps {
+  onClick: () => void;
+  width: number;
+  height: number;
+}
+
+// 251: 이전엔 h-[140px] w-11 고정값이라 형제 스파인(getSpineHeight/getSpineWidth 기반, 최대 168×52)과
+// 줄이 안 맞았다. recordCount가 없는 슬롯이라 자체 값을 계산할 수 없으므로, 호출부(MyShelfList)가
+// 같은 행 스파인들의 실제 width/height를 계산해 넘긴다.
+export function ShelfAddSlot({ onClick, width, height }: ShelfAddSlotProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       title="새 컬렉션 만들기"
-      className="flex h-[140px] w-11 flex-none flex-col items-center justify-center gap-2 rounded-t-sm rounded-b-[2px] border-2 border-dashed border-log-mint bg-log-mint/10 transition-transform hover:-translate-y-2 hover:bg-log-mint/20"
+      style={{ width, height }}
+      className="flex flex-none flex-col items-center justify-center gap-2 rounded-t-sm rounded-b-[2px] border-2 border-dashed border-log-mint bg-log-mint/10 transition-transform hover:-translate-y-2 hover:bg-log-mint/20"
     >
       <span className="text-lg font-bold leading-none text-log-mint">＋</span>
       <span className="[writing-mode:vertical-rl] whitespace-nowrap text-[10px] font-bold text-log-mint/90">
