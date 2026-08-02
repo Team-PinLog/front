@@ -3,7 +3,10 @@ import { getSpineColor, getSpineHeight, getSpineWidth } from '@/shared/lib/shelf
 
 /**
  * 목업(mockup/PinLog.responsive.dc.html)의 책장(cabinet-shell) 비주얼을 옮긴 공통 프리미티브.
- * 근거: Jira S15P11A705-169. MyShelfList(141)·FollowedShelfCard(144)가 공유한다.
+ * 근거: Jira S15P11A705-169/250. MyShelfList·FollowedShelfCard가 공유한다.
+ * 250: LibraryPage가 "나의 책장·팔로우한 책장"을 캐비닛 하나 + 3열(ShelfColumnGrid/ShelfColumn)로
+ * 합쳤다. ShelfBoard는 더 이상 캐비닛 맨 아래에 한 번만 두지 않는다 — ShelfTier가 행(row)마다 선반을
+ * 반복해서 깐다(chunkIntoShelfRows로 SHELF_ROW_SIZE개씩 자른 뒤 ShelfTier로 감싸는 게 표준 패턴).
  */
 
 interface ShelfCabinetProps {
@@ -40,8 +43,37 @@ export function ShelfBoard() {
   );
 }
 
+// 250: 한 캐비닛 안에서 소유자별 책장을 나란히 두기 위한 3열 그리드. 칸 사이 세로선(border-l)으로
+// "내 책장"과 "팔로우한 책장"이 같은 캐비닛의 다른 칸임을 드러낸다.
+export function ShelfColumnGrid({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-3 gap-x-5">{children}</div>;
+}
+
+export function ShelfColumn({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 border-l border-white/10 pl-5 first:border-l-0 first:pl-0">
+      {children}
+    </div>
+  );
+}
+
+// 250: 한 행(row)에 들어갈 스파인들. chunkIntoShelfRows(SHELF_ROW_SIZE)로 이미 한 줄 분량으로 잘려
+// 들어오므로 줄바꿈·스크롤은 이 레벨에서 다루지 않는다 — ShelfTier/바깥 컨테이너가 담당한다.
+// gap-0.5(2px)로 스파인을 거의 붙여 두되, 스파인 자체의 border(border-black/20)가 있어 경계는
+// 시각적으로 구분된다 — 완전히 0으로 붙이지는 않는다.
 export function ShelfRow({ children }: { children: ReactNode }) {
-  return <div className="flex items-end gap-2 overflow-x-auto pb-1">{children}</div>;
+  return <div className="flex items-end gap-0.5">{children}</div>;
+}
+
+// 250: 행 하나 + 그 바로 아래 선반 한 조각을 한 단위로 반복한다. 캐비닛 하단에 선반을 한 번만 두던
+// 구조 대신, 책이 SHELF_ROW_SIZE개씩 한 줄을 채울 때마다 선반이 깔리는 구조로 바꾼 것이다.
+export function ShelfTier({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <ShelfRow>{children}</ShelfRow>
+      <ShelfBoard />
+    </div>
+  );
 }
 
 interface ShelfBookSpineProps {

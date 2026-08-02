@@ -1,15 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
-import {
-  ShelfBoard,
-  ShelfBookSpine,
-  ShelfCabinet,
-  ShelfIconButton,
-  ShelfLabel,
-  ShelfMoreButton,
-  ShelfRow,
-} from '@/shared/ui/Shelf';
+import { chunkIntoShelfRows, SHELF_ROW_SIZE } from '@/shared/lib/shelfSpine';
+import { ShelfBookSpine, ShelfIconButton, ShelfMoreButton, ShelfTier } from '@/shared/ui/Shelf';
 import { useFollowShelfCollectionsQuery } from '../hooks/useFollowShelfCollectionsQuery';
 import { useUpdateFollowAliasMutation } from '../hooks/useUpdateFollowAliasMutation';
 import { useUnfollowMutation } from '../hooks/useUnfollowMutation';
@@ -22,12 +15,15 @@ interface FollowedShelfCardProps {
 }
 
 /**
- * 팔로우한 책장 하나를 목업의 책장(cabinet-shell) 비주얼로 렌더링한다.
- * 근거: Jira S15P11A705-144/169, docs/reference/08_API_명세.md 9.3/8.3/8.4.
+ * 팔로우한 책장 하나를, 목업의 책장(cabinet-shell) 캐비닛 "한 칸"으로 렌더링한다 — 캐비닛 테두리는 이제
+ * LibraryPage(250)가 "나의 책장·팔로우한 책장" 3열 캐비닛 레벨에서 공유하므로 여기서는 그리지 않는다.
+ * 선반(ShelfBoard)도 캐비닛 레벨에서 한 번만 두지 않고, 컬렉션을 SHELF_ROW_SIZE개씩 끊어 ShelfTier로
+ * 감싸 행마다 반복해서 깐다.
+ * 근거: Jira S15P11A705-144/169/250, docs/reference/08_API_명세.md 9.3/8.3/8.4.
  * 이 카드가 쓰는 Collection 목록 커서는 이 followId 전용이다(useFollowShelfCollectionsQuery) — 다른
  * 카드나 팔로우 목록(useFollowsQuery) 커서와 절대 혼용하지 않는다.
  * Library 컨텍스트의 언팔로우이므로 useUnfollowMutation에 sourceCollectionId를 넘기지 않는다.
- * 헤더의 연필 아이콘은 목업의 shelf-edit-button/shelf-column-menu를 옮긴 것으로, 기존 별칭 수정·언팔로우
+ * 헤더 연필 아이콘은 목업의 shelf-edit-button/shelf-column-menu를 옮긴 것으로, 기존 별칭 수정·언팔로우
  * 로직을 여는 진입점 역할만 한다 — 두 mutation 자체는 그대로다.
  */
 export function FollowedShelfCard({ followId, alias }: FollowedShelfCardProps) {
@@ -64,11 +60,43 @@ export function FollowedShelfCard({ followId, alias }: FollowedShelfCardProps) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <ShelfCabinet
-        headerTitle={alias ?? '이름 없는 책장'}
-        headerRight={
-          <div className="relative">
+    <>
+      {isEditingAlias ? (
+        <div className="flex items-center gap-1.5">
+          <label htmlFor={`follow-alias-${followId}`} className="sr-only">
+            책장 별칭
+          </label>
+          <input
+            id={`follow-alias-${followId}`}
+            type="text"
+            maxLength={ALIAS_MAX_LENGTH}
+            value={aliasInput}
+            onChange={(event) => setAliasInput(event.target.value)}
+            disabled={updateAliasMutation.isPending}
+            placeholder="별칭을 입력해 주세요"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-log-mint bg-white/10 px-2 text-xs text-white outline-none placeholder:text-white/40 disabled:opacity-40"
+          />
+          <button
+            type="button"
+            onClick={handleSaveAlias}
+            disabled={updateAliasMutation.isPending}
+            className="h-8 flex-none rounded-lg bg-log-mint px-2 text-xs font-bold text-pin-navy disabled:opacity-40"
+          >
+            {updateAliasMutation.isPending ? '저장 중…' : '저장'}
+          </button>
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            disabled={updateAliasMutation.isPending}
+            className="h-8 flex-none rounded-lg border border-white/20 px-2 text-xs font-bold text-white disabled:opacity-40"
+          >
+            취소
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="truncate text-sm font-bold text-white">{alias ?? '이름 없는 책장'}</h3>
+          <div className="relative flex-none">
             <ShelfIconButton label="책장 관리" onClick={() => setIsMenuOpen((open) => !open)}>
               <svg
                 viewBox="0 0 24 24"
@@ -105,70 +133,34 @@ export function FollowedShelfCard({ followId, alias }: FollowedShelfCardProps) {
               </div>
             )}
           </div>
-        }
-      >
-        {isEditingAlias ? (
-          <div className="flex items-center gap-2">
-            <label htmlFor={`follow-alias-${followId}`} className="sr-only">
-              책장 별칭
-            </label>
-            <input
-              id={`follow-alias-${followId}`}
-              type="text"
-              maxLength={ALIAS_MAX_LENGTH}
-              value={aliasInput}
-              onChange={(event) => setAliasInput(event.target.value)}
-              disabled={updateAliasMutation.isPending}
-              placeholder="별칭을 입력해 주세요"
-              className="h-9 flex-1 rounded-lg border border-log-mint bg-white/10 px-3 text-sm text-white outline-none placeholder:text-white/40 disabled:opacity-40"
-            />
-            <button
-              type="button"
-              onClick={handleSaveAlias}
-              disabled={updateAliasMutation.isPending}
-              className="h-9 flex-none rounded-lg bg-log-mint px-3 text-xs font-bold text-pin-navy disabled:opacity-40"
-            >
-              {updateAliasMutation.isPending ? '저장 중…' : '저장'}
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              disabled={updateAliasMutation.isPending}
-              className="h-9 flex-none rounded-lg border border-white/20 px-3 text-xs font-bold text-white disabled:opacity-40"
-            >
-              취소
-            </button>
-          </div>
-        ) : (
-          <ShelfLabel>공개 컬렉션</ShelfLabel>
-        )}
+        </div>
+      )}
 
-        {updateAliasMutation.isError && (
-          <p className="text-xs text-red-400">{updateAliasMutation.error.message}</p>
-        )}
-        {unfollowMutation.isError && (
-          <p className="text-xs text-red-400">{unfollowMutation.error.message}</p>
-        )}
+      {updateAliasMutation.isError && (
+        <p className="text-xs text-red-400">{updateAliasMutation.error.message}</p>
+      )}
+      {unfollowMutation.isError && (
+        <p className="text-xs text-red-400">{unfollowMutation.error.message}</p>
+      )}
 
-        {collectionsQuery.isPending ? (
-          <p className="text-sm text-white/50">불러오는 중…</p>
-        ) : collectionsQuery.isError ? (
-          <p className="text-sm text-red-400">책장을 불러오지 못했어요.</p>
-        ) : (
-          <FollowedShelfCollections
-            collectionsQuery={collectionsQuery}
-            onSelectCollection={(collectionId) => {
-              markCollectionOverlayIntent();
-              void navigate({
-                to: '/collections/$collectionId',
-                params: { collectionId },
-                state: { collectionOverlay: true },
-              });
-            }}
-          />
-        )}
-      </ShelfCabinet>
-    </div>
+      {collectionsQuery.isPending ? (
+        <p className="text-sm text-white/50">불러오는 중…</p>
+      ) : collectionsQuery.isError ? (
+        <p className="text-sm text-red-400">책장을 불러오지 못했어요.</p>
+      ) : (
+        <FollowedShelfCollections
+          collectionsQuery={collectionsQuery}
+          onSelectCollection={(collectionId) => {
+            markCollectionOverlayIntent();
+            void navigate({
+              to: '/collections/$collectionId',
+              params: { collectionId },
+              state: { collectionOverlay: true },
+            });
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -189,21 +181,25 @@ function FollowedShelfCollections({
     return <p className="text-sm text-white/50">공개된 컬렉션이 없습니다</p>;
   }
 
+  const rows = chunkIntoShelfRows(collections);
+
   return (
     <>
-      <ShelfRow>
-        {collections.map((collection, index) => (
-          <ShelfBookSpine
-            key={collection.collectionId}
-            index={index}
-            title={collection.title}
-            recordCount={collection.recordCount}
-            onClick={() => onSelectCollection(collection.collectionId)}
-          />
+      <div className="flex flex-col gap-3">
+        {rows.map((row, rowIndex) => (
+          <ShelfTier key={rowIndex}>
+            {row.map((collection, indexInRow) => (
+              <ShelfBookSpine
+                key={collection.collectionId}
+                index={rowIndex * SHELF_ROW_SIZE + indexInRow}
+                title={collection.title}
+                recordCount={collection.recordCount}
+                onClick={() => onSelectCollection(collection.collectionId)}
+              />
+            ))}
+          </ShelfTier>
         ))}
-      </ShelfRow>
-
-      <ShelfBoard />
+      </div>
 
       {hasNext && (
         <ShelfMoreButton
