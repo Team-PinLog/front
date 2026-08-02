@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
-import { chunkIntoShelfRows, SHELF_ROW_SIZE } from '@/shared/lib/shelfSpine';
+import {
+  chunkIntoShelfRows,
+  getSpineHeight,
+  getSpineWidth,
+  SHELF_ROW_SIZE,
+} from '@/shared/lib/shelfSpine';
+import type { CollectionSummary } from '@/features/collections/api/getMyCollections';
 import {
   ShelfAddSlot,
   ShelfBookSpine,
@@ -14,9 +20,23 @@ import { useMyCollectionsQuery } from '../hooks/useMyCollectionsQuery';
 import { NewCollectionModal } from './NewCollectionModal';
 
 // 250: 2행(ShelfTier 2개) 높이만큼만 스크롤 없이 보여주고, 그 이상은 세로 스크롤로 넘긴다 — 사용자가
-// "스크롤 유지"를 택했다(2·3열의 이전/다음 페이지네이션과는 별개로 1열만 이 방식을 쓴다). 252px =
-// ShelfTier 1개 높이(spine 최대 104px + gap-1.5 6px + board 10px = 120px) × 2 + 타이어 사이 gap-3 12px.
-const MY_SHELF_VISIBLE_HEIGHT_PX = 252;
+// "스크롤 유지"를 택했다(2·3열의 이전/다음 페이지네이션과는 별개로 1열만 이 방식을 쓴다).
+// 251: 스파인 최대 높이를 SPINE_MAX_HEIGHT 104→168로 되돌리면서 이 값도 같은 계산식으로 다시 뽑았다.
+// 380px = ShelfTier 1개 높이(spine 최대 168px + gap-1.5 6px + board 10px = 184px) × 2
+//         + 타이어 사이 gap-3 12px = 184*2 + 12 = 380.
+// SPINE_MAX_HEIGHT(shelfSpine.ts)가 또 바뀌면 이 계산식을 그대로 다시 적용해서 갱신해야 한다.
+const MY_SHELF_VISIBLE_HEIGHT_PX = 380;
+
+// 251: ShelfAddSlot은 recordCount가 없어 자체 높이를 계산할 수 없다 — 같은 행에 스파인이 있으면 그
+// 행의 평균 높이를 쓰고(형제와 줄을 맞추기 위해), 행이 비어 있으면(꽉 찬 마지막 행 뒤에 새 행으로
+// 붙는 경우) getSpineHeight(0)인 바닥값(SPINE_MIN_HEIGHT)을 "아직 기록이 없는 컬렉션"의 기본값으로 쓴다.
+function averageSpineHeight(row: CollectionSummary[]): number {
+  if (row.length === 0) {
+    return getSpineHeight(0);
+  }
+  const total = row.reduce((sum, collection) => sum + getSpineHeight(collection.recordCount), 0);
+  return Math.round(total / row.length);
+}
 
 /**
  * 내 컬렉션 목록을 책장 칸(레이블+행×선반 반복+더보기) 하나로 렌더링한다. 근거: Jira S15P11A705-141/169/250.
@@ -77,14 +97,22 @@ export function MyShelfColumn() {
               />
             ))}
             {rowIndex === collectionRows.length - 1 && addSlotFitsLastRow && (
-              <ShelfAddSlot onClick={() => setIsNewCollectionModalOpen(true)} />
+              <ShelfAddSlot
+                onClick={() => setIsNewCollectionModalOpen(true)}
+                width={getSpineWidth(rowIndex * SHELF_ROW_SIZE + row.length)}
+                height={averageSpineHeight(row)}
+              />
             )}
           </ShelfTier>
         ))}
 
         {!addSlotFitsLastRow && (
           <ShelfTier>
-            <ShelfAddSlot onClick={() => setIsNewCollectionModalOpen(true)} />
+            <ShelfAddSlot
+              onClick={() => setIsNewCollectionModalOpen(true)}
+              width={getSpineWidth(0)}
+              height={averageSpineHeight([])}
+            />
           </ShelfTier>
         )}
       </div>
