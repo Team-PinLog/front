@@ -169,6 +169,7 @@ jobs:
     name: frontend-image / publish
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/dev' }}
     needs: check
+    environment: dev
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -201,6 +202,7 @@ jobs:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KAKAO_REST_KEY: ${{ vars.VITE_KAKAO_REST_KEY }}
           VITE_KAKAO_JS_KEY: ${{ vars.VITE_KAKAO_JS_KEY }}
+          DEPLOY_CANARY_REV: ${{ vars.DEPLOY_CANARY_REV }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -209,9 +211,11 @@ jobs:
           : "${VITE_API_BASE_URL:?missing variable}"
           : "${VITE_KAKAO_REST_KEY:?missing variable}"
           : "${VITE_KAKAO_JS_KEY:?missing variable}"
+          : "${DEPLOY_CANARY_REV:?missing variable}"
+          [[ "$DEPLOY_CANARY_REV" =~ ^[A-Za-z0-9._-]+$ ]]
           fingerprint=$(python3 - <<'PY'
           import hashlib, os, sys
-          names = ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY")
+          names = ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY", "DEPLOY_CANARY_REV")
           out = bytearray()
           for name in names:
               key = name.encode()

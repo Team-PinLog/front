@@ -294,6 +294,29 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("IMAGE_DIGEST", command)
         self.assertNotIn("pull request", command.lower())
 
+    def test_manual_publish_requires_canary_revision_in_config_fingerprint_only(self):
+        publish = self.jobs["image-publish"]
+        self.assertEqual(publish.get("environment"), "dev")
+        identity = named_step(publish, "Resolve run-bound immutable image identity")
+        self.assertEqual(
+            identity["env"]["DEPLOY_CANARY_REV"],
+            "${{ vars.DEPLOY_CANARY_REV }}",
+        )
+        self.assertIn(': "${DEPLOY_CANARY_REV:?missing variable}"', identity["run"])
+        self.assertIn(
+            'names = ("VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", '
+            '"VITE_KAKAO_JS_KEY", "DEPLOY_CANARY_REV")',
+            identity["run"],
+        )
+
+        check = self.jobs["check"]
+        build = named_step(check, "Build frontend")
+        self.assertNotIn("DEPLOY_CANARY_REV", build["env"])
+        self.assertNotIn("DEPLOY_CANARY_REV", build["run"])
+        contract = yaml.safe_load(RUNTIME_CONTRACT.read_text())
+        self.assertNotIn("DEPLOY_CANARY_REV", contract["spec"]["publicVariables"])
+        self.assertNotIn("DEPLOY_CANARY_REV", RUNTIME_CONTRACT.read_text())
+
     def test_manual_composite_publish_contract(self):
         check = self.jobs["check"]
         guard = named_step(check, "Guard manual dispatch at current dev HEAD")
@@ -304,9 +327,10 @@ class FrontendImageWorkflowContractTests(unittest.TestCase):
         publish = self.jobs["image-publish"]
         identity = named_step(publish, "Resolve run-bound immutable image identity")
         script = identity["run"]
-        for contract in ("sha256sum", "VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "IMAGE_TAG"):
+        for contract in ("sha256sum", "VITE_API_BASE_URL", "VITE_KAKAO_REST_KEY", "VITE_KAKAO_JS_KEY", "DEPLOY_CANARY_REV", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "IMAGE_TAG"):
             self.assertIn(contract, script)
         self.assertNotIn('echo "$VITE_', script)
+        self.assertNotIn('echo "$DEPLOY_CANARY_REV', script)
         build = named_step(publish, "Build and publish run-bound immutable frontend image")
         self.assertIn("steps.identity.outputs.image_tag", build["with"]["tags"])
         verify = named_step(publish, "Verify immutable image and write provenance")
