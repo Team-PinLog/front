@@ -1480,6 +1480,26 @@ POST /search/records
 → DELETE /records/{recordId}/contexts/{contextId}
 ```
 
+## 13.9 컬렉션 상세에서 Context 수정
+
+```text
+GET /collections/{collectionId}
+→ records[].contexts[]의 recordId·contextId 확인
+→ PATCH /records/{recordId}/contexts/{contextId}
+```
+
+화면이 다를 뿐 엔드포인트는 5.5와 동일하다.
+
+## 13.10 컬렉션 상세에서 Context 삭제
+
+```text
+GET /collections/{collectionId}
+→ records[].contexts[]의 recordId·contextId 확인
+→ DELETE /records/{recordId}/contexts/{contextId}
+```
+
+위와 동일하게 5.6을 그대로 호출한다. 마지막 Context 삭제 시 409 `DELETE_CONFIRMATION_REQUIRED` 처리도 레코드 상세와 동일하다.
+
 ---
 
 # 14. 구현 시 반드시 지킬 사항

@@ -17,9 +17,9 @@ PinLog은 익명 SNS다. 타인에게는 발행된 Collection과 공개 가능�
 - 타인 접근의 **진입점은 Collection id**다. 팔로우·책장 탐색은 Collection id로 시작한다.
   - `POST /follows { collectionId }`, `GET /feed/collections/{collectionId}/shelf`, `GET /follows/{followId}/collections`
 
-## 3. Keyword는 `label`만, `code`는 노출하지 않는다
+## 3. Keyword는 `display_name`만, `code`는 노출하지 않는다
 
-- 모든 Keyword 응답은 `keyword_preset`의 `label` 문자열 배열이다. `code`는 내부 식별용이며 노출·전송하지 않는다(`08_API_명세` 6.1).
+- 모든 Keyword 응답은 `keyword_preset`의 `display_name`(표시 문자열, 구 컬럼명 `label`) 배열이다. `code`는 내부 식별용이며 노출·전송하지 않는다(`08_API_명세` 6.1).
 - Keyword는 사전 정의 프리셋에서만 온다. 프론트가 임의 Keyword를 만들거나 편집하지 않는다.
 
 ## 4. Keyword 공개 등급 (참조: `03_공식_용어사전.md`, `04_익명SNS_공개정책.md`)
@@ -59,7 +59,7 @@ function RecordCard({ record }: { record: RecordDetail }) {
   return (
     <article>
       <PlaceInfo place={record.place} />
-      <KeywordList labels={record.keywords} /> {/* label 문자열만 */}
+      <KeywordList displayNames={record.keywords} /> {/* display_name 문자열만 */}
       {isOwner && <ContextList contexts={record.contexts!} />}
     </article>
   );
@@ -88,11 +88,11 @@ followMutation.mutate({ collectionId });
 sendEvent({ keywordCode: kw.code });
 ```
 
-### 올바른 예 — label만 사용
+### 올바른 예 — display_name만 사용
 
 ```tsx
-// ✅ 화면·전송 모두 label 문자열만 사용
+// ✅ 화면·전송 모두 display_name 문자열만 사용
 {
-  record.keywords.map((label) => <Chip key={label}>{label}</Chip>);
+  record.keywords.map((displayName) => <Chip key={displayName}>{displayName}</Chip>);
 }
 ```

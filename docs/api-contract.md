@@ -83,7 +83,7 @@
 - `GET /feed/collections` 응답 최상위에 `requestId`, 각 item에 `position`이 존재한다.
 - `POST /feed/events`는 **`CLICK`·`SAVE` 두 가지만 프론트가 전송**한다. **`IMPRESSION`은 서버가 목록 응답 생성 시 기록**한다(프론트가 보내지 않는다).
 - 이벤트 전송 시 다음 3가지를 반드시 지킨다.
-  1. **Keyword의 키는 `label`이 아니라 `code`(불변 식별자)다.** `label`은 표시용이라 변경될 수 있다.
+  1. **Keyword의 키는 `display_name`이 아니라 `code`(불변 식별자)다.** `display_name`(구 컬럼명 `label`)은 표시용이라 변경될 수 있다.
   2. **`position`은 배열 인덱스가 아니라 응답 값을 그대로 사용한다**(2페이지 첫 항목은 `0`이 아니다).
   3. **`requestId`는 응답 단위다.** 페이지를 넘기면 새 값이며, 그 페이지에서 발생한 이벤트는 그 페이지의 `requestId`를 쓴다.
 - **`events` 배열 상한은 100개**다. 초과 시 `400 INVALID_INPUT`. (단건→배열 배치 전송으로의 요청 스키마 변경 자체는 이번 반영 범위 밖 — 별도 확인 예정) <!-- 근거: 05-1_파트간_요구사항.md §1.5 -->
@@ -100,9 +100,9 @@
 ### Keyword 등급 (MVP)
 
 - **MVP에서는 Keyword 등급(`visibility`)을 사용하지 않는다.** 모든 Keyword를 `PUBLIC`처럼 취급하고 등급 구분 UI를 만들지 않는다.
-- 응답은 **현행 `label` 문자열 배열**을 사용한다.
-- `{ code, label, visibility }` 형태는 AI 파트가 확장용으로 보유하나 **MVP 범위 밖**이다.
-- 단, 프론트가 Keyword를 내부 키로 다뤄야 하는 경우(아이콘 매핑·필터 상태)에는 `label`이 아니라 **향후 도입될 `code`**를 쓰도록 설계 여지를 남긴다.
+- 응답은 **현행 `display_name`(표시 문자열, 구 컬럼명 `label`) 문자열 배열**을 사용한다.
+- `{ code, display_name, visibility }` 형태는 AI 파트가 확장용으로 보유하나 **MVP 범위 밖**이다.
+- 단, 프론트가 Keyword를 내부 키로 다뤄야 하는 경우(아이콘 매핑·필터 상태)에는 `display_name`이 아니라 **향후 도입될 `code`**를 쓰도록 설계 여지를 남긴다.
 
 ## [협의 필요]
 
