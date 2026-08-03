@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '@/config/constants';
+import { queryClient } from '@/app/queryClient';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
 import type { ApiError, ApiResponse, ServerApiError } from './types';
 
@@ -134,10 +135,25 @@ function refreshAccessToken(): Promise<void> {
  * 재발급 자체가 401로 실패했을 때 재로그인 화면으로 유도한다(architecture.md 1-1).
  * router.tsx를 정적 import하면 router.tsx → (pages) → ... → client.ts 기존 의존 체인과
  * 순환 참조가 생기므로 호출 시점에 동적 import로 가져온다.
+ * queryClient.ts는 '@tanstack/react-query'만 의존하는 leaf 모듈이라 순환 참조가 없어 정적 import한다.
+ *
+ * cancelQueries()가 끝나기 전에 navigate가 먼저 실행되면 in-flight 쿼리들이 그 사이에 계속 401을
+ * 받아 각자 refresh를 재유발해 루프가 길어질 수 있다(S15P11A705-256). 이를 막기 위해 취소 완료를
+ * await한 뒤 navigate한다. 특정 쿼리키만 취소하면 이 함수를 거치는 모든 인증 필수 쿼리(map 외
+ * records/$recordId, feed, shelf, library 등)를 여기서 일일이 나열해야 하므로, 401 재로그인이라는
+ * 전역 이벤트의 의미에 맞게 무조건 전체 취소한다.
+ * cancelQueries()가 reject해도(거의 없지만) 재로그인 이동 자체는 막지 않아야 하므로 실패를 무시하고
+ * navigate는 항상 실행한다.
  */
-function redirectToLogin(): void {
+async function redirectToLogin(): Promise<void> {
   savePreLoginPath();
-  void import('@/app/router').then(({ router }) => router.navigate({ to: '/login' }));
+  try {
+    await queryClient.cancelQueries();
+  } catch {
+    // 쿼리 취소 실패는 재로그인 이동을 막을 이유가 아니므로 무시한다.
+  }
+  const { router } = await import('@/app/router');
+  void router.navigate({ to: '/login' });
 }
 
 /**
@@ -156,7 +172,9 @@ export function handleResponseError(error: AxiosError): Promise<AxiosResponse> |
     return refreshAccessToken().then(
       () => httpClient.request(config),
       (refreshError: AxiosError) => {
-        redirectToLogin();
+        // 재로그인 이동(쿼리 취소 → navigate)은 이 reject 체인의 결과와 무관한 side effect라
+        // 호출부가 완료를 기다릴 필요가 없다 — fire-and-forget으로 의도를 명시한다.
+        void redirectToLogin();
         throw buildApiError(
           toServerError(refreshError.response?.data),
           refreshError.response?.status ?? 401,
