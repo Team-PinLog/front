@@ -94,7 +94,9 @@
   - UI: 0~1.5초 스피너 → 1.5초 경과 후 "맥락을 분석하고 있어요" 문구 → 타임아웃 시 에러 처리.
 - **Keyword 생성**: 정상 2초 이내 완료. 폴링은 저장 후 **3초·8초 2회만** 재조회하고 중단한다. **무한 폴링 금지** — 실패 복구는 분 단위로 이뤄져 폴링으로는 잡을 수 없다.
 - **`keywords` 빈 배열은 정상**이다(COMPLETED 0건 포함). 실패로 처리하지 않는다.
-- 현재 응답은 **실패 / 처리중 / 정상 0건을 구분하지 못한다**(A안 현행 유지).
+- **`keywordStatus`(`COMPLETED`/`PROCESSING`/`FAILED`)**: `POST /search/records` 응답의 각 item에 Record 단위로 존재한다. Feed·Record 상세 응답에는 없다 — `04_익명SNS_공개정책.md` §2 공개 범위 표에 없는 내부 처리 상태라 공개 대상이 아니고, `search/records`는 본인 데이터만 반환하는 비공개 엔드포인트라 노출해도 된다.
+  - `keywords`와는 별도 시점에 판정되는 독립 필드다. `keywords: []`이면서 `keywordStatus`가 `PROCESSING`/`COMPLETED`/`FAILED` 어느 쪽이어도 정상이고(처리중·완료 0건·실패), `keywords`가 비어 있지 않은데 `PROCESSING`인 조합(재분석 중 기존 결과 유지 등)도 정상이다 — 두 필드를 서로의 근거로 추론하지 않는다.
+  - 하위호환: 이 필드를 무시해도 기존 `keywords` 계약(빈 배열 = 정상)은 그대로 유지된다.
 - **[확인 필요]** AI 파생 데이터 삭제 정책이 origin에서 '즉시 파기' → '무효화 표시(`is_deleted`/`CANCELLED`)'로 변경됨(`05_AI_설계.md` §11). `docs/privacy-rules.md` 영향 여부 미확인 — 이 문서에서는 반영하지 않았다.
 
 ### Keyword 등급 (MVP)
