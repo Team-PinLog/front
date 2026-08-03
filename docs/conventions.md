@@ -49,5 +49,5 @@
 
 - 목록 순서는 서버 응답 순서를 그대로 사용한다. 프론트에서 재정렬하지 않는다.
 - Feed `position`·`requestId`는 응답 값을 그대로 사용하고 프론트에서 재계산하지 않는다.
-- Keyword의 식별 키는 `code`다. `label`을 상태 키·매핑 키로 쓰지 않는다.
-- [확인 필요] origin(Team-PinLog/docs)이 Keyword의 DB 컬럼명을 label→display_name으로 변경함(2026-07 업데이트). API 응답 JSON 필드명(label) 변경 여부는 origin에 명시적 근거 없음 — 확인 후 반영.
+- Keyword의 식별 키는 `code`다. 표시 문자열(`display_name`, 구 컬럼명 `label`)을 상태 키·매핑 키로 쓰지 않는다.
+- [해결됨] origin(Team-PinLog/docs)이 `keyword_preset`의 DB 컬럼명을 label→display_name으로 변경함(2026-07 업데이트). API 응답(`keywords`)은 원래도 code/label 구분 없는 순수 문자열 배열이라 JSON 계약 변경 없음(`08_API_명세` §6.1, `05_AI_설계` §12.1, 2026-08 재확인).
