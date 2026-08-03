@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { formatDate } from '@/shared/lib/formatDate';
@@ -6,16 +6,22 @@ import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor'
 import {
   BADGE_HEIGHT_PX,
   CARD_HEIGHT_PX,
-  ITEM_COLUMN_HEIGHT_PX,
+  CARD_WIDTH_PX,
+  FEED_COLUMNS_BY_BREAKPOINT,
+  ITEM_COLUMN_HEIGHT_CSS,
+  scalePx,
+  SHELF_SCALE_CSS,
 } from '@/shared/lib/shelfCabinetLayout';
+import { useShelfBreakpoint } from '@/shared/lib/useShelfBreakpoint';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { PAGE_SIZE, useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
 import type { FeedCollectionItem } from '../api/getFeedCollections';
 
-// 279: 목업(Team-PinLog/mockup 탐색 페이지)의 책장 레이아웃 — 5열 × 2줄 고정 슬롯.
-// PAGE_SIZE(useFeedCollectionsQuery)와 반드시 일치해야 한다.
-const SHELF_COLUMNS = 5;
+// 279(→287-8에서 반응형 전환): 목업(Team-PinLog/mockup 탐색 페이지)의 책장 레이아웃 — 한 행당 카드
+// 수는 이제 breakpoint별로 다르다(FEED_COLUMNS_BY_BREAKPOINT, shelfCabinetLayout.ts). PAGE_SIZE
+// (useFeedCollectionsQuery)는 몇 칸이든 그대로 10 고정이고, toShelfRows가 그 칸 수로 10개를 잘라
+// 행을 만든다(마지막 행이 덜 찰 수 있다 — null 슬롯으로 채워 빈 선반을 보여준다).
 
 // 279 추가 수정(카드 크기 고정 재작업): aspect-ratio + flex-1 + overflow-hidden 조합에 기대지
 // 않는다 — 카드(button)가 grid item이고 grid item의 min-height:auto/min-width:auto 자동 최소 크기
@@ -29,49 +35,52 @@ const SHELF_COLUMNS = 5;
 // 너비가 없는 shrink-to-fit 상태라 "100%"를 확정할 수 없고, 이 경우 브라우저가 percentage 대신
 // 자식(특히 장소개수·날짜 줄의 white-space:nowrap 텍스트, truncate가 넘침을 가려줄 뿐 min-content
 // 자체는 줄지 않는다)의 min-content 너비로 폴백해 제목·메타 길이에 따라 카드 좌우 폭이 달라지는
-// 원인이 됐다. wrapper와 카드 모두에 min()이 아닌 고정 px width를 직접 줘서, width 축도 height
-// 축과 동일하게 'auto'/percentage 계산이 전혀 개입하지 못하게 했다(wrapper 쪽엔 overflow-hidden을
-// 일부러 넣지 않았다 — 아래 ITEM_COLUMN_WIDTH_STYLE 주석 참고). 반응형은 범위 밖이라(참고: 이번
-// 작업 지시) 고정 px 하나로 충분하다.
-const CARD_WIDTH_PX = 175;
-// 287-5: CARD_HEIGHT_PX(목업 근사 비율 150/210에서 유도: 175*(210/150)=245)는 shared/lib/
-// shelfCabinetLayout.ts로 옮겼다 — Library가 캐비닛 전체 높이(SHELF_CABINET_TOTAL_HEIGHT_PX)를
-// 역산할 때 이 파일과 다른 숫자를 또 추정하지 않고 여기서 실제 쓰는 값을 그대로 읽어가게 하기
-// 위해서다.
+// 원인이 됐다. wrapper와 카드 모두에 min()이 아닌 CARD_WIDTH_PX 기반 값을 직접 줘서, width 축도
+// height 축과 동일하게 'auto'/percentage 계산이 전혀 개입하지 못하게 했다(wrapper 쪽엔
+// overflow-hidden을 일부러 넣지 않았다 — 아래 ITEM_COLUMN_WIDTH_STYLE 주석 참고).
+// 287-8: CARD_WIDTH_PX/CARD_HEIGHT_PX는 shelfCabinetLayout.ts에서 가져온 "스케일 1(뷰포트 1280px
+// 이상) 기준" 값이다 — 실제 렌더링에는 scalePx()로 감싸 --shelf-scale(뷰포트 폭 기준 clamp)을 곱해
+// 쓴다. Library(shelfSpine.ts 경유)도 같은 --shelf-scale을 공유해 카드/책 크기가 같은 비율로 줄어든다.
 const TITLE_HEIGHT_PX = 30; // text-xs(12px) leading-tight(1.25) 2줄 = 15px*2
 const KEYWORDS_HEIGHT_PX = 32; // h-8, 2줄 분량 pill
 const META_HEIGHT_PX = 14; // 장소개수·날짜 1줄(truncate)
 const INFO_GAP_PX = 4; // gap-1, 제목/키워드/메타 사이 2곳
 const INFO_PADDING_PX = 8; // p-2
+// 287-8: 제목/키워드/메타는 폰트 크기(text-xs 등)에 종속된 고정 높이라 스케일을 적용하지 않는다 —
+// 카드가 줄어들어도 글자가 뭉개지지 않게 한다. 대신 표지(COVER_HEIGHT_PX)가 카드 높이 축소분을
+// 전부 흡수한다.
 const INFO_HEIGHT_PX =
   INFO_PADDING_PX * 2 + TITLE_HEIGHT_PX + KEYWORDS_HEIGHT_PX + META_HEIGHT_PX + INFO_GAP_PX * 2;
-// button은 border(1px×2)가 있어 border-box 기준 콘텐츠 영역이 CARD_HEIGHT_PX보다 2px 작다 —
-// 표지 높이에서 그 2px를 미리 빼서 표지+정보 합이 실제 콘텐츠 영역과 정확히 맞도록 한다.
+// button은 border(1px×2)가 있어 border-box 기준 콘텐츠 영역이 카드 높이보다 2px 작다 — 표지 높이에서
+// 그 2px를 미리 빼서 표지+정보 합이 실제 콘텐츠 영역과 정확히 맞도록 한다.
 const CARD_BORDER_PX = 2;
-const COVER_HEIGHT_PX = CARD_HEIGHT_PX - CARD_BORDER_PX - INFO_HEIGHT_PX;
-const CARD_BOX_STYLE = { width: CARD_WIDTH_PX, height: CARD_HEIGHT_PX };
+const CARD_WIDTH_CSS = scalePx(CARD_WIDTH_PX);
+const CARD_HEIGHT_CSS = scalePx(CARD_HEIGHT_PX);
+const COVER_HEIGHT_CSS = `calc(${CARD_HEIGHT_CSS} - ${CARD_BORDER_PX}px - ${INFO_HEIGHT_PX}px)`;
+const CARD_BOX_STYLE = { width: CARD_WIDTH_CSS, height: CARD_HEIGHT_CSS };
 
-// 287-5: BADGE_HEIGHT_PX/ITEM_COLUMN_GAP_PX/ITEM_COLUMN_HEIGHT_PX(카드+gap+배지 전체 높이 — 그리드
-// 행 높이를 여기 고정해 콘텐츠가 달라져도 행 높이가 흔들리지 않게 한다, gap-2와 반드시 일치)도
-// shelfCabinetLayout.ts로 옮겼다.
 // wrapper(카드+배지)는 자체 너비가 없는 shrink-to-fit 상태라 카드의 `width: min(100%, ...)`에서
 // "100%"가 확정되지 않아 콘텐츠 기반 폭으로 흘렀다 — wrapper에 고정 width를 직접 줘서 100%가
-// 항상 CARD_WIDTH_PX로 확정되게 한다. overflow-hidden은 일부러 넣지 않았다: wrapper 높이는 이미
+// 항상 카드 너비로 확정되게 한다. overflow-hidden은 일부러 넣지 않았다: wrapper 높이는 이미
 // 자식(카드+배지) 높이 합과 정확히 같아 넘칠 일이 없고, 호버 시 카드가 -translate-y로 위로
 // 들리는 애니메이션이 overflow-hidden에 잘릴 수 있어서다(호버 리프트는 정상 동작 확인됨 — 건드리지
 // 않는다).
-const ITEM_COLUMN_WIDTH_STYLE = { width: CARD_WIDTH_PX };
+const ITEM_COLUMN_WIDTH_STYLE = { width: CARD_WIDTH_CSS };
 
-// 슬롯 수(PAGE_SIZE)만큼 채우고 모자란 자리는 null로 채워 5×2 크기를 고정한다 — 마지막 페이지처럼
+// 슬롯 수(PAGE_SIZE)만큼 채우고 모자란 자리는 null로 채워 캐비닛 크기를 고정한다 — 마지막 페이지처럼
 // 10개 미만일 때도 책장 전체 크기는 그대로 두고 왼쪽부터 채운 뒤 나머지는 빈 선반으로 보여준다.
-function toShelfRows(items: FeedCollectionItem[]): (FeedCollectionItem | null)[][] {
+// 287-8: 한 행당 칸 수(columns)가 breakpoint별로 달라져 호출부(FeedList)가 현재 칸 수를 넘겨준다.
+function toShelfRows(
+  items: FeedCollectionItem[],
+  columns: number,
+): (FeedCollectionItem | null)[][] {
   const slots: (FeedCollectionItem | null)[] = Array.from(
     { length: PAGE_SIZE },
     (_, index) => items[index] ?? null,
   );
   const rows: (FeedCollectionItem | null)[][] = [];
-  for (let i = 0; i < slots.length; i += SHELF_COLUMNS) {
-    rows.push(slots.slice(i, i + SHELF_COLUMNS));
+  for (let i = 0; i < slots.length; i += columns) {
+    rows.push(slots.slice(i, i + columns));
   }
   return rows;
 }
@@ -93,19 +102,31 @@ export function FeedList() {
   const feedEventQueue = useFeedEventQueue();
   const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([undefined]);
   const [pageIndex, setPageIndex] = useState(0);
+  // 287-8: "한 행에 몇 칸"은 breakpoint별 정수라 CSS만으로 판단할 수 없다 — useShelfBreakpoint가
+  // 뷰포트 폭을 관찰해 알려주면, 그 칸 수로 행을 다시 자른다(toShelfRows). 카드 자체의 크기는
+  // scalePx(--shelf-scale, 뷰포트 폭 기준 clamp)로 순수 CSS 처리한다.
+  const breakpoint = useShelfBreakpoint();
+  const columns = FEED_COLUMNS_BY_BREAKPOINT[breakpoint];
+  const gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
 
   const cursor = cursorHistory[pageIndex];
   const feedQuery = useFeedCollectionsQuery(cursor);
 
   if (feedQuery.isPending) {
     return (
-      <div className="overflow-hidden rounded-xl bg-pin-navy p-6 shadow-[0_10px_28px_rgba(4,33,66,.35)]">
-        <div className="flex flex-col gap-8">
-          {toShelfRows([]).map((row, rowIndex) => (
+      <div
+        style={{ '--shelf-scale': SHELF_SCALE_CSS } as CSSProperties}
+        className="flex h-full flex-col overflow-hidden rounded-xl bg-pin-navy p-6 shadow-[0_10px_28px_rgba(4,33,66,.35)]"
+      >
+        {/* 287-8: 행 wrapper를 flex-1 min-h-0 + overflow-y-auto로 바꿔, 부모(FeedPage의 flex-1
+            래퍼)가 내어주는 세로 공간을 그대로 채운다. min-h/max-h는 Library의 스크롤 박스와 같은
+            상수(SHELF_SCROLL_MIN_H_PX/MAX_H_PX, shelfCabinetLayout.ts)를 공유한다. */}
+        <div className="flex min-h-[360px] max-h-[590px] flex-1 flex-col gap-8 overflow-y-auto">
+          {toShelfRows([], columns).map((row, rowIndex) => (
             <div key={rowIndex} className="flex flex-col gap-3">
               <div
-                style={{ gridAutoRows: CARD_HEIGHT_PX }}
-                className="grid grid-cols-5 items-start justify-items-center gap-6"
+                style={{ gridTemplateColumns, gridAutoRows: CARD_HEIGHT_CSS }}
+                className="grid items-start justify-items-center gap-6"
               >
                 {row.map((_, indexInRow) => (
                   <div
@@ -184,7 +205,10 @@ export function FeedList() {
   }
 
   return (
-    <div className="relative overflow-hidden rounded-xl bg-pin-navy p-6 shadow-[0_10px_28px_rgba(4,33,66,.35)]">
+    <div
+      style={{ '--shelf-scale': SHELF_SCALE_CSS } as CSSProperties}
+      className="relative flex h-full flex-col overflow-hidden rounded-xl bg-pin-navy p-6 shadow-[0_10px_28px_rgba(4,33,66,.35)]"
+    >
       {/* 279 추가 수정: Library(shared/ui/Shelf.tsx)와 시각적으로 통일한 곤색 책장 배경 — 다만
           Shelf.tsx 자체는 토큰이 아닌 임의 hex(#172742 등)라 그대로 재사용하지 않고, 여기서는
           tailwind.config.js 토큰(pin-navy/paper-white)만으로 새로 만든다.
@@ -209,12 +233,15 @@ export function FeedList() {
         <ChevronIcon direction="right" />
       </button>
 
-      <div className="flex flex-col gap-8">
-        {toShelfRows(items).map((row, rowIndex) => (
+      {/* 287-8: flex-1 min-h-0 + overflow-y-auto로 바꿔 부모(FeedPage의 flex-1 래퍼)가 내어주는 세로
+          공간을 그대로 채운다. min-h/max-h는 Library 스크롤 박스와 같은 상수를 공유한다
+          (SHELF_SCROLL_MIN_H_PX/MAX_H_PX, shelfCabinetLayout.ts). */}
+      <div className="flex min-h-[360px] max-h-[590px] flex-1 flex-col gap-8 overflow-y-auto">
+        {toShelfRows(items, columns).map((row, rowIndex) => (
           <div key={rowIndex} className="flex flex-col gap-3">
             <div
-              style={{ gridAutoRows: ITEM_COLUMN_HEIGHT_PX }}
-              className="grid grid-cols-5 items-start justify-items-center gap-6"
+              style={{ gridTemplateColumns, gridAutoRows: ITEM_COLUMN_HEIGHT_CSS }}
+              className="grid items-start justify-items-center gap-6"
             >
               {row.map((item, indexInRow) =>
                 item ? (
@@ -231,12 +258,12 @@ export function FeedList() {
                     >
                       {/* 279 추가 수정: aspect-ratio + flex-1 조합은 grid item의 min-height:auto
                           자동 최소 크기 계산에 따라 콘텐츠가 지정 높이를 밀어 넘길 수 있어(2줄
-                          제목 카드가 더 커 보이는 원인 후보), 표지에 고정 px 높이(COVER_HEIGHT_PX)를
+                          제목 카드가 더 커 보이는 원인 후보), 표지에 명시적 높이(COVER_HEIGHT_CSS)를
                           직접 지정하는 방식으로 바꿨다 — 'auto' 계산이 개입할 여지 자체를 없앤다. */}
                       <div
                         aria-hidden="true"
                         style={{
-                          height: COVER_HEIGHT_PX,
+                          height: COVER_HEIGHT_CSS,
                           backgroundColor: getCollectionAccentColor(item.collectionId),
                         }}
                       />
@@ -293,7 +320,7 @@ export function FeedList() {
 
                     {/* 배지 값은 서버 응답의 position을 그대로 쓴다 — 프론트에서 재계산·보정하지
                         않는다(api-contract.md Feed 이벤트 원칙). 명시적 height(BADGE_HEIGHT_PX)로
-                        그리드 행 높이(ITEM_COLUMN_HEIGHT_PX) 계산과 실제 렌더링이 어긋나지 않게 한다. */}
+                        그리드 행 높이(ITEM_COLUMN_HEIGHT_CSS) 계산과 실제 렌더링이 어긋나지 않게 한다. */}
                     <span
                       style={{ height: BADGE_HEIGHT_PX }}
                       className="inline-flex items-center rounded-full bg-line-subtle px-2.5 text-[10px] font-semibold leading-none text-ink-gray"
@@ -302,8 +329,8 @@ export function FeedList() {
                     </span>
                   </div>
                 ) : (
-                  // 10개 미만인 페이지(예: 마지막 페이지)의 남는 슬롯 — 책장 크기(5×2)는 그대로
-                  // 두고 빈 선반으로 보여준다.
+                  // 10개 미만인 페이지(예: 마지막 페이지)의 남는 슬롯 — 책장 크기(현재 breakpoint의
+                  // columns×rows)는 그대로 두고 빈 선반으로 보여준다.
                   <div
                     key={`empty-${rowIndex}-${indexInRow}`}
                     aria-hidden="true"

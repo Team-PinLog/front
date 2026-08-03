@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { MyShelfColumn } from '@/features/collections/components/MyShelfList';
 import { FollowedShelfCard } from '@/features/follows/components/FollowedShelfCard';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
+import { PAGE_CONTAINER_CLASS, PAGE_TITLE_GAP_CLASS } from '@/shared/lib/shelfCabinetLayout';
+import { PageTitle } from '@/shared/ui/PageTitle';
 import { ShelfCabinet, ShelfColumn, ShelfColumnGrid } from '@/shared/ui/Shelf';
 
 /**
@@ -65,10 +67,20 @@ export function LibraryPage() {
         : null;
 
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
-      <h1 className="text-[27px] font-bold tracking-tight text-pin-navy">나의 책장</h1>
+    // 287-8: min-h(뷰포트 높이 - AppLayout 헤더 80px)와 좌우 컨테이너(PAGE_CONTAINER_CLASS)·타이틀-
+    // 캐비닛 gap(PAGE_TITLE_GAP_CLASS)을 FeedPage와 그대로 공유한다. 캐비닛 래퍼(flex-1 min-h-0)가
+    // 제목을 제외한 나머지 세로 공간을 전부 채운다.
+    // 287-9: 제목도 PageTitle(shared/ui/PageTitle.tsx)로 FeedPage와 같은 고정 height를 공유한다 —
+    // 이 페이지 폰트 스타일(text-[27px] font-bold tracking-tight)은 그대로 유지하되, 바깥 박스
+    // 높이만 고정해 Feed의 h1(text-2xl)과 자연 높이가 달라도 캐비닛 크기가 어긋나지 않게 한다.
+    <main
+      className={`${PAGE_CONTAINER_CLASS} flex min-h-[calc(100dvh-5rem)] flex-col ${PAGE_TITLE_GAP_CLASS} py-4 md:py-6`}
+    >
+      <PageTitle className="text-[27px] font-bold tracking-tight text-pin-navy">
+        나의 책장
+      </PageTitle>
 
-      <div className="relative">
+      <div className="relative min-h-0 flex-1">
         <ShelfCabinet headerTitle="나의 책장">
           <ShelfColumnGrid>
             <ShelfColumn>
@@ -80,7 +92,11 @@ export function LibraryPage() {
               return (
                 <ShelfColumn key={slot}>
                   {follow ? (
-                    <FollowedShelfCard followId={follow.followId} alias={follow.alias} />
+                    <FollowedShelfCard
+                      followId={follow.followId}
+                      alias={follow.alias}
+                      columnSlot={slot}
+                    />
                   ) : (
                     slot === 0 &&
                     followStatusMessage && (
