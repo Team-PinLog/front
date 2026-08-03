@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, Outlet } from '@tanstack/react-router';
 import logoFull from '@/assets/logo-full.png';
 import { WithdrawConfirmProvider } from '@/contexts/WithdrawConfirmProvider';
+import { PAGE_CONTAINER_CLASS } from '@/shared/lib/shelfCabinetLayout';
 import { SettingsPanel } from './SettingsPanel';
 import { WithdrawConfirmDialog } from './WithdrawConfirmDialog';
 
@@ -49,7 +50,10 @@ export function AppLayout() {
     <WithdrawConfirmProvider>
       <div className="min-h-screen bg-paper-white">
         <header className="fixed inset-x-0 top-0 z-40 border-b border-line-card bg-paper-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-8 py-4">
+          {/* 287-8: 좌우 padding/max-width(PAGE_CONTAINER_CLASS)를 FeedPage/LibraryPage의 페이지
+              컨텐츠 컨테이너와 그대로 공유한다 — 로고~설정 아이콘의 좌우 끝이 그 아래 페이지 컨텐츠
+              (캐비닛 포함)의 좌우 끝과 같은 x좌표에 맞춰지게 하기 위해서다. */}
+          <div className={`${PAGE_CONTAINER_CLASS} flex items-center justify-between gap-6 py-4`}>
             <div className="flex items-center gap-9">
               <Link to="/" title="홈으로 이동" className="block h-7 w-[95px] overflow-hidden">
                 {/* PinLog/brand-resource assets/logo-full.png(1447x1087)는 실제 심볼+워드마크 주위에 넓은 투명
