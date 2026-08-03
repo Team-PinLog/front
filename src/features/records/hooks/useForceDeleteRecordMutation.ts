@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/shared/http/types';
 import { collectionDetailQueryKey } from '@/features/collections/hooks/useCollectionDetailQuery';
 import { myCollectionsQueryKey } from '@/features/collections/hooks/useMyCollectionsQuery';
+import { recordMapMarkersQueryKey } from '@/features/map/hooks/useRecordMapMarkersQuery';
 import { forceDeleteRecord } from '../api/forceDeleteRecord';
 import { recordDetailQueryKey } from './useRecordDetailQuery';
 
@@ -28,6 +29,9 @@ export function useForceDeleteRecordMutation() {
         });
         queryClient.invalidateQueries({ queryKey: myCollectionsQueryKey });
       }
+
+      // 지도 마커 쿼리는 Record 상세와 별도 캐시라 위 처리로 갱신되지 않는다 — 연쇄 Collection 유무와 무관하게 항상 무효화한다.
+      queryClient.invalidateQueries({ queryKey: recordMapMarkersQueryKey() });
     },
   });
 }
