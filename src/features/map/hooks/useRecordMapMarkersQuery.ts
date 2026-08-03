@@ -21,6 +21,8 @@ export function useRecordMapMarkersQuery() {
   const query = useQuery<RecordMapMarkers, ApiError>({
     queryKey: recordMapMarkersQueryKey(),
     queryFn: () => getRecordMapMarkers(bboxRef.current),
+    // 401 refresh 실패 시 전역 retry:1 상속으로 인한 재요청 루프를 막는다(S15P11A705-256).
+    retry: false,
   });
 
   function refetchWithBbox(bbox: RecordMapBbox) {
