@@ -16,8 +16,8 @@ export default defineConfig({
       // target 포트는 임시값이며 백엔드 로컬 실행 포트 확정 시 교체한다.
       // 쿠키 전송은 axios withCredentials로 처리 예정(프론트는 프록시로 쿠키를 직접 다루지 않음).
       '/api': {
-        // target: 'http://localhost:8080',
-        target: 'https://pin-log.com',
+        target: 'http://localhost:8080',
+        // target: 'https://pin-log.com',
         changeOrigin: true,
         secure: true,
       },
