@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
-import { chunkIntoShelfRows, SHELF_ROW_SIZE } from '@/shared/lib/shelfSpine';
+import {
+  chunkIntoShelfRows,
+  SHELF_ROW_SIZE,
+  SHELF_SCROLL_SIDE_PADDING_PX,
+  SHELF_SCROLL_TOP_PADDING_PX,
+  SHELF_VISIBLE_HEIGHT_PX,
+  SHELF_VISIBLE_ROW_COUNT,
+} from '@/shared/lib/shelfSpine';
 import { ShelfBookSpine, ShelfIconButton, ShelfMoreButton, ShelfTier } from '@/shared/ui/Shelf';
 import { useFollowShelfCollectionsQuery } from '../hooks/useFollowShelfCollectionsQuery';
 import { useUpdateFollowAliasMutation } from '../hooks/useUpdateFollowAliasMutation';
@@ -182,10 +189,29 @@ function FollowedShelfCollections({
   }
 
   const rows = chunkIntoShelfRows(collections);
+  // 287-6: MyShelfColumn과 동일하게, 컬렉션이 적어 3행 미만이면 남는 행만큼 책 없는 빈 ShelfTier로
+  // 채운다 — 선반 보드가 항상 고정 위치에 보이게 한다.
+  const emptyTierCount = Math.max(0, SHELF_VISIBLE_ROW_COUNT - rows.length);
 
   return (
     <>
-      <div className="flex flex-col gap-3">
+      {/* 287-3: MyShelfColumn과 동일하게 height를 고정한다(maxHeight는 콘텐츠가 적으면 박스가
+          작아져 버려 팔로우한 책장의 책 수에 따라 캐비닛 크기가 그대로 좌우된다). paddingTop/
+          paddingLeft/paddingRight도 동일 이유(호버 리프트·기울기 clip 방지)로 MyShelfColumn과
+          맞춘다 — 자세한 근거는 shelfSpine.ts의 SHELF_VISIBLE_HEIGHT_PX·SHELF_SCROLL_TOP_PADDING_PX·
+          SHELF_SCROLL_SIDE_PADDING_PX 주석 참고.
+          287-5: 타이어 사이 gap도 MyShelfColumn과 동일하게 gap-1.5로 맞췄다 — shelfSpine.ts
+          SHELF_VISIBLE_HEIGHT_PX가 Feed 기준 SHELF_CABINET_TOTAL_HEIGHT_PX에서 역산한 값이라 이
+          gap도 그 전제와 일치해야 한다. */}
+      <div
+        style={{
+          height: SHELF_VISIBLE_HEIGHT_PX,
+          paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
+          paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,
+          paddingRight: SHELF_SCROLL_SIDE_PADDING_PX,
+        }}
+        className="flex flex-col gap-1.5 overflow-y-auto"
+      >
         {rows.map((row, rowIndex) => (
           <ShelfTier key={rowIndex}>
             {row.map((collection, indexInRow) => (
@@ -198,6 +224,10 @@ function FollowedShelfCollections({
               />
             ))}
           </ShelfTier>
+        ))}
+
+        {Array.from({ length: emptyTierCount }, (_, emptyIndex) => (
+          <ShelfTier key={`empty-${emptyIndex}`}>{null}</ShelfTier>
         ))}
       </div>
 

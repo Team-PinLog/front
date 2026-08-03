@@ -3,6 +3,11 @@ import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { formatDate } from '@/shared/lib/formatDate';
 import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
+import {
+  BADGE_HEIGHT_PX,
+  CARD_HEIGHT_PX,
+  ITEM_COLUMN_HEIGHT_PX,
+} from '@/shared/lib/shelfCabinetLayout';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { PAGE_SIZE, useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
@@ -29,8 +34,10 @@ const SHELF_COLUMNS = 5;
 // 일부러 넣지 않았다 — 아래 ITEM_COLUMN_WIDTH_STYLE 주석 참고). 반응형은 범위 밖이라(참고: 이번
 // 작업 지시) 고정 px 하나로 충분하다.
 const CARD_WIDTH_PX = 175;
-// 목업 근사 비율(150/210)에서 유도한 값을 고정 px로 굳혔다: 175 * (210/150) = 245.
-const CARD_HEIGHT_PX = 245;
+// 287-5: CARD_HEIGHT_PX(목업 근사 비율 150/210에서 유도: 175*(210/150)=245)는 shared/lib/
+// shelfCabinetLayout.ts로 옮겼다 — Library가 캐비닛 전체 높이(SHELF_CABINET_TOTAL_HEIGHT_PX)를
+// 역산할 때 이 파일과 다른 숫자를 또 추정하지 않고 여기서 실제 쓰는 값을 그대로 읽어가게 하기
+// 위해서다.
 const TITLE_HEIGHT_PX = 30; // text-xs(12px) leading-tight(1.25) 2줄 = 15px*2
 const KEYWORDS_HEIGHT_PX = 32; // h-8, 2줄 분량 pill
 const META_HEIGHT_PX = 14; // 장소개수·날짜 1줄(truncate)
@@ -44,11 +51,9 @@ const CARD_BORDER_PX = 2;
 const COVER_HEIGHT_PX = CARD_HEIGHT_PX - CARD_BORDER_PX - INFO_HEIGHT_PX;
 const CARD_BOX_STYLE = { width: CARD_WIDTH_PX, height: CARD_HEIGHT_PX };
 
-const BADGE_HEIGHT_PX = 16;
-const ITEM_COLUMN_GAP_PX = 8; // gap-2, 카드와 배지 사이
-// 실제 아이템 칸(카드+gap+배지) 전체 높이 — 그리드 행 높이를 여기 고정해 콘텐츠가 달라져도 행
-// 높이가 흔들리지 않게 한다.
-const ITEM_COLUMN_HEIGHT_PX = CARD_HEIGHT_PX + ITEM_COLUMN_GAP_PX + BADGE_HEIGHT_PX;
+// 287-5: BADGE_HEIGHT_PX/ITEM_COLUMN_GAP_PX/ITEM_COLUMN_HEIGHT_PX(카드+gap+배지 전체 높이 — 그리드
+// 행 높이를 여기 고정해 콘텐츠가 달라져도 행 높이가 흔들리지 않게 한다, gap-2와 반드시 일치)도
+// shelfCabinetLayout.ts로 옮겼다.
 // wrapper(카드+배지)는 자체 너비가 없는 shrink-to-fit 상태라 카드의 `width: min(100%, ...)`에서
 // "100%"가 확정되지 않아 콘텐츠 기반 폭으로 흘렀다 — wrapper에 고정 width를 직접 줘서 100%가
 // 항상 CARD_WIDTH_PX로 확정되게 한다. overflow-hidden은 일부러 넣지 않았다: wrapper 높이는 이미

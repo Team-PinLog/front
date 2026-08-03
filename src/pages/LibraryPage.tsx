@@ -65,7 +65,7 @@ export function LibraryPage() {
         : null;
 
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-8">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
       <h1 className="text-[27px] font-bold tracking-tight text-pin-navy">나의 책장</h1>
 
       <div className="relative">

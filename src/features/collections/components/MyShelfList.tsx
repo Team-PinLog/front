@@ -6,6 +6,10 @@ import {
   getSpineHeight,
   getSpineWidth,
   SHELF_ROW_SIZE,
+  SHELF_SCROLL_SIDE_PADDING_PX,
+  SHELF_SCROLL_TOP_PADDING_PX,
+  SHELF_VISIBLE_HEIGHT_PX,
+  SHELF_VISIBLE_ROW_COUNT,
 } from '@/shared/lib/shelfSpine';
 import type { CollectionSummary } from '@/features/collections/api/getMyCollections';
 import {
@@ -21,11 +25,8 @@ import { NewCollectionModal } from './NewCollectionModal';
 
 // 250: 2행(ShelfTier 2개) 높이만큼만 스크롤 없이 보여주고, 그 이상은 세로 스크롤로 넘긴다 — 사용자가
 // "스크롤 유지"를 택했다(2·3열의 이전/다음 페이지네이션과는 별개로 1열만 이 방식을 쓴다).
-// 251: 스파인 최대 높이를 SPINE_MAX_HEIGHT 104→168로 되돌리면서 이 값도 같은 계산식으로 다시 뽑았다.
-// 380px = ShelfTier 1개 높이(spine 최대 168px + gap-1.5 6px + board 10px = 184px) × 2
-//         + 타이어 사이 gap-3 12px = 184*2 + 12 = 380.
-// SPINE_MAX_HEIGHT(shelfSpine.ts)가 또 바뀌면 이 계산식을 그대로 다시 적용해서 갱신해야 한다.
-const MY_SHELF_VISIBLE_HEIGHT_PX = 380;
+// 287: 높이 값 자체는 SHELF_VISIBLE_HEIGHT_PX(shelfSpine.ts)로 옮겼다 — 2·3열
+// (FollowedShelfCollections)도 같은 값으로 캡을 둬야 캐비닛 전체 높이가 책 개수와 무관하게 고정된다.
 
 // 251: ShelfAddSlot은 recordCount가 없어 자체 높이를 계산할 수 없다 — 같은 행에 스파인이 있으면 그
 // 행의 평균 높이를 쓰고(형제와 줄을 맞추기 위해), 행이 비어 있으면(꽉 찬 마지막 행 뒤에 새 행으로
@@ -65,6 +66,10 @@ export function MyShelfColumn() {
   const lastRow = collectionRows[collectionRows.length - 1];
   // 새 컬렉션 추가 슬롯은 마지막 행에 자리가 있으면 그 행에 이어 붙이고, 꽉 찼으면 새 행을 만든다.
   const addSlotFitsLastRow = lastRow !== undefined && lastRow.length < SHELF_ROW_SIZE;
+  // 287-6: 컬렉션이 적으면(1~2행) 아래쪽 행의 선반 보드 자체가 렌더링되지 않았다 — 컬렉션 개수와
+  // 무관하게 항상 SHELF_VISIBLE_ROW_COUNT(3)개의 ShelfTier(빈 행이면 책 없이 선반만)를 채운다.
+  const renderedTierCount = collectionRows.length + (addSlotFitsLastRow ? 0 : 1);
+  const emptyTierCount = Math.max(0, SHELF_VISIBLE_ROW_COUNT - renderedTierCount);
 
   return (
     <>
@@ -74,9 +79,27 @@ export function MyShelfColumn() {
         <p className="text-xs text-white/50">아직 만든 컬렉션이 없어요.</p>
       )}
 
+      {/* 287-3: maxHeight는 "콘텐츠가 이 값을 넘을 때만 스크롤 발동"하는 상한일 뿐이라, 컬렉션이
+          적으면 박스 자체가 작아져 588을 올려도 화면에 반영되지 않았다 — Feed가 카드 수와 무관하게
+          항상 5×2 고정 그리드인 것과 같은 원칙으로, height를 고정해 몇 권이든 캐비닛 크기가 그대로
+          유지되게 한다(적으면 아래쪽 여백, 많으면 overflow-y-auto로 스크롤).
+          287-2: paddingTop(SHELF_SCROLL_TOP_PADDING_PX)은 맨 윗줄 책 호버 시 translateY(-10px)가
+          overflow-y-auto의 clip 경계에 잘리지 않게 하는 여유다(박스 바깥 margin/gap은 이 clip
+          경계 자체를 바꾸지 못해 소용없다).
+          287-3: overflow-y가 auto면 overflow-x도 브라우저가 auto로 취급해(CSS Overflow 스펙) 회전한
+          책등이 좌우로도 clip 대상이 된다 — paddingLeft/Right(SHELF_SCROLL_SIDE_PADDING_PX)로
+          기울기(getSpineTilt) 최대 protrusion만큼 여유를 준다.
+          287-5: 타이어 사이 gap을 gap-1.5(6px)로 다시 조정했다 — shelfSpine.ts
+          SHELF_VISIBLE_HEIGHT_PX가 Feed의 실제 캐비닛 높이(SHELF_CABINET_TOTAL_HEIGHT_PX)에서 역산한
+          값이라, 이 gap도 그 계산식의 전제와 반드시 일치해야 한다. */}
       <div
-        style={{ maxHeight: MY_SHELF_VISIBLE_HEIGHT_PX }}
-        className="flex flex-col gap-3 overflow-y-auto pr-1"
+        style={{
+          height: SHELF_VISIBLE_HEIGHT_PX,
+          paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
+          paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,
+          paddingRight: SHELF_SCROLL_SIDE_PADDING_PX,
+        }}
+        className="flex flex-col gap-1.5 overflow-y-auto"
       >
         {collectionRows.map((row, rowIndex) => (
           <ShelfTier key={rowIndex}>
@@ -115,6 +138,13 @@ export function MyShelfColumn() {
             />
           </ShelfTier>
         )}
+
+        {/* 287-6: 실제 콘텐츠(컬렉션 행 + 추가 슬롯 행)가 SHELF_VISIBLE_ROW_COUNT보다 적을 때, 남는
+            만큼 책 없는 빈 ShelfTier를 채운다 — 선반 보드(ShelfBoard)는 ShelfTier가 항상 그리므로
+            빈 행도 고정된 위치에 보드가 노출된다. */}
+        {Array.from({ length: emptyTierCount }, (_, emptyIndex) => (
+          <ShelfTier key={`empty-${emptyIndex}`}>{null}</ShelfTier>
+        ))}
       </div>
 
       {hasNext && (
