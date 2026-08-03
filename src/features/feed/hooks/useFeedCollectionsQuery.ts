@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { ApiError } from '@/shared/http/types';
 import { getFeedCollections, type FeedCollectionsPage } from '../api/getFeedCollections';
 
-const PAGE_SIZE = 10;
+// FeedList의 5x2 책장 슬롯 수와 반드시 일치해야 한다.
+export const PAGE_SIZE = 10;
 
 /**
  * 근거: Jira S15P11A705-249. 이전엔 useInfiniteQuery로 무한스크롤을 구현했으나, 이번 티켓에서
