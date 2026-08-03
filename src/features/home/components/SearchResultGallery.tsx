@@ -36,7 +36,7 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
             <p className="text-xs font-semibold text-log-mint">{item.place.address}</p>
           </div>
 
-          {item.keywords.length > 0 && (
+          {item.keywords.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {item.keywords.map((keyword) => (
                 <span
@@ -47,6 +47,12 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
                 </span>
               ))}
             </div>
+          ) : item.keywordStatus === 'PROCESSING' ? (
+            <p className="text-xs text-ink-gray-light">
+              AI가 키워드를 분석 중이에요. 잠시 후 자동으로 채워집니다
+            </p>
+          ) : (
+            <p className="text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
           )}
 
           <div className="rounded-lg border border-pin-navy/10 bg-paper-white p-3">

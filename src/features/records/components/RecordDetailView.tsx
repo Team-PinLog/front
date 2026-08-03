@@ -76,9 +76,7 @@ export function RecordDetailView({ recordId }: RecordDetailViewProps) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-ink-gray-light">
-          키워드는 AI가 분석 중이에요. 잠시 후 자동으로 채워집니다.
-        </p>
+        <p className="text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
       )}
 
       <section className="flex flex-col gap-3">

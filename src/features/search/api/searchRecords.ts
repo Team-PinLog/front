@@ -24,12 +24,16 @@ const searchMatchedContextSchema = z.object({
 
 // similarity는 정렬 근거·디버깅용으로 항상 반환되지만 UI에는 노출하지 않는다(08_API_명세 6.1).
 // keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 오류로 처리하지 않는다.
+// keywordStatus(PROCESSING/COMPLETED/FAILED)는 keywords와 독립적으로 판정되므로, keywords: []는
+// 세 상태 어디서든(처리중·완료 0건·실패) 나올 수 있다 — 문구 분기는 keywordStatus 기준으로 한다
+// (front#58, S15P11A705-242, api-contract.md AI 검색 · Keyword).
 const searchResultItemSchema = z.object({
   recordId: z.number(),
   similarity: z.number(),
   place: searchPlaceSchema,
   matchedContext: searchMatchedContextSchema,
   keywords: z.array(z.string()),
+  keywordStatus: z.enum(['COMPLETED', 'PROCESSING', 'FAILED']),
   createdAt: z.string(),
 });
 

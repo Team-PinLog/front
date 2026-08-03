@@ -133,9 +133,7 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
                     </span>
                   ))
                 ) : (
-                  <p className="truncate text-xs text-ink-gray-light">
-                    AI가 키워드를 분석 중이에요
-                  </p>
+                  <p className="truncate text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
                 )}
               </div>
 
