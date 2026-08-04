@@ -28,4 +28,4 @@ PinLog 프론트엔드(PC 웹). 스택 예정: React + TypeScript + Vite + Tailw
 - 문서에 없는 정책·엔드포인트를 추측해서 구현하지 않는다. `api-contract.md`의 "협의 필요" 항목은 확정된 것처럼 구현하지 않는다.
 - 유사한 오류를 만나면 `docs/troubleshooting/`을 먼저 확인한다.
 - 참조 문서 원본은 Team-PinLog/docs 레포다. 직접 수정하지 말고 doc-syncer로 갱신한다.
-- 커밋은 사용자가 직접 한다. 요청 없이 커밋·푸시하지 않는다. `/pr` 커맨드 실행 시 예외(자동 commit·push·PR 생성)는 `docs/conventions.md` 5장 참조.
+- **작업 진행은 `docs/conventions.md` 5장 절차를 따른다** — 티켓 → 이슈키 → 브랜치 생성 → 작업 → **커밋 전 보고** → `/pr`. 이슈키 없이 브랜치를 만들지 않고, `/pr` 없이 커밋·push하지 않으며, merge는 하지 않는다.

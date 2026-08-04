@@ -1,5 +1,5 @@
 ---
-description: 변경사항을 분석해 커밋 → push → PR 생성까지 전체 자동화한다.
+description: 커밋 전 보고를 마친 변경사항을 기능별 커밋 → push → PR 생성까지 진행한다.
 ---
 
 현재 브랜치의 변경사항으로 커밋을 생성하고, push한 뒤, 가능하면 PR까지 생성한다.
@@ -15,10 +15,10 @@ description: 변경사항을 분석해 커밋 → push → PR 생성까지 전�
 
 - 형식: `type(이슈키): 설명` 한 줄, body 없음. (`docs/conventions.md` 3장 기준)
 - `type`은 Conventional Commits 중 `commitlint.config.js`가 허용하는 값(`feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`, `perf`, `ci`)으로 고른다.
-- 이슈키는 `.husky/prepare-commit-msg`와 동일한 방식으로 현재 브랜치명에서 추출한다: `S15P11A705-[0-9]+` 패턴을 찾는다(`git symbolic-ref --short HEAD` 결과에서 정규식으로 추출). 못 찾으면 스코프 없이 `type: 설명`으로 작성한다.
+- 이슈키는 `.husky/prepare-commit-msg`와 동일한 방식으로 현재 브랜치명에서 추출한다: `S15P11A705-[0-9]+` 패턴을 찾는다(`git symbolic-ref --short HEAD` 결과에서 정규식으로 추출). 못 찾으면 **중단하고 보고한다** — 브랜치에 이슈키가 없다는 건 절차(`docs/conventions.md` 5장) 4단계를 건너뛴 상태이므로 스코프 없이 커밋하지 않는다.
 - `header-max-length: 100`(commitlint.config.js)을 넘지 않게 설명을 간결히 쓴다.
 - 설명은 한국어로 쓴다.
-- 변경사항에 여러 논리적 단위가 섞여 있어도 커밋을 쪼개지 않는다. 하나의 메시지로 요약해 지금 만들 커밋 하나만 생성한다(기존에 이미 존재하는 커밋은 건드리지 않는다).
+- 변경사항을 **기능·관심사 단위로 나눠 커밋한다**(1개여도 된다). 서로를 참조해 나누면 각 커밋이 어긋난 상태를 거치는 경우(코드와 그 근거 주석·문서)는 묶는다. 나눌 때는 `git add <path>`로 파일 단위 스테이징하고, 한 파일 안에서 갈라야 하면 patch를 분할해 적용한다. **기존에 이미 존재하는 커밋은 건드리지 않는다.**
 
 ## 2. 커밋 실행
 
@@ -46,7 +46,8 @@ description: 변경사항을 분석해 커밋 → push → PR 생성까지 전�
 
 대화로 보고한다:
 
-- 생성한 커밋 메시지
+- 생성한 커밋 메시지(나눴다면 전부, 각 커밋이 무엇을 담는지 함께)
 - push된 브랜치명
 - PR URL(생성됐다면) 또는 fallback 안내(미인증 시)
+- **머지 가능 여부**: `gh pr view --json mergeable,mergeStateStatus`와 `gh pr checks`로 충돌·CI를 확인해 "머지해도 되는지"를 보고한다. **머지는 실행하지 않는다** — 사용자가 GitHub 웹에서 직접 한다.
 - 확인이 필요한 사항(예: base 브랜치 존재 여부, gh 인증 여부, reject로 인한 중단 등)
