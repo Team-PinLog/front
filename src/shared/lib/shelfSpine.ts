@@ -6,18 +6,18 @@ import { pastelizeHex } from './pastelizeHex';
 // 287-12: 원래는 채도 높은 무채색 계열 책등 색이었다 — 각 색을 pastelizeHex(채도↓, 명도↑)로 한 번
 // 거쳐 파스텔톤으로 낮췄다. hue(색 구분)는 그대로 유지되므로 어떤 색이 어떤 책인지 상대적 구분은
 // 남지만, 톤 전체가 옅고 부드러워진다.
-const SPINE_COLORS = [
-  '#738F91',
-  '#556B50',
-  '#A85F3A',
-  '#C79742',
-  '#71806D',
-  '#77754F',
-  '#52634B',
-  '#314744',
-  '#7D8973',
-  '#2F465E',
-].map(pastelizeHex);
+// 295 반응형 재설계(요구사항 C): 위 원래 10색 중 6개(#556B50/#71806D/#77754F/#52634B/#314744/
+// #7D8973)가 전부 올리브~카키 계열(H 56~104°)이었다 — pastelizeHex를 거쳐도 hue는 안 바뀌므로
+// 책장 전체가 "연두 계열"로 편중돼 보였다(육안 구분 저하). 새 팔레트는 브랜드 4색의 hue만 쓰고
+// (Pin Navy H212°, Log Mint H170°, Ink Gray/Paper White H14~18°— 임의의 브랜드 무관 색상 추가
+// 없음) 명도·채도만 조절해 각 hue를 2단계(짙게/옅게)로 늘렸다 — 3개 hue 계열(청, 민트, 웜뉴트럴)×
+// 2단계 = 6색. pastelizeHex는 그대로 거쳐 기존 책등의 부드러운 톤을 유지한다.
+//   Navy 계열:  #2E6EB8(H212 S60 L45) / #82A3C9(H212 S40 L65)
+//   Mint 계열:  #257E70(H170 S55 L32) / #6BC7B8(H170 S45 L60)
+//   웜뉴트럴 계열(Ink Gray/Paper White 공유 hue): #846C62(H18 S15 L45) / #C6AB9F(H18 S25 L70)
+const SPINE_COLORS = ['#2E6EB8', '#82A3C9', '#257E70', '#6BC7B8', '#846C62', '#C6AB9F'].map(
+  pastelizeHex,
+);
 
 // 251: 250에서 "2행이 스크롤 없이 들어가도록" 112~168 → 72~104로 줄였더니 캐비닛이 목업 대비
 // 밋밋하고 작아 보인다는 진단이 나와, 169 원본 값(112~168)으로 되돌렸다. 2행 고정 표시는 더 이상
@@ -83,7 +83,22 @@ function getRowCapacity(seedId: number, rowIndex: number, previousCapacity: numb
 }
 
 // 287-5: 항상 노출할 행(선반) 수 — 컬렉션이 몇 개든 이 수만큼 ShelfTier(빈 행 포함)를 렌더링한다.
+// 개수라서 scale 대상이 아니다.
 export const SHELF_VISIBLE_ROW_COUNT = 3;
+
+// 295 추가 수정(이슈 3): MyShelfColumn(내 책장)과 FollowedShelfCollections(팔로우한 책장)가 각자
+// 따로 `Math.max(0, SHELF_VISIBLE_ROW_COUNT - N)`을 계산하고 있었다 — 계산 자체는 같은 공식이었지만
+// "N에 무엇을 넣는지"(실제 콘텐츠 행 수)가 서로 다른 기준이었던 게 진짜 원인이었다: 내 책장은 "새
+// 컬렉션 추가" 슬롯이 마지막 행에 안 들어가면 무조건 행을 하나 더 만들어(SHELF_VISIBLE_ROW_COUNT를
+// 넘겨서라도) 추가 버튼을 항상 노출시켰고, 팔로우한 책장은 그런 예외가 없어 항상 정확히 3행으로
+// 패딩됐다 — 그 결과 "내 책장 컬렉션이 정확히 3행을 꽉 채운 상태"에서만 내 책장이 4개 tier를
+// 그리고 팔로우한 책장은 3개만 그려, 같은 높이로 stretch된 두 ShelfColumn 안에서 콘텐츠가 차지하는
+// 비율이 달라져 최하단 선반~캐비닛 바닥 여백이 달라 보였다. 이 함수를 두 컴포넌트가 동일하게
+// 호출하게 만들어 "행 수 계산 자체는 하나의 함수"라는 사실을 코드로 고정한다 — 호출부가 넘기는
+// realRowCount(추가 슬롯이 필요로 하는 행까지 포함한 실제 콘텐츠 행 수)만 서로 다르다.
+export function getEmptyTierPadding(realRowCount: number): number {
+  return Math.max(0, SHELF_VISIBLE_ROW_COUNT - realRowCount);
+}
 
 // 287-2: 스크롤 박스(overflow-y-auto) 내부에 주는 상단 여유 — margin이 아니라 반드시 padding이어야
 // 한다. overflow는 자기 자신의 padding-box 경계로 clip하므로, 박스 "바깥"의 gap을 늘려도 안쪽으로

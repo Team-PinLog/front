@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 
 // 287-9: Feed("새로운 장소를 발견해 보세요", text-2xl — Tailwind 스케일 유틸이라 line-height 2rem이
 // 함께 고정된다)와 Library("나의 책장", text-[27px] — 임의값이라 line-height가 브라우저 기본값
@@ -11,19 +12,37 @@ import type { ReactNode } from 'react';
 // 이 컴포넌트가 고정 height + truncate(항상 1줄)로 강제한다 — 텍스트 길이나 줄바꿈 여부와 무관하게
 // 두 페이지의 타이틀 슬롯이 항상 정확히 같은 높이를 차지한다. 여기서 딱 한 번만 정의하므로, 두
 // 페이지가 각자 비슷한 값을 추정해 어긋날 여지가 없다.
-const TITLE_HEIGHT_PX = 40;
-
+// 295 추가 수정(요구사항 2.2): xl(≥1280)은 기존 40px(h-10)을 유지하고, sm·mdlg(<1280)는 32px(h-8)로
+// 줄인다 — 고정 UI(타이틀 영역)가 차지하는 비중을 줄인다.
+// 295 추가 수정(이슈 1.1): 이 고정 height는 여전히 "두 페이지 타이틀 슬롯을 똑같이 맞추는" 용도로
+// 남겨두되, 실제 렌더링된 높이를 ref+ResizeObserver로 측정해 LayoutMetricsContext에 보고한다 —
+// FeedList의 캐비닛 세로 예산 계산이 32/40 같은 하드코딩 상수 대신 이 실측값을 쓴다.
 interface PageTitleProps {
   children: ReactNode;
   className?: string;
 }
 
 export function PageTitle({ children, className = '' }: PageTitleProps) {
+  const { reportTitleHeightPx } = useLayoutMetrics();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    const element = titleRef.current;
+    if (!element) {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        reportTitleHeightPx(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [reportTitleHeightPx]);
+
   return (
-    <h1
-      style={{ height: TITLE_HEIGHT_PX }}
-      className={`flex flex-none items-center truncate ${className}`}
-    >
+    <h1 ref={titleRef} className={`flex h-8 flex-none items-center truncate xl:h-10 ${className}`}>
       {children}
     </h1>
   );
