@@ -84,11 +84,13 @@
   - ⚠️ 필드명은 `collectionId`가 **아니다.** 2026-08-04 doc-sync 이전 이 문서와 프론트 Zod 스키마가 `collectionId`로 적혀 있었고, 그대로면 파싱이 조용히 `undefined`가 되어 모든 마커가 "미분류" 색으로 떨어진다.
   - 한 Record가 여러 Collection에 담길 수 있으나 이 필드는 **단일 값**이다. 마커 색은 "그 Record가 속한 모든 Collection"이 아니라 "가장 최근 것 하나"를 나타낸다.
 - 프론트 처리: `latestCollectionId` 기반 해시로 마커 asset(색) 결정, `null`이면 별도 고정 asset(미분류) 적용. 구현은 `getRecordMarkerAsset`(S15P11A705-307).
-- 배포 시점이 프론트 배포보다 늦어질 가능성에 대비해, 프론트 Zod 스키마는 이 필드를 optional로 받는다(필드가 없거나 명시적 `null`이면 동일하게 "미분류"로 취급). 실제 배포 확인되면 optional 제거를 검토한다.
+- **back 구현은 아직 머지되지 않았다** — back PR #191(`S15P11A705-308`)이 2026-08-04 기준 **OPEN**이다. 그래서 프론트 Zod 스키마는 이 필드를 **optional로 받는다**(필드가 없거나 명시적 `null`이면 동일하게 "미분류"로 취급). 현재 지도 마커가 전부 미분류 색으로 보이는 것은 **정상**이며, #191이 머지·배포된 뒤에야 색이 갈린다. 그 시점에 optional 제거를 검토한다.
 
 ### 회원 탈퇴 — 2단계
 
 > **`DELETE /me`는 더 이상 "탈퇴 완료"가 아니다.** `204`(완료) → **`200` + 이동할 곳**으로 바뀌었다. 엔드포인트·메서드는 그대로다. <!-- 근거: 08_API_명세.md §3.6, 06_데이터모델_및_무결성.md §6.9 -->
+>
+> **프론트 대응 완료** — front #97, back #181(`S15P11A705-285`, 머지됨). `deleteAccount` 응답 파싱 · `WithdrawConfirmDialog` 페이지 이동 · `handleOAuthCallback`의 `WITHDRAWAL_*` 분기까지 반영돼 있다.
 
 탈퇴는 두 단계이며, **공급자 연결 해제가 선행되고 그것이 성공한 경우에만** 데이터가 삭제된다.
 
@@ -142,10 +144,12 @@ type PlaceSummary = {
 };
 ```
 
+- back 구현 **머지 완료**(back #184 `S15P11A705-305`, 2026-08-04). `PlaceSummaryResponse`를 쓰는 **모든 응답**에 실린다 — Record 상세뿐 아니라 Collection 상세도 포함이다.
 - **`thumbnailUrl`은 `null`일 수 있으나 필드가 생략되지는 않는다.** `null`이거나 이미지 로드에 실패하면 기본 이미지로 폴백한다. <!-- 근거: 08_API_명세.md §11.1 -->
 - **4:3 비율**로 제공된다. `aspect-ratio: 4 / 3` + `object-fit: cover`로 표시하면 로딩 전 영역이 확보되고 폭에 적응한다.
-- 현 단계 값은 같은 오리진의 절대 경로(`/api/core/images/places/…`)다. 이후 외부 절대 URL로 바뀔 수 있으며 `<img src>` 사용법은 동일하다. **`VITE_API_BASE_URL`(`/api/core/v1`)을 앞에 붙이지 않는다** — 이 경로는 `v1` 밖이다.
-  - ⚠️ 이 경로가 실제로 백엔드에 도달하는지는 [협의 필요] 1번(Traefik 라우팅 실측)에 달려 있다. 프론트 nginx는 `/api/`를 무조건 `404`로 막으므로(`infra/frontend-image/nginx.conf`), Traefik 규칙이 `/api/core/v1`이 아니라 **`/api/core/` 프리픽스**로 백엔드에 넘겨야 이미지가 뜬다.
+- 현 단계 값은 같은 오리진의 절대 경로(`/api/core/images/places/…`)다. 이후 카카오 이미지 검색 API 전환 시 같은 필드에 외부 절대 URL이 들어가며 **프론트 계약은 바뀌지 않는다**. **`VITE_API_BASE_URL`(`/api/core/v1`)을 앞에 붙이지 않는다** — 이 경로는 `v1` 밖이다.
+- ⚠️ **당분간 값은 사실상 전부 `null`이다. 폴백 이미지가 기본 화면이라고 보고 디자인해야 한다.** 시연용 목업 단계라 두 가지가 아직 남아 있다 — (1) 이미지 파일이 back의 `src/test/resources`에만 있어 **배포 산출물에 실리지 않는다**(표지 확정 후 `src/main/resources`로 커밋 예정), (2) place에 이미지를 잇는 **UPDATE SQL이 미실행**이다(배포 DB 쓰기 권한을 infra#189에서 요청 중).
+- ⚠️ 이 경로가 실제로 백엔드에 도달하는지는 [협의 필요] 1번(Traefik 라우팅 실측)에 달려 있다. 프론트 nginx는 `/api/`를 무조건 `404`로 막으므로(`infra/frontend-image/nginx.conf`), Traefik 규칙이 `/api/core/v1`이 아니라 **`/api/core/` 프리픽스**로 백엔드에 넘겨야 이미지가 뜬다. back은 `SecurityConfig`에 `/images/places/**` permitAll을 이미 넣어 인증은 막지 않는다 — 남은 변수는 **라우팅뿐**이다.
 
 ### Record · Context
 
