@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet } from '@tanstack/react-router';
 import logoFull from '@/assets/logo-full.png';
 import { WithdrawConfirmProvider } from '@/contexts/WithdrawConfirmProvider';
+import { LayoutMetricsContext } from '@/shared/lib/LayoutMetricsContext';
 import { PAGE_CONTAINER_CLASS } from '@/shared/lib/shelfCabinetLayout';
 import { SettingsPanel } from './SettingsPanel';
 import { WithdrawConfirmDialog } from './WithdrawConfirmDialog';
@@ -45,15 +46,47 @@ const NAV_ITEMS: NavItem[] = [
  */
 export function AppLayout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [navHeightPx, setNavHeightPx] = useState<number | null>(null);
+  const [titleHeightPx, setTitleHeightPx] = useState<number | null>(null);
+  const headerRef = useRef<HTMLElement>(null);
+
+  // 295 추가 수정(이슈 1.1): 캐비닛 세로 예산 계산에 쓰던 nav바 높이가 하드코딩 추정치(56px)였다 —
+  // 헤더에 ref를 달아 ResizeObserver로 실제 렌더링된 높이를 측정하고, LayoutMetricsContext를 통해
+  // 하위 페이지(FeedList 등)가 이 실측값을 쓰게 한다. padding이 xl에서만 py-4로 바뀌는 등 헤더
+  // 내부가 나중에 또 바뀌어도, 이 ref는 항상 "지금 실제로 렌더링된 높이"를 보고하므로 계산 쪽 코드는
+  // 손댈 필요가 없다.
+  useEffect(() => {
+    const element = headerRef.current;
+    if (!element) {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setNavHeightPx(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <WithdrawConfirmProvider>
       <div className="min-h-screen bg-paper-white">
-        <header className="fixed inset-x-0 top-0 z-40 border-b border-line-card bg-paper-white/95 backdrop-blur">
+        <header
+          ref={headerRef}
+          className="fixed inset-x-0 top-0 z-40 border-b border-line-card bg-paper-white/95 backdrop-blur"
+        >
           {/* 287-8: 좌우 padding/max-width(PAGE_CONTAINER_CLASS)를 FeedPage/LibraryPage의 페이지
               컨텐츠 컨테이너와 그대로 공유한다 — 로고~설정 아이콘의 좌우 끝이 그 아래 페이지 컨텐츠
-              (캐비닛 포함)의 좌우 끝과 같은 x좌표에 맞춰지게 하기 위해서다. */}
-          <div className={`${PAGE_CONTAINER_CLASS} flex items-center justify-between gap-6 py-4`}>
+              (캐비닛 포함)의 좌우 끝과 같은 x좌표에 맞춰지게 하기 위해서다.
+              295 추가 수정(요구사항 2.2): xl(≥1280, PC)은 기존 py-4(16px)를 유지하고, sm·mdlg
+              (<1280, 모바일/태블릿)는 py-2(8px)로 줄인다 — 고정 nav바가 차지하는 비중을 줄여 캐비닛에
+              세로 공간을 더 내준다. 이 padding이 바뀌면 위 ResizeObserver가 자동으로 새 높이를
+              다시 보고하므로, shelfCabinetLayout.ts에 값을 따로 맞출 필요가 없다(이슈 1.1). */}
+          <div
+            className={`${PAGE_CONTAINER_CLASS} flex items-center justify-between gap-6 py-2 xl:py-4`}
+          >
             <div className="flex items-center gap-9">
               <Link to="/" title="홈으로 이동" className="block h-7 w-[95px] overflow-hidden">
                 {/* PinLog/brand-resource assets/logo-full.png(1447x1087)는 실제 심볼+워드마크 주위에 넓은 투명
@@ -125,8 +158,17 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="pt-20">
-          <Outlet />
+        {/* 295 추가 수정(요구사항 2.2): xl은 기존 pt-20(80px)을 유지하고, sm·mdlg는 pt-14(56px)로
+            줄인다 — 위 header py 축소로 실제 헤더 높이가 짧아진 만큼(약 52px, 4px 여유) 맞춘
+            값이다. FeedPage/LibraryPage의 min-h-[calc(100dvh-...)]도 이 값과 반드시 같이 맞춘다.
+            (이슈 1.1: 이 pt 값 자체는 여전히 레이아웃 시프트 방지용 Tailwind 리터럴이고, 실제 예산
+            계산은 아래 Context로 흘려보내는 navHeightPx 실측값을 쓴다 — 둘은 별개다.) */}
+        <main className="pt-14 xl:pt-20">
+          <LayoutMetricsContext.Provider
+            value={{ navHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
+          >
+            <Outlet />
+          </LayoutMetricsContext.Provider>
         </main>
 
         {isSettingsOpen && (

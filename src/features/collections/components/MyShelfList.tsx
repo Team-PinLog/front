@@ -4,6 +4,7 @@ import { markCollectionOverlayIntent } from '@/features/collections/lib/collecti
 import { handleShelfScrollFetchNext } from '@/shared/lib/handleShelfScrollFetchNext';
 import {
   chunkIntoShelfRows,
+  getEmptyTierPadding,
   getSpineHeight,
   getSpineWidth,
   SHELF_SCROLL_SIDE_PADDING_PX,
@@ -83,10 +84,16 @@ export function MyShelfColumn() {
   const lastRow = collectionRows[collectionRows.length - 1];
   // 새 컬렉션 추가 슬롯은 마지막 행에 자리가 있으면 그 행에 이어 붙이고, 꽉 찼으면 새 행을 만든다.
   const addSlotFitsLastRow = lastRow !== undefined && lastRow.items.length < lastRow.capacity;
-  // 287-6: 컬렉션이 적으면(1~2행) 아래쪽 행의 선반 보드 자체가 렌더링되지 않았다 — 컬렉션 개수와
-  // 무관하게 항상 SHELF_VISIBLE_ROW_COUNT(3)개의 ShelfTier(빈 행이면 책 없이 선반만)를 채운다.
-  const renderedTierCount = collectionRows.length + (addSlotFitsLastRow ? 0 : 1);
-  const emptyTierCount = Math.max(0, SHELF_VISIBLE_ROW_COUNT - renderedTierCount);
+  // 295 추가 수정(이슈 3): 마지막 행에 자리가 없을 때 예전엔 SHELF_VISIBLE_ROW_COUNT(3)를 넘겨서라도
+  // 무조건 새 행을 만들어 추가 슬롯을 노출했다 — 컬렉션이 정확히 3행을 꽉 채운 계정은 tier가
+  // 4개(2·3열 팔로우한 책장은 항상 최대 3개)가 돼, 같은 높이로 stretch된 두 ShelfColumn 안에서
+  // 콘텐츠 비율이 달라져 최하단 선반~캐비닛 바닥 여백이 서로 달라 보이는 근본 원인이었다. 이제
+  // 3행 미만일 때만 추가 슬롯이 자기 행을 새로 받는다 — 정확히 3행이 꽉 찬 계정은 추가 슬롯이
+  // 기본 화면에는 보이지 않는다(컬렉션을 하나 지우면 다시 나타난다). "행 수 계산은 하나의 함수"라는
+  // 원칙을 지키기 위해 getEmptyTierPadding을 FollowedShelfCollections와 동일하게 호출한다(shelfSpine.ts).
+  const addSlotNeedsOwnRow = !addSlotFitsLastRow && collectionRows.length < SHELF_VISIBLE_ROW_COUNT;
+  const realRowCount = collectionRows.length + (addSlotNeedsOwnRow ? 1 : 0);
+  const emptyTierCount = getEmptyTierPadding(realRowCount);
 
   return (
     <>
@@ -151,7 +158,7 @@ export function MyShelfColumn() {
           </ShelfTier>
         ))}
 
-        {!addSlotFitsLastRow && (
+        {addSlotNeedsOwnRow && (
           <ShelfTier>
             <ShelfAddSlot
               onClick={() => setIsNewCollectionModalOpen(true)}

@@ -12,7 +12,7 @@ import {
 
 /**
  * 목업(mockup/PinLog.responsive.dc.html)의 책장(cabinet-shell) 비주얼을 옮긴 공통 프리미티브.
- * 근거: Jira S15P11A705-169/250. MyShelfList·FollowedShelfCard가 공유한다.
+ * 근거: Jira S15P11A705-169/250/295. MyShelfList·FollowedShelfCard가 공유한다.
  * 250: LibraryPage가 "나의 책장·팔로우한 책장"을 캐비닛 하나 + 3열(ShelfColumnGrid/ShelfColumn)로
  * 합쳤다. ShelfBoard는 더 이상 캐비닛 맨 아래에 한 번만 두지 않는다 — ShelfTier가 행(row)마다 선반을
  * 반복해서 깐다(chunkIntoShelfRows로 행 단위(권수는 행마다 다름 — 287-14)로 자른 뒤 ShelfTier로
@@ -46,9 +46,14 @@ export function ShelfCabinet({ headerTitle, headerRight, children }: ShelfCabine
   );
 }
 
+// 295 추가 수정(이슈 4): py-1.5(패딩 기반 높이) 대신 h-7(고정 28px)로 바꿨다 — FollowedShelfCard의
+// 헤더 행(h3/버튼)과 정확히 같은 높이(ShelfIconButton도 h-7)여야, 두 열(내 책장/팔로우한 책장)의
+// ShelfColumn(flex flex-col)이 헤더 다음에 남기는 flex-1 스크롤 박스 높이가 같아진다 — 헤더 높이가
+// 다르면 두 스크롤 박스의 남는 세로 공간이 서로 달라져, 내용(tier 수)이 같아도 "최하단 선반~캐비닛
+// 바닥" 여백이 달라 보인다(FollowedShelfCard.tsx 주석 참고).
 export function ShelfLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex w-fit items-center rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[11px] font-bold text-[#d8e0ed]">
+    <span className="inline-flex h-7 w-fit items-center rounded-full border border-white/10 bg-white/10 px-3 text-[11px] font-bold text-[#d8e0ed]">
       {children}
     </span>
   );
@@ -60,10 +65,15 @@ export function ShelfBoard() {
   );
 }
 
-// 250: 한 캐비닛 안에서 소유자별 책장을 나란히 두기 위한 3열 그리드. 칸 사이 세로선(border-l)으로
-// "내 책장"과 "팔로우한 책장"이 같은 캐비닛의 다른 칸임을 드러낸다.
-export function ShelfColumnGrid({ children }: { children: ReactNode }) {
-  // 287-8: h-full + grid의 기본 align-items:stretch 조합으로 3칸이 전부 ShelfCabinet 본문 높이를
+// 250(→295 반응형 재설계 요구사항 B에서 열 수 가변화): 한 캐비닛 안에서 소유자별 책장을 나란히
+// 두기 위한 그리드. 칸 사이 세로선(border-l, ShelfColumn)으로 "내 책장"과 "팔로우한 책장"이 같은
+// 캐비닛의 다른 칸임을 드러낸다.
+// 295: 열 수가 더 이상 항상 3이 아니다(LIBRARY_COLUMNS_BY_TIER — sm=1/mdlg=2/xl=3) — Tailwind는
+// grid-cols-{N}을 동적으로 만들 수 없어(리터럴 클래스만 읽는다, shelfCabinetLayout.ts 상단 주석과
+// 동일한 이유) gridTemplateColumns를 인라인 style로 준다. gap-x-5(20px)는 그대로 리터럴 클래스로
+// 유지한다 — shelfSpine.ts의 책장 폭 계산(287-13 주석)이 이 20px을 전제로 하기 때문이다.
+export function ShelfColumnGrid({ columns, children }: { columns: number; children: ReactNode }) {
+  // 287-8: h-full + grid의 기본 align-items:stretch 조합으로 각 칸이 전부 ShelfCabinet 본문 높이를
   // 그대로 채운다 — 칸 안의 스크롤 박스(flex-1)가 남는 세로 공간을 계산할 기준이 이 높이다.
   // 287-11: 이 div는 부모(ShelfCabinet 본문, flex flex-col)의 flex item이기도 하다 — min-h-0이
   // 없으면 flex item의 기본 min-height:auto가 적용돼, overflow:visible인 이 요소의 자동 최소
@@ -71,9 +81,21 @@ export function ShelfColumnGrid({ children }: { children: ReactNode }) {
   // 그 경계에서 이미 끊기므로 지금 당장 무한정 커지는 버그는 아니지만, 체인의 다른 모든 단계
   // (ShelfCabinet 본문 div, ShelfColumn)에 이미 min-h-0을 준 것과 같은 원칙을 여기도 적용해
   // 향후 구조가 바뀌어도 깨지지 않게 한다).
-  return <div className="grid h-full min-h-0 grid-cols-3 gap-x-5">{children}</div>;
+  return (
+    <div
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      className="grid h-full min-h-0 gap-x-5"
+    >
+      {children}
+    </div>
+  );
 }
 
+// ShelfColumn 안의 세로 gap(라벨→스크롤박스)은 shelfSpine.ts SHELF_VISIBLE_HEIGHT_PX 계산식의
+// "컬럼 헤더→스크롤박스 gap" 항목(COLUMN_HEADER_GAP_PX)과 반드시 같은 값이어야 한다 — 여기서 Tailwind
+// 리터럴로 따로 고정하면 그 등식이 scale에 따라 깨진다.
+// paddingLeft는 CSS 변수(--shelf-column-pl)로 우회한다 — 인라인 style은 first:pl-0 같은 Tailwind
+// 의사클래스보다 항상 우선하므로, style에 직접 paddingLeft를 주면 첫 번째 열의 pl-0 리셋이 씹힌다.
 export function ShelfColumn({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-col gap-3 border-l border-white/10 pl-5 first:border-l-0 first:pl-0">
@@ -188,9 +210,9 @@ interface ShelfAddSlotProps {
   height: number;
 }
 
-// 251: 이전엔 h-[140px] w-11 고정값이라 형제 스파인(getSpineHeight/getSpineWidth 기반, 최대 168×52)과
-// 줄이 안 맞았다. recordCount가 없는 슬롯이라 자체 값을 계산할 수 없으므로, 호출부(MyShelfList)가
-// 같은 행 스파인들의 실제 width/height를 계산해 넘긴다.
+// 251: 이전엔 h-[140px] w-11 고정값이라 형제 스파인(getSpineHeight/getSpineWidth 기반)과 줄이 안
+// 맞았다. recordCount가 없는 슬롯이라 자체 값을 계산할 수 없으므로, 호출부(MyShelfList)가 같은 행
+// 스파인들의 실제 width/height(이미 scale이 반영된 값)를 계산해 넘긴다.
 export function ShelfAddSlot({ onClick, width, height }: ShelfAddSlotProps) {
   return (
     <button

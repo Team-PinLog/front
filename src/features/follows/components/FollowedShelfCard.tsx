@@ -4,9 +4,9 @@ import { markCollectionOverlayIntent } from '@/features/collections/lib/collecti
 import { handleShelfScrollFetchNext } from '@/shared/lib/handleShelfScrollFetchNext';
 import {
   chunkIntoShelfRows,
+  getEmptyTierPadding,
   SHELF_SCROLL_SIDE_PADDING_PX,
   SHELF_SCROLL_TOP_PADDING_PX,
-  SHELF_VISIBLE_ROW_COUNT,
 } from '@/shared/lib/shelfSpine';
 import { ShelfBookSpine, ShelfIconButton, ShelfTier } from '@/shared/ui/Shelf';
 import { useFollowShelfCollectionsQuery } from '../hooks/useFollowShelfCollectionsQuery';
@@ -76,7 +76,9 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
   return (
     <>
       {isEditingAlias ? (
-        <div className="flex items-center gap-1.5">
+        // 295(요구사항 D): 편집 모드로 전환해도 상단 여백이 널뛰지 않도록 아래 비편집 상태와 동일한
+        // h-7을 준다(295 추가 수정 이슈 4: py-1.5에서 h-7로 바뀐 이유는 아래 비편집 분기 주석 참고).
+        <div className="flex h-7 items-center gap-1.5">
           <label htmlFor={`follow-alias-${followId}`} className="sr-only">
             책장 별칭
           </label>
@@ -108,9 +110,24 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
           </button>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="truncate text-sm font-bold text-white">{alias ?? '이름 없는 책장'}</h3>
-          <div className="relative flex-none">
+        // 295 추가 수정: 별칭이 없을 때 "이름 없는 책장" 폴백 텍스트는 물론, 그 자리를 대신하던 점선
+        // 박스도 DOM에 아예 렌더링하지 않는다 — 완전히 빈 공간 + 수정 버튼만 남는다. justify-between
+        // 대신 버튼 쪽에 ml-auto를 줘서, 왼쪽 형제(h3)가 있든 없든(alias 유무) 버튼이 항상 오른쪽
+        // 끝에 고정되게 한다(justify-between은 형제가 1개뿐이면 flex-start로 붙어버려 alias 유무에
+        // 따라 버튼 위치가 널뛴다).
+        // 295 반응형 재설계(요구사항 D): 캐비닛 상단과 이 헤더 행 사이 gap이 1열("내 컬렉션" pill이
+        // 있는 MyShelfColumn)보다 좁아 보여, 처음엔 ShelfLabel(pill)의 py-1.5(6px)를 그대로 복사해
+        // 붙였다(변경 전 0 → py-1.5=6px).
+        // 295 추가 수정(이슈 4): 그런데 그 py-1.5가 이 행의 "총 높이"를 ShelfIconButton(h-7=28px)
+        // 기준 28px+12px(패딩)=40px로 늘려버렸고, ShelfLabel의 원래 높이(패딩+11px 텍스트, 약 27px)
+        // 보다 커져 두 열의 헤더 높이가 달라졌다 — ShelfColumn(flex flex-col)에서 헤더 다음에 오는
+        // flex-1 스크롤 박스가 그 차이만큼 서로 다른 남는 높이를 갖게 돼, 내용(tier 수)이 같아도
+        // "최하단 선반~캐비닛 바닥" 여백이 달라 보였다(이번 이슈 4의 실제 원인). py-1.5 대신 h-7
+        // (28px, ShelfIconButton과 정확히 같은 높이이자 ShelfLabel도 이번에 h-7로 맞췄다)로 바꿔
+        // 두 열의 헤더 높이를 픽셀 단위로 동일하게 만든다.
+        <div className="flex h-7 items-center gap-2">
+          {alias && <h3 className="truncate text-sm font-bold text-white">{alias}</h3>}
+          <div className="relative ml-auto flex-none">
             <ShelfIconButton label="책장 관리" onClick={() => setIsMenuOpen((open) => !open)}>
               <svg
                 viewBox="0 0 24 24"
@@ -197,10 +214,6 @@ function FollowedShelfCollections({
   const collections = pages.flatMap((page) => page.items);
   const hasNext = pages.length > 0 && pages[pages.length - 1].hasNext;
 
-  if (collections.length === 0) {
-    return <p className="text-sm text-white/50">공개된 컬렉션이 없습니다</p>;
-  }
-
   // 287-14/287-16: seed로 followId를 쓴다 — 이 팔로우한 책장 하나를 안정적으로 식별하는 값이라,
   // 컬렉션 목록 순서가 바뀌어도 행별 권수(getRowCapacity) 패턴은 followId가 같은 한 그대로 유지된다.
   // columnSlot(2열=0, 3열=1)별로 다른 salt 구간을 더해, 다음 페이지에서 다른 followId가 들어와도(이미
@@ -210,10 +223,20 @@ function FollowedShelfCollections({
   const rows = chunkIntoShelfRows(collections, seedId);
   // 287-6: MyShelfColumn과 동일하게, 컬렉션이 적어 3행 미만이면 남는 행만큼 책 없는 빈 ShelfTier로
   // 채운다 — 선반 보드가 항상 고정 위치에 보이게 한다.
-  const emptyTierCount = Math.max(0, SHELF_VISIBLE_ROW_COUNT - rows.length);
+  // 295 추가 수정(이슈 4): collections.length===0일 때 예전엔 이 함수가 여기서 바로 <p>만 반환하고
+  // 스크롤 박스·ShelfTier·ShelfBoard를 아예 그리지 않았다 — 팔로우한 책장이 0개인 열만 선반 보드
+  // 자체가 안 보이는 원인이었다. MyShelfColumn(컬렉션 0개여도 추가 슬롯 tier + 빈 tier로 항상 3개
+  // 선반을 그린다)과 똑같이, collections가 비어 있어도 rows=[]로 아래 스크롤 박스·ShelfTier 렌더링을
+  // 그대로 통과시킨다 — getEmptyTierPadding(0)=3이라 빈 선반 3개가 그려진다. 안내 문구는 스크롤 박스
+  // "위"의 별도 텍스트로만 남긴다(MyShelfColumn의 "아직 만든 컬렉션이 없어요."와 동일한 패턴).
+  const emptyTierCount = getEmptyTierPadding(rows.length);
 
   return (
     <>
+      {collections.length === 0 && (
+        <p className="text-xs text-white/50">공개된 컬렉션이 없습니다</p>
+      )}
+
       {/* 287-8: MyShelfColumn과 동일하게 flex-1 min-h-0 + min-h-[360px]/max-h-[590px]로 바꿨다 —
           팔로우한 책장의 책 수와 무관하게, 부모(ShelfColumn)가 내어주는 세로 공간을 그대로 채운다
           (shelfCabinetLayout.ts SHELF_SCROLL_MIN_H_PX/MAX_H_PX와 반드시 일치해야 한다). paddingTop/
