@@ -8,6 +8,10 @@
 ### 공통
 
 - **base path**: `/api/core/v1` (context-path `/api/core` + 버전 `v1`을 합친 값). `VITE_API_BASE_URL`에 이 값을 넣는다(`08_API_명세` 최상단).
+- **운영은 same-origin이다.** Traefik이 한 호스트에서 경로 기반으로 라우팅한다(`/` → 프론트, **`/api/core/`** → 백엔드). 따라서 운영에는 **CORS 설정도 `SameSite=None`도 필요 없다**(`11_인증_설계` §7.1). <!-- 2026-08-05 운영 실측으로 [협의 필요]에서 승격 -->
+  - 실측: `https://pin-log.com/api/core/v1/records/map` → `401` + 백엔드 봉투. 프론트를 서빙하는 같은 호스트에서 백엔드가 응답한다.
+  - **프리픽스는 `/api/core/v1`이 아니라 `/api/core/`다.** `v1` 밖의 백엔드 경로(예: 장소 썸네일 `/api/core/images/…`)도 그대로 도달한다.
+  - 로컬 개발은 포트가 달라도 **same-site**라 `SameSite=Lax` 쿠키는 정상 전송되지만, **origin은 다르므로 로컬에서만 CORS 설정이 필요**하다(`11_인증_설계` §7.3). 운영에는 해당하지 않는다.
 - **인증**: **쿠키 기반**. BFF 별도 계층 없음 — Spring 단일 앱이 BFF+리소스서버를 겸한다(`11_인증_설계` 2장).
   - 방식: JWT. Access 30분 / Refresh 7일. Refresh는 Redis 저장·**회전 발급**(재발급 시 이전 토큰 무효화).
   - 토큰은 **`HttpOnly` + `Secure` + `SameSite=Lax`** 쿠키로 발급한다. 응답 본문에 토큰을 담지 않으며 프론트 스크립트는 읽을 수 없다.
@@ -149,7 +153,8 @@ type PlaceSummary = {
 - **4:3 비율**로 제공된다. `aspect-ratio: 4 / 3` + `object-fit: cover`로 표시하면 로딩 전 영역이 확보되고 폭에 적응한다.
 - 현 단계 값은 같은 오리진의 절대 경로(`/api/core/images/places/…`)다. 이후 카카오 이미지 검색 API 전환 시 같은 필드에 외부 절대 URL이 들어가며 **프론트 계약은 바뀌지 않는다**. **`VITE_API_BASE_URL`(`/api/core/v1`)을 앞에 붙이지 않는다** — 이 경로는 `v1` 밖이다.
 - ⚠️ **당분간 값은 사실상 전부 `null`이다. 폴백 이미지가 기본 화면이라고 보고 디자인해야 한다.** 시연용 목업 단계라 두 가지가 아직 남아 있다 — (1) 이미지 파일이 back의 `src/test/resources`에만 있어 **배포 산출물에 실리지 않는다**(표지 확정 후 `src/main/resources`로 커밋 예정), (2) place에 이미지를 잇는 **UPDATE SQL이 미실행**이다(배포 DB 쓰기 권한을 infra#189에서 요청 중).
-- ⚠️ 이 경로가 실제로 백엔드에 도달하는지는 [협의 필요] 1번(Traefik 라우팅 실측)에 달려 있다. 프론트 nginx는 `/api/`를 무조건 `404`로 막으므로(`infra/frontend-image/nginx.conf`), Traefik 규칙이 `/api/core/v1`이 아니라 **`/api/core/` 프리픽스**로 백엔드에 넘겨야 이미지가 뜬다. back은 `SecurityConfig`에 `/images/places/**` permitAll을 이미 넣어 인증은 막지 않는다 — 남은 변수는 **라우팅뿐**이다.
+- **라우팅은 실측으로 확인됐다** — 운영에서 `/api/core/images/places/cafe-1.jpg`를 호출하면 프론트 nginx의 맨몸 404가 아니라 **백엔드 봉투**(`{"success":false,"error":{"code":"RESOURCE_NOT_FOUND"...}}`)가 돌아온다. Traefik이 `/api/core/v1`이 아니라 **`/api/core/` 프리픽스**로 넘긴다는 뜻이라 이 경로는 백엔드에 도달한다. 인증도 막히지 않는다(back `SecurityConfig`의 `/images/places/**` permitAll). 현재 404인 이유는 라우팅이 아니라 **이미지 파일이 아직 배포 산출물에 없어서**다(위 항목). <!-- 2026-08-05 운영 실측 -->
+  - 로컬은 vite dev proxy가 `/api` 전체를 넘기므로 이 경로가 따로 문제 되지 않는다.
 
 ### Record · Context
 
@@ -213,9 +218,7 @@ type PlaceSummary = {
 
 > 이 섹션은 임의로 채우지 않는다. 확정 전까지 구현에서 확정된 것으로 가정하지 않는다.
 
-1. **프론트/API 운영 도메인이 실제로 같은 오리진인지** — reference 문서(`11_인증_설계` §7.1)는 Traefik이 한 호스트에서 경로 기반(`/` → 프론트, `/api/core/` → 서버)으로 라우팅해 **이미 same-origin으로 정리**했고, 그 결과 "CORS 설정 불필요·`SameSite=None` 불필요"라고 명시한다. 문서상으로는 확정처럼 보이지만, 실제 배포 인프라(Traefik 라우팅 실측)가 이 문서대로 구성됐는지 인프라 파트 확인이 아직 없어 이 항목은 [협의 필요]로 유지한다. **인프라 실측이 확인되면 [확정]으로 승격 검토.**
-   - 로컬 개발은 포트가 달라도 **same-site**라 `SameSite=Lax` 쿠키는 정상 전송되지만, **origin은 다르므로 로컬 개발 환경에서만 CORS 설정이 필요**하다(`11_인증_설계` §7.3). 운영에는 해당하지 않는다.
-2. **provider 대소문자** — 경로는 소문자(`kakao`), 응답은 대문자(`KAKAO`). 타입은 대문자로 두고 경로 조립 시 `toLowerCase()`로 매핑한다.
+1. **provider 대소문자** — 경로는 소문자(`kakao`), 응답은 대문자(`KAKAO`). 타입은 대문자로 두고 경로 조립 시 `toLowerCase()`로 매핑한다.
 
 ### 이번에 [협의 필요]에서 제거(확정으로 흡수)됨
 
@@ -225,3 +228,4 @@ type PlaceSummary = {
 - ~~Context 본문 최대 길이~~ → **확정: 500자.** 위 [확정] > Record · Context 섹션 참고. <!-- 근거: 06_데이터모델_및_무결성.md §8 -->
 - ~~카카오 검색 프록시 API(BFF 경유)~~ → **BFF 경유 자체가 폐기됨.** 프론트가 카카오 로컬 API를 직접 호출하는 것으로 확정됐고([확정] Place·지도·검색), 이 항목은 그 확정과 이미 모순된 채 남아 있던 잔여 서술이라 삭제했다(2026-08-04 doc-sync).
 - ~~Collection 내부 Record 정렬~~ → **확정: 담은 순 오름차순 기본, `recordSort`로 최신순.** 위 [확정] > Collection 섹션 참고(2026-08-04 doc-sync). <!-- 근거: 08_API_명세.md §7.3 -->
+- ~~프론트/API 운영 도메인이 같은 오리진인지~~ → **확정: same-origin.** 2026-08-05 운영 실측으로 확인했다(위 [확정] > 공통). 문서상으로만 정리돼 있고 실측이 없어 미결로 두던 항목이다.
