@@ -19,6 +19,10 @@ import type { ShelfWidthTier } from './useShelfBreakpoint';
 // "네비게이션 바와 정렬"이 아니라 "사이드바를 제외한 나머지 폭 안에서 중앙 정렬"로 정렬 기준이
 // 바뀌었다. 클래스 리터럴 자체(px-4/sm:px-6/lg:px-8, max-w-6xl)는 그대로지만, 실제로 계산되는 폭이
 // 사이드바 폭(SIDEBAR_WIDTH_PX)만큼 좁아진다 — getFeedGridAreaWidthPx가 이를 반영한다.
+// 306(Home 히어로 재구성): HomePage도 이 상수를 쓴다 — 기존에는 자체 max-w-5xl을 따로 썼는데,
+// 다른 페이지와 좌우 정렬 기준(사이드바 대비 x좌표)을 맞추기 위해 통일했다. HomePage는
+// FeedList/ShelfCabinet처럼 이 폭을 JS에서 다시 계산해 쓰는 곳이 없어(지도·검색 결과 갤러리 모두
+// 상대 폭 기반) getFeedGridAreaWidthPx 같은 별도 계산식은 필요 없다.
 export const PAGE_CONTAINER_CLASS = 'mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8';
 
 // 304(공통 AppShell 좌측 사이드바 재구성): xl에서만 존재하는 좌측 고정 사이드바의 폭.

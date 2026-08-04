@@ -1,29 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
-import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
 import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
 import { SmartSearchPanel } from '@/features/home/components/SmartSearchPanel';
 import { HomeMapSection } from '@/features/home/components/HomeMapSection';
 import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
-
-// 136: Place 검색·선택 시트 진입점. 목업 홈의 우측 하단 원형 FAB 위치로 옮겼다(기능은 그대로).
-function AddPlaceRecordButton() {
-  const sheet = usePlaceRecordSheet();
-  return (
-    <button
-      type="button"
-      onClick={sheet.open}
-      aria-label="장소 기록 추가"
-      title="장소 기록 추가"
-      className="fixed bottom-8 right-8 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-pin-navy text-2xl font-bold text-white shadow-lg transition-transform hover:-translate-y-0.5"
-    >
-      +
-    </button>
-  );
-}
+import { PAGE_CONTAINER_CLASS } from '@/shared/lib/shelfCabinetLayout';
 
 /**
  * 홈 화면: 스마트 검색(149)과 지도(150)를 하나의 화면에서 상호 배타적으로 전환한다.
@@ -31,6 +15,9 @@ function AddPlaceRecordButton() {
  * 컴포넌트가 같은 상태를 공유해야 해서 여기서 한 번만 호출해 나눠 내려준다.
  * 지도 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 연다
  * (Jira S15P11A705-166). openRecordId는 SearchResultGallery 카드 클릭과 동일한 상태를 공유한다.
+ * 306: 우측 하단 고정 FAB(구 AddPlaceRecordButton)는 제거했다 — 첨부 디자인 이미지 기준으로
+ * "+장소추가" 버튼이 SmartSearchPanel 히어로 안으로 옮겨갔고(usePlaceRecordSheet().open 재사용),
+ * 같은 진입점을 화면에 중복 노출할 이유가 없다.
  */
 export function HomePage() {
   const navigate = useNavigate();
@@ -44,7 +31,7 @@ export function HomePage() {
 
   return (
     <PlaceRecordSheetProvider>
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 p-8">
+      <main className={`${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}>
         <SmartSearchPanel
           onSubmit={(query) => searchMutation.mutate(query)}
           isPending={searchMutation.isPending}
@@ -71,7 +58,6 @@ export function HomePage() {
         )}
       </main>
 
-      <AddPlaceRecordButton />
       <PlaceRecordSheet />
 
       {openRecordId !== null && (
