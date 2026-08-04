@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="664" viewBox="0 0 920 664" role="img" aria-labelledby="title">
+  <title>20 blank color markers</title>
+  <rect width="920" height="664" rx="28" fill="#F1F6F6"/>
+  <g transform="translate(36 38)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-01-navy.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">01 navy</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#083A67</text>
+  </g>
+  <g transform="translate(212 38)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-02-coral.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">02 coral</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#F05A3D</text>
+  </g>
+  <g transform="translate(388 38)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-03-violet.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">03 violet</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#7257B5</text>
+  </g>
+  <g transform="translate(564 38)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-04-denim.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">04 denim</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#2E5D8C</text>
+  </g>
+  <g transform="translate(740 38)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-05-deep-teal.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">05 deep-teal</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#1B4C6B</text>
+  </g>
+  <g transform="translate(36 194)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-06-mint.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">06 mint</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#2CB8A6</text>
+  </g>
+  <g transform="translate(212 194)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-07-brown.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">07 brown</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#A0784A</text>
+  </g>
+  <g transform="translate(388 194)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-08-rose.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">08 rose</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#D64F78</text>
+  </g>
+  <g transform="translate(564 194)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-09-gold.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">09 gold</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#E2A01F</text>
+  </g>
+  <g transform="translate(740 194)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-10-plum.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">10 plum</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#6A3F77</text>
+  </g>
+  <g transform="translate(36 350)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-11-blue.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">11 blue</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#356D9B</text>
+  </g>
+  <g transform="translate(212 350)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-12-pink.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">12 pink</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#E05286</text>
+  </g>
+  <g transform="translate(388 350)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-13-orange.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">13 orange</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#E47C2B</text>
+  </g>
+  <g transform="translate(564 350)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-14-green.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">14 green</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#498A69</text>
+  </g>
+  <g transform="translate(740 350)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-15-cyan.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">15 cyan</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#279FC4</text>
+  </g>
+  <g transform="translate(36 506)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-16-amber.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">16 amber</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#E8A51E</text>
+  </g>
+  <g transform="translate(212 506)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-17-purple.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">17 purple</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#8756A6</text>
+  </g>
+  <g transform="translate(388 506)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-18-teal.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">18 teal</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#237E88</text>
+  </g>
+  <g transform="translate(564 506)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-19-red.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">19 red</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#D84852</text>
+  </g>
+  <g transform="translate(740 506)">
+    <rect width="148" height="126" rx="20" fill="#FFFFFF"/>
+    <image href="marker-20-slate.svg" x="42" y="8" width="64" height="76"/>
+    <text x="74" y="98" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0B2340">20 slate</text>
+    <text x="74" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#617080">#3D6280</text>
+  </g>
+</svg>
