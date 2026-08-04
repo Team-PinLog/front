@@ -25,6 +25,9 @@ export interface KakaoBounds {
 
 export interface KakaoMap {
   setCenter(latlng: KakaoLatLng): void;
+  getCenter(): KakaoLatLng;
+  /** setCenter와 달리 부드럽게 이동한다. 지도 이동 범위를 되돌릴 때 쓴다(RecordMapView). */
+  panTo(latlng: KakaoLatLng): void;
   setLevel(level: number): void;
   getLevel(): number;
   relayout(): void;
@@ -40,13 +43,21 @@ export interface KakaoMap {
 
 export interface KakaoEventNamespace {
   addListener(target: KakaoMap | KakaoMarker, type: string, handler: () => void): void;
+  // 언마운트 시 리스너를 떼려면 addListener에 넘긴 것과 같은 함수 참조를 그대로 줘야 한다
+  // (RecordMapView의 zoom_changed 상한 clamp).
+  removeListener(target: KakaoMap | KakaoMarker, type: string, handler: () => void): void;
 }
 
 export interface KakaoMapsNamespace {
   load(callback: () => void): void;
   LatLng: new (lat: number, lng: number) => KakaoLatLng;
   LatLngBounds: new (sw: KakaoLatLng, ne: KakaoLatLng) => KakaoBounds;
-  Map: new (container: HTMLElement, options: { center: KakaoLatLng; level?: number }) => KakaoMap;
+  Map: new (
+    container: HTMLElement,
+    // maxLevel: SDK가 직접 강제하는 최대 축소 레벨. 버튼·휠·트랙패드 핀치·setLevel·setBounds 등
+    // 모든 경로에 예외 없이 적용된다(실측 확인). RecordMapView가 MAX_ZOOM_OUT_LEVEL을 넘긴다.
+    options: { center: KakaoLatLng; level?: number; maxLevel?: number },
+  ) => KakaoMap;
   Marker: new (options: { map?: KakaoMap; position: KakaoLatLng; title?: string }) => KakaoMarker;
   CustomOverlay: new (options: {
     map?: KakaoMap;
