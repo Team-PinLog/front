@@ -10,11 +10,15 @@ import { httpClient } from '@/shared/http/client';
 // [확인 필요] 08_API_명세.md는 PlaceSummary의 완전한 필드 목록을 명시하지 않는다(JSON 예시엔 placeId만 등장).
 // kakaoPlaceId는 142 "저장하기"(POST /records)에 필요해 포함된다고 가정하고 추가했다 — 실제 응답에 없어도
 // 파싱이 깨지지 않도록 optional로 둔다. 없으면 RecordSaveButton이 버튼 자체를 렌더하지 않는다.
+// thumbnailUrl은 PlaceSummaryResponse를 쓰는 모든 응답에 실린다(back PR #184) — Collection 상세도 포함이다.
+// 배포 시점이 프론트보다 늦을 수 있어 optional로 받는다. 값 자체는 당분간 대부분 null이다:
+// 시연용 목업 단계라 이미지 연결이 수동 SQL이고 그 실행이 아직 남아 있다(docs/api-contract.md DTO — PlaceSummary).
 const placeSummarySchema = z.object({
   placeId: z.number(),
   kakaoPlaceId: z.string().optional(),
   name: z.string(),
   address: z.string(),
+  thumbnailUrl: z.string().nullable().optional(),
   lat: z.number(),
   lng: z.number(),
 });
