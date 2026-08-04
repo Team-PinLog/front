@@ -30,7 +30,7 @@ const MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
 
 /**
  * 카카오 기본 Marker(빨간 핀) 대신 CustomOverlay에 올릴 마커 엘리먼트를 만든다.
- * 색은 getRecordMarkerAsset(collectionId 해시)이 고른 SVG asset으로 결정된다.
+ * 색은 getRecordMarkerAsset(latestCollectionId 해시)이 고른 SVG asset으로 결정된다.
  * JS로 SVG 마크업을 만들어 innerHTML로 넣지 않고 <img src>로 불러온다 — asset 20개가 모두 같은
  * `<filter id="shadow">`를 쓰기 때문에, 인라인으로 심으면 문서 전체에서 id가 충돌해 마커 전부가
  * 첫 번째 필터 하나를 공유한다. <img>는 각 SVG가 독립 문서로 렌더돼 그 문제가 없고, 그림자도
@@ -231,7 +231,7 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = data.items.map((item) => {
       const element = createRecordMarkerElement(
-        getRecordMarkerAsset(item.collectionId ?? null),
+        getRecordMarkerAsset(item.latestCollectionId ?? null),
         item.name,
       );
       element.addEventListener('click', () => {

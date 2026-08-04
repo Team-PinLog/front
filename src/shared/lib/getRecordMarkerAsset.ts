@@ -71,7 +71,8 @@ const UNASSIGNED_MARKER_ASSET = marker20Slate;
  * 같은 마커를 쓴다(hashPaletteIndex — getCollectionAccentColor.ts와 같은 해시 함수를 공유해 같은
  * id는 항상 같은 결과를 낸다). collectionId가 null이면 해시 대신 UNASSIGNED_MARKER_ASSET을 쓴다.
  * 반환값은 Vite가 번들링한 asset URL이라 <img src>에 그대로 넣으면 된다.
- * 근거: Jira S15P11A705-307, docs/api-contract.md "[확정] 지도 마커 조회 응답에 collectionId 추가".
+ * 근거: Jira S15P11A705-307, docs/api-contract.md "[확정] 지도 마커 조회 응답에 latestCollectionId 추가".
+ * 인자로 받는 값은 `GET /records/map` 응답의 `latestCollectionId`(가장 최근에 담긴 Collection id)다.
  */
 export function getRecordMarkerAsset(collectionId: number | null): string {
   if (collectionId === null) {

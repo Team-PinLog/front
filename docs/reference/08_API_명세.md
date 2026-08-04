@@ -79,6 +79,8 @@ Record·Context 생성 및 수정 응답은 Keyword·Embedding 생성을 기다�
 - 인코딩: **Base64(정렬키 + id)**. 예: `Base64("2026-07-23T10:00:00Z,8801")`.
 - `size` 기본 20, 명세상 상한 없음. 단, 구현 시 서버 내부 방어 상한을 두는 것을 권장한다.
 
+정렬 방향 파라미터(7.2·7.3·8.1·9.2·9.3·5.2)를 두는 목록에서 **커서는 발급받은 방향에서만 유효하다.** 방향을 바꿀 때는 커서 없이 첫 페이지부터 다시 요청한다. 서버는 커서와 방향의 불일치를 검증하지 않으므로(알려진 한계, back BD-46), 다른 방향에서 받은 커서를 넣으면 오류 없이 어긋난 페이지가 반환된다. 정렬 파라미터는 사용자 노출 토글이 아니라 **프론트가 상수로 고정해 보내는 값**이며, 이 전제가 깨지는 기능(정렬 토글 UI)을 붙이려면 커서 방향 검증이 선행돼야 한다.
+
 ## 1.5 공통 에러 형식
 
 ```json
@@ -100,17 +102,21 @@ Record·Context 생성 및 수정 응답은 Keyword·Embedding 생성을 기다�
 
 권장 상태 코드:
 
-|  상태 | 의미                                                           |
-| ----: | -------------------------------------------------------------- |
-| `200` | 조회·수정 성공                                                 |
-| `201` | 리소스 생성 성공                                               |
-| `204` | 응답 본문 없는 성공                                            |
-| `400` | 형식 또는 입력값 오류                                          |
-| `401` | 인증 필요                                                      |
-| `403` | CSRF 토큰 누락·불일치 (자원 접근 권한 실패는 1.2에 따라 `404`) |
-| `404` | 리소스 없음 또는 접근 권한 없음                                |
-| `409` | 상태 충돌 (연쇄 삭제 확인 필요 등)                             |
-| `422` | 도메인 규칙 위반                                               |
+|  상태 | 의미                                                                          |
+| ----: | ----------------------------------------------------------------------------- |
+| `200` | 조회·수정 성공                                                                |
+| `201` | 리소스 생성 성공                                                              |
+| `204` | 응답 본문 없는 성공                                                           |
+| `400` | 형식 또는 입력값 오류                                                         |
+| `401` | 인증 필요                                                                     |
+| `403` | CSRF 토큰 누락·불일치 (자원 접근 권한 실패는 1.2에 따라 `404`)                |
+| `404` | 리소스 없음 또는 접근 권한 없음                                               |
+| `409` | 상태 충돌 (연쇄 삭제 확인 필요 등)                                            |
+| `422` | 도메인 규칙 위반                                                              |
+| `500` | 서버 결함 — 재시도해도 같은 결과다                                            |
+| `503` | **일시적으로 처리할 수 없음** (의존성 장애·자원 고갈) — 재시도로 풀릴 수 있다 |
+
+`500`과 `503`을 가르는 기준은 **재시도가 의미 있는가**다. 클라이언트는 `503`을 받으면 세션을 버리지 않고 잠시 후 다시 시도하거나 오류를 표시하며, `500`은 그대로 오류로 다룬다. 두 코드 모두 봉투(1.6)를 따르므로 `error.code`로 원인을 구분한다.
 
 ## 1.6 공통 응답 형식
 
@@ -243,13 +249,13 @@ Context 목록은 별도 API 없이 Record 상세(`GET /records/{recordId}`)의 
 
 ## 2.6 Follow
 
-| Method | Endpoint                          | 설명                                              |
-| ------ | --------------------------------- | ------------------------------------------------- |
-| POST   | `/follows`                        | Follow 생성 (body의 `collectionId`로 작성자 식별) |
-| GET    | `/follows`                        | 내 팔로우 목록 페이지네이션                       |
-| GET    | `/follows/{followId}/collections` | 팔로우 유저의 공개 Collection 목록 페이지네이션   |
-| PATCH  | `/follows/{followId}`             | Follow 별칭 수정·제거                             |
-| DELETE | `/follows/{followId}`             | Follow 해제                                       |
+| Method | Endpoint                          | 설명                                                                                              |
+| ------ | --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| POST   | `/follows`                        | Follow 생성 (body의 `collectionId`로 작성자 식별)                                                 |
+| GET    | `/follows`                        | 내 팔로우 목록 페이지네이션. `collectionSize`를 주면 책장별 Collection 첫 페이지를 함께 반환(9.2) |
+| GET    | `/follows/{followId}/collections` | 팔로우 유저의 공개 Collection 목록 페이지네이션                                                   |
+| PATCH  | `/follows/{followId}`             | Follow 별칭 수정·제거                                                                             |
+| DELETE | `/follows/{followId}`             | Follow 해제                                                                                       |
 
 Library는 프론트 페이지 명칭이며 전용 Endpoint가 없다. 내 책장은 `GET /collections`, 팔로우 책장은 `GET /follows` + `GET /follows/{followId}/collections` 조합으로 구성한다(9장).
 
@@ -383,17 +389,87 @@ GET /api/core/v1/me/summary
 
 ## 3.6 회원 탈퇴
 
-```http
-DELETE /api/core/v1/me
+탈퇴는 **두 단계**다. 공급자 연결 해제가 선행되고, 그것이 성공한 경우에만 데이터가 삭제된다.
+
+```text
+1. DELETE /api/core/v1/me              → 200 + 공급자 인가 URL
+2. 클라이언트가 그 URL로 페이지 이동     → 공급자 인가
+3. 공급자 → GET /api/core/v1/auth/{provider}/callback
+     → 서버: 공급자 연결 해제 → 성공하면 삭제 절차 수행 → 복귀 URL로 302
 ```
 
-- 204. 응답 본문이 없다.
-- 되돌릴 수 없다. 클라이언트는 실행 전 확인 절차를 둔다.
+**엔드포인트와 메서드는 그대로다.** 바뀌는 것은 첫 응답이 `204`(완료)에서 `200`(계속 진행할 곳)이 되는 것뿐이다.
+
+### 3.6.1 탈퇴 시작
+
+```http
+DELETE /api/core/v1/me
+X-XSRF-TOKEN: {csrfToken}
+```
+
+요청 본문이 없다. Access 쿠키로 회원을 식별한다. CSRF 토큰은 상태 변경 요청의 기존 규칙(1.7)이며 이 개정으로 새로 생긴 요구가 아니다.
+
+```json
+{ "success": true, "data": { "authorizationUrl": "…" } }
+```
+
+- 클라이언트는 이 URL로 **페이지 이동**한다(4.5의 로그인 시작과 같다). `fetch`나 `axios`로 호출하면 공급자 화면이 사용자에게 보이지 않는다.
+- **이 URL을 해석하지 않는다.** 서버 경로일 수도, 공급자의 절대 URL일 수도 있다. 클라이언트는 이동만 하고 최종 도착지는 공급자 인가 화면이다.
+- 이 단계는 아직 아무것도 삭제하지 않는다.
+- 회원의 공급자는 서버가 `social_account`에서 판단한다. 클라이언트가 지정하지 않는다.
+
+오류 응답은 다음과 같다.
+
+| 상태  | `code`                     | 상황                                      |
+| ----- | -------------------------- | ----------------------------------------- |
+| `401` | `UNAUTHORIZED`             | 인증되지 않았거나 해제할 소셜 계정이 없다 |
+| `409` | `WITHDRAWAL_NOT_SUPPORTED` | 소셜 계정이 둘 이상이다                   |
+
+`409`는 **한 번의 인가 왕복이 한 공급자만 인가**하기 때문이다. 계정이 여럿인데 하나만 해제하고 삭제하면 나머지는 마스킹(6.9)으로 지목할 수단이 사라져 영구히 끊을 수 없다. 서버는 그 상태를 만들지 않고 시작을 거절한다. 계정을 여러 개 연결하는 기능이 생기면 이 응답과 함께 흐름을 다시 설계한다.
+
+**이 왕복은 조건부가 아니라 항상 일어난다.** 연결 해제에는 공급자가 발급한 토큰이 필요한데, 서버는 로그인 시 그 토큰을 보관하지 않는다(11 §2). 즉 "만료됐으면 다시 받는다"가 아니라 **탈퇴 시점에는 언제나 없으므로 언제나 다시 받는다.** 클라이언트가 들고 있는 것은 우리 서버의 인증 쿠키이고, 그것으로는 공급자에게 연결 해제를 요청할 수 없다.
+
+공급자 화면에서 무엇이 보이는지는 **공급자의 세션·동의 상태에 달려 있다.** 세션이 살아 있고 이전에 동의한 사용자는 화면이 스쳐 지나가고, 세션이 없으면 로그인 절차를 밟는다. 서버는 그 차이를 알지 못하고 알 필요도 없다 — 인가 코드 또는 오류를 받을 뿐이다.
+
+### 3.6.2 완료 — 콜백
+
+공급자 인가를 마치면 로그인과 **같은 콜백**으로 돌아온다. 서버는 그 요청이 탈퇴 흐름인지 로그인 흐름인지 구분해 처리한다.
+
+복귀 경로는 **로그인과 같다**(`/auth/callback`). 성공한 경우 인증 쿠키와 표시 쿠키가 이미 만료된 상태로 착지하므로, 클라이언트의 기존 앱 시작 흐름(11 §5.2)이 그대로 로그인 화면으로 보낸다. 별도 복귀 경로를 두지 않는다.
+
+| 결과                                                | `?error=`                     |
+| --------------------------------------------------- | ----------------------------- |
+| 연결 해제 성공 → 삭제 완료                          | 없음                          |
+| 사용자가 공급자 화면에서 취소                       | `WITHDRAWAL_CANCELLED`        |
+| 연결 해제 실패 (공급자 장애 등)                     | `WITHDRAWAL_FAILED`           |
+| 해제 대상을 판정하지 못함                           | `WITHDRAWAL_UNLINK_FAILED`    |
+| **인증된 공급자 계정이 탈퇴 요청 회원의 것과 다름** | `WITHDRAWAL_ACCOUNT_MISMATCH` |
+
+- 실패한 경우 **아무것도 삭제하지 않는다.** 회원 데이터가 그대로 남고 세션도 유지되므로 사용자는 다시 시도할 수 있다.
+- 되돌릴 수 없다. 클라이언트는 1단계 이전에 확인 절차를 둔다.
+- 사용자가 공급자 화면에서 이탈해 돌아오지 않으면 아무 일도 일어나지 않는다.
+
+**왕복 중에 Access 쿠키가 만료돼도 탈퇴는 완료된다.** 탈퇴 대상 회원은 1단계에서 확정되어 인가 요청과 함께 서버가 보관하므로, 콜백 시점의 인증 상태에 의존하지 않는다.
+
+**계정 일치를 확인한다.** 사용자가 공급자 화면에서 다른 계정으로 인증할 수 있다(계정 선택 화면을 띄우는 공급자가 있다). 그 경우 서버는 **계정 B의 연결을 끊고 회원 A를 삭제하게 되므로**, 콜백에서 공급자가 알려준 사용자 식별자가 탈퇴를 요청한 회원의 `social_account`와 같은지 확인하고 다르면 거절한다.
+
+### 3.6.3 왜 연결 해제가 선행인가
+
+**삭제가 먼저 커밋되면 연결 해제가 영구히 불가능해진다.** 삭제 절차가 `social_account`의 `provider_user_id`를 마스킹하므로, 그 시점부터 공급자에서 그 사용자를 지목할 수단이 사라진다. 실패를 나중에 재시도할 수도 없다.
+
+그 결과가 **연결이 남은 채 탈퇴가 완료된 상태**다. 같은 계정으로 다시 로그인하면 공급자가 동의 화면 없이 통과시켜, 사용자 입장에서는 탈퇴가 무의미해진다.
+
+카카오는 연결 해제를 탈퇴 절차에 포함할 것을 **의무로 규정**한다. 따라서 이 순서는 편의가 아니라 요구사항이다.
+
+**공급자 장애 시 탈퇴가 지연되는 것을 감수한다.** 그 대가는 일시적이고 재시도로 해소되는 반면, 반대 순서의 대가는 회복 불가능하다. 서버는 순간적 장애를 흡수하기 위해 짧은 재시도를 수행한다.
+
+### 3.6.4 삭제 절차
 
 동작은 정책 정의서 10장을 따른다.
 
 | 대상                                                                  | 처리                                                                              |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **공급자 연결**                                                       | **해제(선행). 실패 시 아래를 수행하지 않는다**                                    |
 | `member`, `social_account`                                            | 소프트 삭제                                                                       |
 | `record`, `context`, `collection`, `collection_record`, 관련 `follow` | 소프트 삭제                                                                       |
 | `social_account`의 `provider_user_id`, `email`                        | **마스킹**(개인정보 파기 대상)                                                    |
@@ -433,10 +509,11 @@ WHERE context_id = ?;
 - 물리 삭제 시점은 이 명세의 범위가 아니며 개인정보 정책을 따른다(07 §5).
 - 같은 처리를 Record 삭제(5.6·5.7)에도 적용한다. 탈퇴 전용 동작이 아니다.
 
-이 경로는 Refresh 쿠키의 `Path` 범위 밖이라 Refresh 쿠키가 전송되지 않는다. 따라서 **Access 쿠키로 회원을 식별하고 그 회원의 Refresh를 전부 무효화한다.** 탈퇴는 모든 기기에서 즉시 로그아웃되어야 하므로 전체 무효화가 의도된 동작이다. Access가 만료된 상태라면 인증 실패(401)이므로, 클라이언트는 재발급(3.3) 후 다시 요청한다.
+3.6.1은 Refresh 쿠키의 `Path` 범위 밖이라 Refresh 쿠키가 전송되지 않는다. 따라서 **Access 쿠키로 회원을 식별하고 그 회원의 Refresh를 전부 무효화한다.** 탈퇴는 모든 기기에서 즉시 로그아웃되어야 하므로 전체 무효화가 의도된 동작이다. Access가 만료된 상태라면 인증 실패(401)이므로, 클라이언트는 재발급(3.3) 후 다시 요청한다.
 
 - 탈퇴한 사용자의 Shelf와 Collection은 다른 사용자의 Library·Feed에서 즉시 제외한다.
 - 활성 `social_account`가 사라지므로, 같은 소셜 계정으로 다시 로그인하면 **신규 회원으로 가입**된다(3.2). 과거 데이터는 복구되지 않는다.
+- 연결이 해제됐으므로 그 재로그인은 **공급자 동의 절차를 다시 거친다.** 이것이 3.6.3의 순서가 보장하는 결과다.
 
 ---
 
@@ -453,21 +530,25 @@ WHERE context_id = ?;
 ## 4.2 내 Record 지도
 
 ```http
-GET /api/core/v1/records/map?swLat={swLat}&swLng={swLng}&neLat={neLat}&neLng={neLng}
+GET /api/core/v1/records/map?swLat={swLat}&swLng={swLng}&neLat={neLat}&neLng={neLng}&keyword={keyword}
 ```
 
 Query:
 
-| 이름    | 필수 | 설명      |
-| ------- | ---: | --------- |
-| `swLat` |    X | 남서 위도 |
-| `swLng` |    X | 남서 경도 |
-| `neLat` |    X | 북동 위도 |
-| `neLng` |    X | 북동 경도 |
+| 이름      | 필수 | 설명                         |
+| --------- | ---: | ---------------------------- |
+| `swLat`   |    X | 남서 위도                    |
+| `swLng`   |    X | 남서 경도                    |
+| `neLat`   |    X | 북동 위도                    |
+| `neLng`   |    X | 북동 경도                    |
+| `keyword` |    X | 장소명·주소 부분 일치 검색어 |
 
 - bbox 파라미터 없이 호출하면(최초 진입) 내 **전체** 마커를 반환한다.
 - bbox를 주면 해당 범위의 마커만 반환한다(지도 이동 시).
+- `keyword`를 주면 장소명(`name`) **또는** 주소(`address`)에 검색어가 부분 일치(대소문자 무시)하는 마커만 반환한다. 생략하거나 빈 문자열·공백뿐이면 필터하지 않는다. `%`·`_`는 와일드카드가 아니라 문자 그대로 검색된다.
+- `keyword`는 bbox와 독립적으로 조합할 수 있다(AND). bbox의 "모두 주거나 모두 생략" 규칙에 `keyword`는 포함되지 않는다.
 - 응답은 현재 로그인 사용자의 활성 Record와 연결된 Place만 포함한다.
+- `items`는 장소명 오름차순(동명이면 `recordId` 오름차순)으로 정렬된다.
 
 ```json
 {
@@ -480,7 +561,8 @@ Query:
         "placeId": 5501,
         "name": "앤트러사이트 성수",
         "lat": 37.5447,
-        "lng": 127.0557
+        "lng": 127.0557,
+        "latestCollectionId": 7001
       }
     ]
   }
@@ -489,6 +571,7 @@ Query:
 
 - `bounds`는 반환된 마커 전체를 포함하는 **최소 사각형**이다. 프론트는 최초 진입 시 `fitBounds(bounds, padding)`으로 모든 마커가 한눈에 보이는 최소 화면(여유 포함)을 만든다.
 - 결과가 없으면 `bounds: null`, 1개면 해당 좌표의 점 사각형(sw = ne)이다.
+- `latestCollectionId`는 그 Record가 **가장 최근에 담긴** Collection의 id다(마커 색상 구분용). "가장 최근"은 컬렉션 내부 정렬과 같은 담은 시각 기준이며, 어느 Collection에도 담기지 않은 Record는 `null`이다. 컬렉션에서 뺀(삭제된) 연결은 판단에서 제외된다.
 
 ## 4.3 발견한 Place 저장
 
@@ -567,10 +650,16 @@ POST /api/core/v1/records
 ## 5.2 Record 상세
 
 ```http
-GET /api/core/v1/records/{recordId}
+GET /api/core/v1/records/{recordId}?contextSort=CREATED_AT_ASC
 ```
 
-본인 소유 Record만 조회한다. `contexts`는 배열이며, `createdAt`(최초 작성 시각) 오름차순 — 오래된 것부터 — 으로 정렬된다. 모든 `contexts` 배열 응답에 공통이다.
+Query:
+
+| 이름          | 필수 | 설명                                                                                        |
+| ------------- | ---: | ------------------------------------------------------------------------------------------- |
+| `contextSort` |    X | `CREATED_AT_ASC`(기본, 오래된순) 또는 `CREATED_AT_DESC`. 프론트가 상수로 고정해 보낸다(1.4) |
+
+본인 소유 Record만 조회한다. `contexts`는 배열이며, 기본은 `createdAt`(최초 작성 시각) 오름차순 — 오래된 것부터 — 이다. Collection 상세(7.3) 안의 `records[].contexts`는 파라미터 없이 항상 오름차순이다.
 
 ## 5.3 장소로 내 Record 조회
 
@@ -782,6 +871,7 @@ POST /api/core/v1/search/records
           "createdAt": "2026-07-23T10:00:00Z"
         },
         "keywords": ["친구", "비 오는 날"],
+        "keywordStatus": "COMPLETED",
         "createdAt": "2026-07-20T09:00:00Z"
       }
     ]
@@ -792,6 +882,29 @@ POST /api/core/v1/search/records
 - `bounds`는 검색 결과 Record들의 Place 전체를 포함하는 최소 사각형이다(4.2와 동일 규칙: 결과 없으면 `null`). 프론트는 검색 결과를 지도에 띄울 때 `fitBounds(bounds, padding)`을 사용한다.
 - `keywords`는 매칭된 Context의 Keyword가 아니라 **해당 Record의 활성 Context 전체 Keyword 집계값**이다(`ai.context_keyword`를 Record 단위로 집계, 중복 제거).
 - `keywords`는 `keyword_preset`의 `display_name` 문자열 배열이다. `code`는 내부 식별용으로 노출하지 않는다(모든 Keyword 응답 공통). 지역·Place 카테고리(예: "카페")는 프리셋에 없으므로 Keyword로 나올 수 없다.
+- `keywordStatus`는 그 Record의 **Keyword 판정 상태**다. **항상 반환하며 `null`이 아니다.** `keywords`가 빈 배열일 때 그것이 최종인지 아닌지를 이 값 하나로 가른다.
+
+#### `keywordStatus`
+
+| 값           | 뜻                                         | 화면                                |
+| ------------ | ------------------------------------------ | ----------------------------------- |
+| `COMPLETED`  | 판정이 끝났다. `keywords`가 최종이다       | 0건이면 "이 기록엔 키워드가 없어요" |
+| `PROCESSING` | 아직 처리 중이다. 기다리면 채워진다        | "분석 중"이 사실인 유일한 경우      |
+| `FAILED`     | 처리가 끝내 실패했다. 기다려도 오지 않는다 | 재시도·문의 유도                    |
+
+**프론트가 분기해야 하는 것은 `PROCESSING` 하나다.** 나머지 둘은 `keywords`를 그대로 그리면 된다. **필드를 읽지 않아도 기존 동작과 같다** — `keywords`의 의미와 값은 이 필드가 생기기 전과 동일하다.
+
+세 값은 AI 파트의 내부 상태(`ai.context_ai_state.keyword_status`, 5값)를 그대로 내보낸 것이 아니라 **응답용으로 접은 값**이다. 사용자에게 필요한 판단이 「기다리면 오는가」 하나이기 때문이다. Record 하나에 활성 Context가 여럿일 수 있어 Record 단위로 접으며, 규칙과 근거는 AI 파트 명세가 원본이다([back `docs/ai/spec/ai-response-assembly.md` §5.1](https://github.com/Team-PinLog/back/blob/dev/docs/ai/spec/ai-response-assembly.md)).
+
+```text
+활성 Context 중 하나라도 처리 중   →  PROCESSING   (그것이 끝나면 Keyword가 더 붙는다)
+그렇지 않고 하나라도 실패          →  FAILED
+그 밖                              →  COMPLETED
+```
+
+`PROCESSING`은 무한히 지속되지 않는다. 재스캔이 만료된 처리 중 상태를 `FAILED`로 전이시키므로 화면의 "분석 중"에는 상한이 있다.
+
+**다른 응답에는 이 필드가 없다.** 검색은 소유자 전용 응답이라 자기 기록의 처리 상태를 봐도 되지만, 타인 응답(공개 Collection·책장·타인 Record 카드)에 실으면 남의 AI 처리 진행 상황이 새어 나간다. 그쪽 `keywords`는 종전대로 빈 배열이 최종인지 아닌지를 구분하지 않는다.
 
 ### 검색 결과 카드 요구사항
 
@@ -851,11 +964,20 @@ POST /api/core/v1/collections
 ## 7.2 내 Collection 목록
 
 ```http
-GET /api/core/v1/collections?cursor={cursor}&size=10
+GET /api/core/v1/collections?cursor={cursor}&size=10&sort=CREATED_AT_ASC
 ```
 
-이 Endpoint는 일반적인 내 Collection 관리 화면에서 사용한다.  
-Library 내 책장 세로 스크롤에서는 Library 전용 Endpoint를 사용한다.
+Query:
+
+| 이름   | 필수 | 설명                                                                                        |
+| ------ | ---: | ------------------------------------------------------------------------------------------- |
+| `sort` |    X | `CREATED_AT_ASC`(기본, 오래된순) 또는 `CREATED_AT_DESC`. 프론트가 상수로 고정해 보낸다(1.4) |
+
+정렬 기본은 `collection.created_at ASC`(오래된순), 동률이면 `id ASC`다.
+
+이 Endpoint는 내 Collection 관리 화면과 Library 내 책장 세로 스크롤에서 함께 사용한다. Library 전용 Endpoint는 없다(2.6·9.1·14장 5번).
+
+Feed(추천 Collection 노출)는 이 정렬 기준과 무관하다 — 추천 정렬은 Feed 파트가 별도로 정한다.
 
 ## 7.3 Collection 상세 통합 조회
 
@@ -865,17 +987,19 @@ GET /api/core/v1/collections/{collectionId}?recordCursor={cursor}&recordSize=2
 
 Query:
 
-| 이름           | 필수 | 설명                                |
-| -------------- | ---: | ----------------------------------- |
-| `recordCursor` |    X | 다음 CollectionRecord 커서          |
-| `recordSize`   |    X | 반환할 Record 수, 기본 1            |
-| `recordSort`   |    X | MVP에서는 `ADDED_AT_DESC` 고정 권장 |
+| 이름           | 필수 | 설명                                                                                              |
+| -------------- | ---: | ------------------------------------------------------------------------------------------------- |
+| `recordCursor` |    X | 다음 CollectionRecord 커서                                                                        |
+| `recordSize`   |    X | 반환할 Record 수, 기본 1                                                                          |
+| `recordSort`   |    X | `ADDED_AT_ASC`(기본, 담은 순서 오래된순) 또는 `ADDED_AT_DESC`. 프론트가 상수로 고정해 보낸다(1.4) |
 
 정렬:
 
 ```text
-collection_records.created_at DESC
+collection_records.created_at ASC (기본), 동률이면 id ASC
 ```
+
+각 Record 안의 `contexts`는 `recordSort`와 무관하게 항상 `createdAt` 오름차순이다(5.2).
 
 ### 소유자 조회 응답
 
@@ -1006,12 +1130,14 @@ DELETE /api/core/v1/collections/{collectionId}/records/{recordId}
 ## 8.1 최초 공개 책장 탐색
 
 ```http
-GET /api/core/v1/feed/collections/{collectionId}/shelf?cursor={cursor}&size=20
+GET /api/core/v1/feed/collections/{collectionId}/shelf?cursor={cursor}&size=20&sort=CREATED_AT_ASC
 ```
 
 `collectionId`를 공개 진입점으로 사용해 해당 Collection 작성자의 다른 공개 Collection을 조회한다.
 
 `size`는 공통 커서 계약을 따른다 — 기본값 `CursorPage.DEFAULT_SIZE`(20), 서버 방어 상한 `CursorPage.MAX_SIZE`(100), 범위 밖 값은 `CursorPage.normalizeSize`가 보정한다. 같은 Feed 네임스페이스의 `GET /feed/collections`와 기본 크기를 맞춘다.
+
+정렬은 7.2와 같다 — 기본 `collection.created_at ASC`(오래된순), `sort=CREATED_AT_DESC`로 최신순. 같은 작성자의 발행 Collection 조회를 9.3과 공유하므로 규칙도 같이 간다.
 
 응답:
 
@@ -1149,6 +1275,10 @@ Library는 프론트 페이지 명칭이고, Shelf(책장)는 사용자별 Colle
 
 세 커서(팔로우 목록·책장별 Collection·Record)는 독립적이며 혼용할 수 없다.
 
+**첫 화면은 `GET /follows`에 `collectionSize`를 더해 한 번에 받는다.** 책장마다 표지를 그려야 하는데 팔로우 목록 응답에 Collection이 없으면 책장 N개에 호출이 `1 + N`회가 된다. `collectionSize`를 주면 각 항목에 그 책장의 Collection 첫 페이지가 함께 실린다(9.2).
+
+커서 독립 원칙은 그대로다 — 커서를 합치는 것이 아니라 **각 축의 첫 페이지를 한 응답에 실어 보내는 것**이다. 더보기는 여전히 `GET /follows/{followId}/collections`(9.3)이며, 9.2가 준 `collections.nextCursor`를 그대로 넣는다.
+
 ## 9.2 팔로우 목록
 
 ```http
@@ -1172,11 +1302,65 @@ GET /api/core/v1/follows?cursor={cursor}&size=2
 - 현재 로그인 사용자의 활성 Follow만 반환한다.
 - 팔로우 대상의 신원 정보(내부 사용자 ID 등)는 포함하지 않는다.
 
+### 책장별 Collection 함께 받기 — `collectionSize`
+
+```http
+GET /api/core/v1/follows?cursor={cursor}&size=10&collectionSize=5&collectionSort=CREATED_AT_ASC
+```
+
+| 파라미터         | 필수 | 설명                                                                                                             |
+| ---------------- | :--: | ---------------------------------------------------------------------------------------------------------------- |
+| `cursor`·`size`  |  X   | **팔로우 축**. 공통 커서 계약(1.4)을 따른다                                                                      |
+| `collectionSize` |  X   | **각 책장의 Collection 축**. 주면 항목마다 `collections`가 실린다. 없으면 위 기본 응답과 같다                    |
+| `collectionSort` |  X   | 동봉 `collections`의 정렬. `CREATED_AT_ASC`(기본) 또는 `CREATED_AT_DESC`. 팔로우 축 정렬(최신순)에는 영향이 없다 |
+
+중첩 축에 접두어를 붙이는 것은 7.3(`recordCursor`·`recordSize`)과 같은 규약이다. 바깥 축은 이 Endpoint가 돌려주는 자기 축이므로 접두어 없이 `cursor`·`size`를 쓴다.
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "followId": 701,
+        "alias": "서울 카페",
+        "createdAt": "2026-07-23T10:00:00Z",
+        "collections": {
+          "items": [
+            {
+              "collectionId": 7001,
+              "title": "연남 카페",
+              "recordCount": 3,
+              "keywords": ["조용한", "커피"],
+              "createdAt": "2026-07-18T10:00:00Z"
+            }
+          ],
+          "nextCursor": "opaque-cursor",
+          "hasNext": true
+        }
+      }
+    ],
+    "nextCursor": "opaque-cursor",
+    "hasNext": true
+  }
+}
+```
+
+- `collections`의 항목 형태는 9.3과 같다.
+- `collections.nextCursor`는 **그 책장 전용**이며 9.3 Endpoint에 그대로 넣어 이어받는다. 바깥 `nextCursor`(팔로우 축)와 섞지 않는다. `collectionSort`를 바꿔 받았다면 9.3에도 같은 방향의 `sort`를 줘야 이어진다(1.4).
+- Collection이 없는 책장도 항목으로 나오며 `collections.items`가 빈 배열이다.
+- `collectionSize`를 주지 않으면 `collections` 필드 자체가 없다. 기존 호출은 영향받지 않는다. `size` 기본값도 1.4(20) 그대로다 — `collectionSize`가 있다고 달라지지 않는다.
+- `size`·`collectionSize`에 0 이하나 상한 초과 값을 주면 400이 아니라 서버가 범위 안으로 보정한다.
+- 첫 화면 권장 호출은 `size=10`·`collectionSize=5`(합계 최대 50행)다. 화면의 줄 수·표지 수에 맞춰 값을 바꾸면 된다.
+- 서버는 페이지 전체의 Collection을 **한 번의 질의로** 모은다. 책장 수만큼 질의하지 않는다.
+
 ## 9.3 팔로우 책장의 Collection 목록
 
 ```http
-GET /api/core/v1/follows/{followId}/collections?cursor={cursor}&size=6
+GET /api/core/v1/follows/{followId}/collections?cursor={cursor}&size=6&sort=CREATED_AT_ASC
 ```
+
+정렬은 7.2와 같다 — 기본 `collection.created_at ASC`(오래된순), `sort=CREATED_AT_DESC`로 최신순.
 
 검증:
 
@@ -1195,7 +1379,7 @@ GET /api/core/v1/collections/{collectionId}?recordCursor={cursor}&recordSize=2
 - 모바일 한 페이지에 Record 하나: `recordSize=1`
 - 웹 펼친 책의 양쪽 페이지: `recordSize=2`
 - 다음 페이지 이동 시 응답의 `records.nextCursor` 사용
-- 정렬은 `collection_records.created_at DESC`
+- 정렬은 `collection_records.created_at ASC`(기본, 담은 순서 오래된순). `recordSort=ADDED_AT_DESC`로 최신순(7.3)
 
 ---
 
@@ -1342,6 +1526,27 @@ type RecordDetail = {
 본인 Record 조회         → contexts = ContextDetail[]
 타인 공개 Collection 조회 → contexts = null
 ```
+
+`PlaceSummary`:
+
+```typescript
+type PlaceSummary = {
+  placeId: number;
+  kakaoPlaceId: string;
+  name: string;
+  address: string;
+  roadAddress: string | null;
+  phone: string | null;
+  placeUrl: string | null;
+  thumbnailUrl: string | null;
+  lat: number;
+  lng: number;
+};
+```
+
+- `thumbnailUrl`은 장소 대표 썸네일 이미지 URL이다. 없으면 `null`이며 필드를 생략하지 않는다 — 프론트는 `null`이거나 이미지 로드에 실패하면 기본 이미지로 폴백한다.
+- 이미지는 **4:3 비율**로 제공된다. 프론트는 `aspect-ratio: 4 / 3` + `object-fit: cover`로 표시하면 로딩 전 영역이 확보되고 모바일·PC 폭 모두에 적응한다.
+- 현 단계 값은 같은 origin의 절대 경로(`/api/core/images/places/…`)다. 이후 외부 절대 URL로 바뀔 수 있으며 `<img src>` 사용법은 동일하다.
 
 ## 11.2 `ContextDetail`
 
@@ -1500,6 +1705,19 @@ GET /collections/{collectionId}
 
 위와 동일하게 5.6을 그대로 호출한다. 마지막 Context 삭제 시 409 `DELETE_CONFIRMATION_REQUIRED` 처리도 레코드 상세와 동일하다.
 
+## 13.11 컬렉션 만들기에서 담을 장소 검색
+
+컬렉션에 담을 장소 선택 화면은 별도 목록 API 없이 4.2를 목록으로 재사용한다.
+
+```text
+GET /records/map                     -- 최초 진입: 내 전체 장소
+GET /records/map?keyword={검색어}     -- 검색어 입력 시
+→ items에서 장소 선택
+→ POST /collections { title, recordIds } (7.1)
+```
+
+지도 화면이 아니므로 `bounds`는 사용하지 않고 `items`만 사용한다. `items`는 장소명 오름차순이라 그대로 목록에 그리면 된다.
+
 ---
 
 # 14. 구현 시 반드시 지킬 사항
@@ -1511,7 +1729,7 @@ GET /collections/{collectionId}
 5. Library는 전용 Endpoint 없이 `GET /collections` + `GET /follows` + `GET /follows/{followId}/collections` 조합으로 구성한다.
 6. 팔로우 목록 커서와 각 책장 Collection 커서를 혼용하지 않는다.
 7. 내 책장은 `GET /collections`로 프론트가 별도 구성·유지한다.
-8. Collection 내부 Record는 `collection_records.created_at DESC`(최신 담은 순)로 정렬한다.
+8. Collection 내부 Record는 `collection_records.created_at ASC`(담은 순서 오래된순)를 기본으로 정렬하고, `recordSort=ADDED_AT_DESC`로 최신순을 지원한다. Collection 목록(7.2·9.3)도 같은 방식이다 — 기본 오래된순, `sort` 파라미터로 최신순.
 9. AI 검색 결과에 `matchedContext.body`, `recordId`, `contextId`를 제공한다.
 10. Record·Context 생성 직후 `keywords: []`를 정상 상태로 취급한다.
 11. Feed IMPRESSION은 목록 응답 생성 시 서버가 기록한다.
@@ -1519,7 +1737,7 @@ GET /collections/{collectionId}
 13. 내부 사용자 ID와 신원 정보는 공개 응답에 포함하지 않는다.
 14. 모든 조회에서 소프트 삭제 데이터를 제외한다.
 15. Context 추가·수정 시 `records.updated_at`을 갱신한다(최신 활동 시각 기록).
-16. 검색 응답 `keywords`는 Record의 활성 Context 전체 Keyword 집계값이다.
+16. 검색 응답 `keywords`는 Record의 활성 Context 전체 Keyword 집계값이며, 그 배열이 최종인지 여부는 같은 응답의 `keywordStatus`가 가른다(6.1).
 17. 연쇄 삭제가 발생하는 삭제 요청은 409로 거절하고, 프론트 확인 후 강제 삭제 API(`/records/{recordId}/force`) 또는 Collection 삭제 API로만 수행한다.
 
 ---
@@ -1528,10 +1746,11 @@ GET /collections/{collectionId}
 
 미확정 항목 없음. 주요 확정 내역:
 
-| 항목              | 확정 내용                                                                |
-| ----------------- | ------------------------------------------------------------------------ |
-| 인증              | JWT. Access 30분, Refresh 7일(Redis 저장, 회전 발급)                     |
-| 커서              | Base64(정렬키+id). `size` 기본 20, 명세상 상한 없음(서버 방어 상한 권장) |
-| Feed SAVE 이벤트  | 클라이언트가 저장 성공 후 `/feed/events`로 전송                          |
-| `similarity`      | 검색 응답에 항상 포함. UI 노출은 프론트 결정                             |
-| Context 수정 응답 | `PATCH 200` (사용자 관점의 수정. 새 `contextId` 반환)                    |
+| 항목              | 확정 내용                                                                   |
+| ----------------- | --------------------------------------------------------------------------- |
+| 인증              | JWT. Access 30분, Refresh 7일(Redis 저장, 회전 발급)                        |
+| 커서              | Base64(정렬키+id). `size` 기본 20, 명세상 상한 없음(서버 방어 상한 권장)    |
+| Feed SAVE 이벤트  | 클라이언트가 저장 성공 후 `/feed/events`로 전송                             |
+| `similarity`      | 검색 응답에 항상 포함. UI 노출은 프론트 결정                                |
+| `keywordStatus`   | 검색 응답에만 포함하며 항상 반환. `COMPLETED`·`PROCESSING`·`FAILED` 셋(6.1) |
+| Context 수정 응답 | `PATCH 200` (사용자 관점의 수정. 새 `contextId` 반환)                       |

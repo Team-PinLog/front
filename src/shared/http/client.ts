@@ -116,17 +116,51 @@ interface RetryableRequestConfig extends InternalAxiosRequestConfig {
 let refreshPromise: Promise<void> | null = null;
 
 /**
+ * 탭·창 사이의 재발급 직렬화에 쓰는 Web Locks 이름.
+ * 값 자체에 의미는 없고 같은 오리진의 모든 탭이 같은 문자열을 써야 한다는 점만 중요하다.
+ */
+const REFRESH_LOCK_NAME = 'pinlog:auth-refresh';
+
+/** 실제 재발급 호출. 락 안에서만 부른다. */
+function postRefresh(): Promise<void> {
+  return axios
+    .post(`${API_BASE_URL}/auth/refresh`, undefined, { withCredentials: true })
+    .then(() => undefined);
+}
+
+/**
+ * 재발급을 탭 간에도 직렬화한다(11_인증_설계.md 4.4 — "탭·창 사이에서도 하나로 묶어야 합니다").
+ *
+ * 인증 쿠키는 오리진 단위로 탭이 공유하는데 Refresh는 회전 발급이라, 탭마다 따로 묶으면 두 탭이
+ * 같은 Refresh 토큰으로 동시에 회전시켜 늦게 도착한 쪽이 401을 받고 사용자가 로그아웃된다.
+ *
+ * BroadcastChannel이 아니라 Web Locks를 쓴다 — BroadcastChannel은 메시지 전달 수단일 뿐이라
+ * 상호배제를 직접 구현해야 하고(리더 선출·타임아웃), 락을 쥔 탭이 닫히면 남은 탭이 영구히 대기한다.
+ * Web Locks는 브라우저가 상호배제를 보장하고 탭이 죽으면 락을 자동 회수한다.
+ *
+ * 락은 "동시 호출"만 막고 "중복 호출"은 막지 않는다 — 두 번째 탭은 락을 얻은 뒤 이미 회전된
+ * 새 Refresh 쿠키로 다시 재발급하므로 성공한다. 문제였던 것은 순서가 아니라 동시성이다.
+ *
+ * navigator.locks가 없는 환경(구형 Safari, 비보안 컨텍스트, 테스트 환경)에서는 탭 내 single-flight로
+ * 폴백한다 — 크로스탭 보장이 없어질 뿐 기존 동작보다 나빠지지 않는다.
+ */
+function withRefreshLock(run: () => Promise<void>): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.locks) {
+    return run();
+  }
+  return navigator.locks.request(REFRESH_LOCK_NAME, run);
+}
+
+/**
  * 401 재발급을 single-flight로 처리한다(api-contract.md [확정] 401 처리).
- * 동시에 여러 요청이 401을 받아도 진행 중인 refresh Promise를 공유해 /auth/refresh 호출은 하나만 나간다.
+ * 탭 안에서는 진행 중인 refresh Promise를 공유해 /auth/refresh 호출이 하나만 나가고,
+ * 탭 사이에서는 Web Locks가 그 호출을 직렬화한다.
  */
 function refreshAccessToken(): Promise<void> {
   if (!refreshPromise) {
-    refreshPromise = axios
-      .post(`${API_BASE_URL}/auth/refresh`, undefined, { withCredentials: true })
-      .then(() => undefined)
-      .finally(() => {
-        refreshPromise = null;
-      });
+    refreshPromise = withRefreshLock(postRefresh).finally(() => {
+      refreshPromise = null;
+    });
   }
   return refreshPromise;
 }
@@ -162,6 +196,10 @@ async function redirectToLogin(): Promise<void> {
  * - 재발급 자체가 401이거나, 재시도한 요청이 다시 401이면 더 이상 재시도하지 않고
  *   재로그인 화면으로 유도한 뒤 ApiError(status:401)로 reject한다.
  * - 401이 아닌 실패는 원인에 관계없이 항상 ApiError로 통일해서 reject한다 — 호출부는 항상 ApiError를 받는다고 가정할 수 있다.
+ *
+ * ❌ 503을 401과 같은 분기로 묶지 않는다(11_인증_설계.md 4.4). 503은 자격증명을 거절한 것이 아니라
+ * 인증 여부를 확인하지 못한 상태라 재발급해도 같은 결과가 반복되고, 세션을 버리면 일시적 장애가
+ * 전체 로그아웃으로 번진다. 여기서는 세션을 유지한 채 ApiError로 넘기고 재시도·오류 표시는 호출부가 정한다.
  */
 export function handleResponseError(error: AxiosError): Promise<AxiosResponse> | never {
   const status = error.response?.status ?? null;

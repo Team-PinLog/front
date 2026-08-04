@@ -50,7 +50,7 @@
 - 생성 즉시 자동 발행
 - 제목 수정, Record 추가·제거, 소프트 삭제
 - 마지막 Record 제거 시 Collection 삭제 확인
-- Record 생성 시각 오름차순 정렬
+- Collection에 담은 시각 오름차순 정렬이 기본, 파라미터로 최신순 지원(API 명세 7.3)
 
 ### Shelf, Library, Follow
 
