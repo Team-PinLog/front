@@ -170,7 +170,10 @@ export function AppLayout() {
         {/* 304: xl(≥1280) 전용 좌측 고정 사이드바 — sm·mdlg에서는 hidden으로 완전히 숨긴다(마운트는
             유지, CSS로만 전환). 폭은 shelfCabinetLayout.ts의 SIDEBAR_WIDTH_PX(240px = w-60)와 반드시
             같은 값을 유지한다 — Feed 캐비닛 가로 예산 계산이 그 상수를 그대로 읽는다. */}
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line-card bg-paper-white xl:flex">
+        {/* 배경은 본문(bg-paper-white)보다 한 단계 흰 snow-white를 쓴다 — 확정 디자인 이미지에서
+            사이드바가 본문과 미세한 명도 차이로 구분되기 때문이다. 브랜드 토큰으로 추가했다
+            (tailwind.config.js, 사용자 승인). 육안으로는 거의 흰색으로 보이는 것이 정상이다. */}
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line-card bg-snow-white xl:flex">
           <div className="flex flex-col gap-8 p-6">
             <Link to="/" title="홈으로 이동" className="block h-7 w-[95px] overflow-hidden">
               <span
@@ -191,7 +194,7 @@ export function AppLayout() {
                   key={item.to}
                   to={item.to}
                   activeOptions={{ exact: true }}
-                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-ink-gray-light transition-colors hover:text-log-mint"
+                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-pin-navy/60 transition-colors hover:text-log-mint"
                   activeProps={{ className: 'bg-pin-navy/[0.06] text-pin-navy font-bold' }}
                 >
                   <svg
@@ -218,7 +221,7 @@ export function AppLayout() {
             onClick={() => setIsSettingsOpen(true)}
             title="설정"
             aria-label="설정 패널 열기"
-            className="mt-auto flex items-center gap-3 px-10 py-6 text-sm font-medium text-ink-gray-light transition-colors hover:text-pin-navy"
+            className="mt-auto flex items-center gap-3 px-10 py-6 text-sm font-medium text-pin-navy/60 transition-colors hover:text-log-mint"
           >
             <svg
               width="19"

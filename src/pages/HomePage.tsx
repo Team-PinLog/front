@@ -10,6 +10,19 @@ import { SearchResultGallery } from '@/features/home/components/SearchResultGall
 import { PAGE_CONTAINER_CLASS } from '@/shared/lib/shelfCabinetLayout';
 
 /**
+ * 배경 지도 위 히어로 오버레이의 알파 마스크. 위 48%는 검정(=오버레이 100% 표시)으로 유지해
+ * 제목부터 검색바까지를 완전히 불투명하게 덮고, 거기서부터 100%까지 transparent로 떨어뜨려
+ * 블러와 흰 tint가 함께 서서히 사라지게 한다. 색이 같은 두 스톱(black 0%/48%) 사이라 정지
+ * 구간에서 단차는 생기지 않는다.
+ *
+ * 48%를 고른 근거: 오버레이 높이가 h-[28rem](448px)이라 불투명 구간이 448 * 0.48 ≈ 215px다.
+ * 실측상 SmartSearchPanel의 검색바 아래끝이 약 184px(1440x900, xl)이라 30px 남짓 여유가
+ * 남는다 — 검색바 텍스트가 흐려진 지도 위에 걸치지 않는다. 나머지 233px이 감쇠 구간이라
+ * 이전(384px 중 115px 불투명)보다 불투명 구간과 감쇠 구간이 함께 늘어났다.
+ */
+const HERO_MAP_FADE_MASK = 'linear-gradient(to bottom, black 0%, black 48%, transparent 100%)';
+
+/**
  * 홈 화면: 스마트 검색(149)과 지도(150)를 한 화면에서 함께 보여준다.
  * 근거: Jira S15P11A705-165. 검색 mutation은 SmartSearchPanel·SearchResultGallery 형제
  * 컴포넌트가 같은 상태를 공유해야 해서 여기서 한 번만 호출해 나눠 내려준다.
@@ -44,25 +57,31 @@ export function HomePage() {
             position:absolute 요소(z-index:auto)는 아래 일반 흐름 컨텐츠보다 항상 위에 그려지므로,
             이 레이어를 배경으로 두려면 컨텐츠 레이어 쪽에 별도로 relative+z-10을 줘 쌓임 순서를
             뒤집어야 한다(아래 컨텐츠 레이어 참고). */}
-        <div className="absolute inset-0">
+        {/* isolate는 이 배경 레이어가 어떤 z-index도 바깥으로 새게 하지 않는다는 경계다. 실제
+            누출원(카카오 SDK 내부 z-index)은 RecordMapView 컨테이너에서 이미 가두지만, 아래
+            오버레이가 지도 위에 보이는 것은 이 레이어 구조 자체의 전제라 여기서도 명시한다. */}
+        <div className="isolate absolute inset-0">
           <HomeMapSection onMarkerClick={setOpenRecordId} />
         </div>
 
-        {/* 히어로 쪽으로 갈수록 지도가 흐려지도록 하는 그라데이션+블러 오버레이. 클릭을 지도로
-            그대로 통과시켜야 해서 pointer-events-none. backdrop-blur는 이 영역 전체에 균일하게
-            적용되고(마스크로 블러 강도 자체를 점진적으로 줄이진 않는다), 위에 얹은
-            bg-gradient-to-b가 시각적으로 "흐려지며 사라지는" 느낌을 만든다 — cross-browser
-            mask-image 없이 pointer-events-none 오버레이 방식으로 구현.
-            307 재조사: 이전 버전(from-paper-white via-paper-white/70 to-transparent, 스톱 위치
-            미지정)은 DOM/CSS 자체는 정상이었다(빌드된 CSS에서 stacking·컬러스톱 모두 정상 확인) —
-            다만 0%~100% 전 구간에 걸쳐 서서히 옅어지기만 해서, paper-white(#FAF7F6)가 카카오
-            기본 지도 타일의 밝은 색과 명도 차이가 거의 없어 "옅어지는 흰 배경"이 육안으로 거의
-            안 보였다. from-0%/via-55%로 스톱 위치를 명시해 0~55% 구간은 진하게 불투명을
-            유지하다가 55~100% 구간에서만 빠르게 투명해지도록 바꿔, 지도 색상과 무관하게 위쪽에
-            뚜렷한 불투명 밴드가 보이도록 했다. */}
+        {/* 히어로 쪽으로 갈수록 지도가 흐려지는 오버레이. 클릭은 지도로 통과시켜야 해서
+            pointer-events-none.
+            경계선(사각형 단차)의 근본 원인은 tint 그라데이션이 아니라 요소가 "고정 높이에서
+            끝난다"는 사실 자체였다 — backdrop-filter는 요소 영역 안에서만 균일하게 적용되고
+            영역 밖에서 즉시 사라지므로, tint가 이미 투명해진 지점에서도 "흐린 지도 / 선명한
+            지도"가 맞닿는 가로줄이 남는다. 높이가 다른 여러 겹을 겹쳐 단차를 잘게 쪼개는 방식도
+            써봤지만 단차를 줄일 뿐 없애지는 못한다.
+            그래서 레이어는 하나만 두고, mask-image(알파 그라데이션)로 이 요소의 "보이는 정도"
+            자체를 위에서 아래로 연속적으로 0까지 떨어뜨린다. 마스크는 요소의 합성 결과 전체에
+            적용되므로 backdrop-blur와 bg-paper-white(tint)가 같은 곡선을 따라 함께 사라진다 —
+            tint를 별도 레이어로 분리하지 않는 이유다. 알파가 0이 되는 지점에는 그릴 것이 남지
+            않아 끊기는 경계가 원리적으로 생기지 않는다.
+            Safari/구형 Chromium을 위해 -webkit-mask-image(WebkitMaskImage)를 함께 지정한다.
+            근거: Jira S15P11A705-307 후속 디자인 피드백. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-paper-white from-0% via-paper-white/90 via-55% to-transparent backdrop-blur-lg"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-paper-white backdrop-blur-lg"
+          style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 
         {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다. */}
