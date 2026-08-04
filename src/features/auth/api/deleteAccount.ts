@@ -1,17 +1,24 @@
 import { httpClient } from '@/shared/http/client';
 
+export interface WithdrawalStart {
+  /**
+   * 공급자 인가 진입 주소.
+   * 서버 상대경로일 수도, 공급자 절대 URL일 수도 있다 — **해석하지 않고 이동만 한다.**
+   */
+  authorizationUrl: string;
+}
+
 /**
  * ⭐ 표준 패턴: 화면(Component) → Hook → API 함수(여기) → httpClient.
  *
- * ⚠️ 이 구현은 옛 계약(204 = 탈퇴 완료) 기준이라 현재 서버 동작과 어긋난다.
- * 08_API_명세.md 3.6이 탈퇴를 2단계로 개정해, `DELETE /me`는 이제 `200 { authorizationUrl }`을
- * 돌려주고 **이 시점에는 아무것도 삭제되지 않는다** — 프론트가 그 URL로 페이지 이동해 공급자 인가를
- * 마쳐야 서버가 연결 해제 후 삭제한다. 지금 코드는 응답 본문을 버리고 성공으로 간주하므로
- * 화면이 "탈퇴가 완료되었습니다"를 띄우지만 계정은 그대로 남는다.
+ * 근거: docs/reference/08_API_명세.md 3.6 — 회원 탈퇴.
  *
- * 2단계 흐름 구현은 별도 티켓으로 분리했다(docs/api-contract.md [확정] "회원 탈퇴 — 2단계").
- * 여기서 반쪽만 고치면(응답 파싱만 추가) 콜백 처리가 없어 상태가 더 나빠지므로 손대지 않는다.
+ * **이 요청은 아직 아무것도 지우지 않는다.** 탈퇴는 두 단계다. 서버가 공급자 연결을 끊으려면
+ * 공급자가 발급한 토큰이 필요한데 로그인 시 그것을 보관하지 않으므로, 탈퇴 시점에 인가를 한 번
+ * 더 받는다. 여기서 받은 주소로 **페이지를 이동**하면 그 왕복이 시작되고, 콜백에서 연결 해제가
+ * 성공한 경우에만 삭제가 일어난다.
  */
-export async function deleteAccount(): Promise<void> {
-  await httpClient.delete('/me');
+export async function deleteAccount(): Promise<WithdrawalStart> {
+  const response = await httpClient.delete<WithdrawalStart>('/me');
+  return response.data;
 }
