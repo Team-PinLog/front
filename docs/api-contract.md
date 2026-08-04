@@ -54,6 +54,15 @@
 - **카카오 키**: JS 키·REST 키 모두 프론트 `.env`에 저장한다(`.gitignore`로 커밋 제외). **보안은 `.gitignore`가 아니라 카카오 개발자 콘솔의 도메인(플랫폼) 등록에 의존한다** — 등록되지 않은 도메인에서는 키가 유출돼도 호출이 거부된다.
 - 지도(`GET /records/map`)·검색(`POST /search/records`) 응답의 `bounds`는 `fitBounds`용 **최소 사각형**이다. 결과 없으면 **`null`**, 1개면 sw=ne 점 사각형.
 
+### [확정] 지도 마커 조회 응답에 collectionId 추가
+
+- 백엔드 협의 완료(구두 확인).
+- 대상 엔드포인트: `GET /records/map`(지도 마커 목록 조회)
+- 기존 응답 필드: `recordId, placeId, name, lat, lng`
+- 추가 필드: `collectionId`(`number`, 단일 값, `null` 가능 — 어떤 Collection에도 속하지 않은 Record의 경우)
+- 프론트 처리: `collectionId` 기반 해시로 마커 색상 결정, `null`인 경우 별도 고정 색(미분류) 적용. 구현은 `getRecordMarkerColor`(S15P11A705-307).
+- 배포 시점이 프론트 배포보다 늦어질 가능성에 대비해, 프론트 Zod 스키마는 이 필드를 optional로 받는다(필드가 없거나 명시적 `null`이면 동일하게 "미분류"로 취급). 실제 배포 확인되면 optional 제거를 검토한다.
+
 ### Record · Context
 
 - **`POST /records`는 `result`로 분기한다.**
