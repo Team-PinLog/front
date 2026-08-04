@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="76" viewBox="0 0 64 76" role="img" aria-labelledby="title">
+  <title>amber blank map marker</title>
+  <defs>
+    <filter id="shadow" x="-40%" y="-30%" width="180%" height="190%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0B2340" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <path d="M32 4C17.64 4 6 15.64 6 30c0 18.5 18.5 32.42 24.15 38.32a2.55 2.55 0 0 0 3.7 0C39.5 62.42 58 48.5 58 30 58 15.64 46.36 4 32 4Z" fill="#E8A51E" filter="url(#shadow)"/>
+  <circle cx="32" cy="30" r="10" fill="#FFFFFF"/>
+</svg>

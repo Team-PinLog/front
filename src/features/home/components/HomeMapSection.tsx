@@ -6,14 +6,15 @@ interface HomeMapSectionProps {
 }
 
 /**
- * 검색 결과가 없을 때(idle·pending·error·빈 결과) 노출하는 홈 지도 섹션.
- * 근거: Jira S15P11A705-165, mockup(PinLog.responsive.dc.html) home-idle-layout(1106~1116행).
- * 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 열도록
+ * 홈 화면 배경 지도. 항상 떠 있는 풀블리드 배경 레이어라 카드 스타일(라운드·테두리·그림자·고정
+ * 높이)을 갖지 않는다 — HomePage가 이 컴포넌트를 절대 위치(absolute inset-0) 레이어에 넣어 실제
+ * 크기를 정해준다. 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 열도록
  * onMarkerClick을 RecordMapView에 그대로 전달한다(Jira S15P11A705-166).
+ * 근거: Jira S15P11A705-307(배경 레이어 재구성 — 이전엔 rounded-2xl 카드 컨테이너였다).
  */
 export function HomeMapSection({ onMarkerClick }: HomeMapSectionProps) {
   return (
-    <div className="h-[520px] w-full overflow-hidden rounded-2xl border border-pin-navy/10 shadow-sm">
+    <div className="h-full w-full">
       <RecordMapView onMarkerClick={onMarkerClick} />
     </div>
   );

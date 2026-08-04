@@ -1,8 +1,62 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { loadKakaoMaps, type KakaoMap, type KakaoMarker } from '@/shared/lib/kakaoMaps';
+import {
+  loadKakaoMaps,
+  type KakaoCustomOverlay,
+  type KakaoMap,
+  type KakaoNamespace,
+} from '@/shared/lib/kakaoMaps';
+import {
+  getRecordMarkerAsset,
+  RECORD_MARKER_ASSET_HEIGHT,
+  RECORD_MARKER_ASSET_WIDTH,
+  RECORD_MARKER_TIP_Y_RATIO,
+} from '@/shared/lib/getRecordMarkerAsset';
+import {
+  clampPointToBox,
+  countPointsOutsideViewport,
+  getMedianPoint,
+  KOREA_PAN_BOUNDS,
+  MAX_ZOOM_OUT_LEVEL,
+  type LatLngBox,
+} from '../lib/recordMapViewportLimits';
+import type { RecordMapBbox, RecordMapItem } from '../api/getRecordMapMarkers';
 import { useRecordMapMarkersQuery } from '../hooks/useRecordMapMarkersQuery';
-import type { RecordMapBbox } from '../api/getRecordMapMarkers';
+
+// 화면에 그릴 마커 크기(px). src/assets/color-markers/*.svg 원본(64x76)의 정확히 1/2이라
+// 비율이 어긋나지 않는다. 근거: Jira S15P11A705-307.
+const MARKER_WIDTH = RECORD_MARKER_ASSET_WIDTH / 2;
+const MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
+
+/**
+ * 카카오 기본 Marker(빨간 핀) 대신 CustomOverlay에 올릴 마커 엘리먼트를 만든다.
+ * 색은 getRecordMarkerAsset(collectionId 해시)이 고른 SVG asset으로 결정된다.
+ * JS로 SVG 마크업을 만들어 innerHTML로 넣지 않고 <img src>로 불러온다 — asset 20개가 모두 같은
+ * `<filter id="shadow">`를 쓰기 때문에, 인라인으로 심으면 문서 전체에서 id가 충돌해 마커 전부가
+ * 첫 번째 필터 하나를 공유한다. <img>는 각 SVG가 독립 문서로 렌더돼 그 문제가 없고, 그림자도
+ * asset 안에 이미 들어 있어 wrapper에 별도 drop-shadow를 걸 필요가 없다.
+ */
+function createRecordMarkerElement(assetUrl: string, title: string): HTMLImageElement {
+  const image = document.createElement('img');
+  image.src = assetUrl;
+  // 마커 자체는 장식이 아니라 클릭 대상이지만 이름은 title로 노출되므로 alt는 비워 중복을 피한다.
+  image.alt = '';
+  image.title = title;
+  image.width = MARKER_WIDTH;
+  image.height = MARKER_HEIGHT;
+  image.draggable = false;
+  image.style.display = 'block';
+  image.style.cursor = 'pointer';
+  // width/height 속성만으로는 부족하다. Tailwind preflight의 `img { max-width: 100%; height: auto }`가
+  // 살아 있는데, CustomOverlay가 content를 감싸는 래퍼 div는 폭이 0이라 max-width:100%가 0으로
+  // 계산돼 마커가 0x0으로 찌그러진다(실측: naturalWidth 64인데 렌더 폭 0). max-width를 풀고 크기를
+  // 인라인 스타일로 못박아야 그려진다. 이전 인라인 <svg> 방식엔 preflight의 이 규칙이 걸리지
+  // 않아서 드러나지 않던 차이다.
+  image.style.maxWidth = 'none';
+  image.style.width = `${MARKER_WIDTH}px`;
+  image.style.height = `${MARKER_HEIGHT}px`;
+  return image;
+}
 
 // 마커가 없을 때(최초 SDK 로드 등) 지도 기본 중심(서울시청). KakaoPlaceMap.tsx와 동일 기본값.
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
@@ -18,7 +72,91 @@ const FIT_BOUNDS_PADDING = 48;
 // "Place · 지도 · 검색"에 fitBounds 사용이 확정돼 있어 이 값과 무관하게 fitBounds가 우선 적용된다.
 const INITIAL_ZOOM_LEVEL = 6;
 
+/** 지도가 지금 보여주는 영역을 순수 함수들이 다룰 수 있는 형태로 꺼낸다. */
+function readViewport(map: KakaoMap): LatLngBox {
+  const view = map.getBounds();
+  const sw = view.getSouthWest();
+  const ne = view.getNorthEast();
+  return { swLat: sw.getLat(), swLng: sw.getLng(), neLat: ne.getLat(), neLng: ne.getLng() };
+}
+
+/**
+ * 지도 중심이 KOREA_PAN_BOUNDS를 벗어나 있으면 가장 가까운 경계 지점으로 되돌린다.
+ * 이미 범위 안이면 아무것도 하지 않는다(clampPointToBox가 null을 준다).
+ * animate가 true면 panTo로 부드럽게 되돌린다 — 사용자가 드래그로 끌고 나간 경우다. false면
+ * setCenter로 즉시 옮긴다 — 우리가 프로그램적으로 화면을 맞추는 중이라 애니메이션이 불필요하다.
+ */
+function clampMapCenterIntoKorea(kakao: KakaoNamespace, map: KakaoMap, animate: boolean): void {
+  const current = map.getCenter();
+  const clamped = clampPointToBox(
+    { lat: current.getLat(), lng: current.getLng() },
+    KOREA_PAN_BOUNDS,
+  );
+  if (!clamped) {
+    return;
+  }
+  const target = new kakao.maps.LatLng(clamped.lat, clamped.lng);
+  if (animate) {
+    map.panTo(target);
+  } else {
+    map.setCenter(target);
+  }
+}
+
+/**
+ * bounds에 맞춰 지도를 이동시키고, 그래도 화면 밖에 남은 Record 수를 돌려준다.
+ *
+ * 최대 축소 상한은 여기서 계산하지 않는다 — Map 생성 옵션 maxLevel로 SDK에 맡겼고, setBounds에도
+ * 그대로 적용된다(실측 확인). 대신 상한 때문에 담기지 못한 기록이 생기므로, 실제 뷰포트를 읽어
+ * 밖에 남은 개수를 세는 방식으로 바꿨다. 상한에 걸리지 않았다면 fitBounds가 전부 담았으므로 0이다.
+ *
+ * setBounds가 상한에 걸리면 중심이 유효 범위 밖(실측: 위도 140N)으로 튀기도 해서, 개수를 세기
+ * 전에 중심을 한반도 범위 안으로 되돌린다.
+ *
+ * recenterOnMedian은 그 다음 중심을 어디에 둘지만 정한다. true면 기록이 몰린 쪽(중앙값)으로
+ * 옮긴다 — fitBounds가 잡아준 중심은 기록이 하나도 없는 지역일 수 있어서다(getMedianPoint 주석).
+ * false면 그대로 둬 "전체를 최대한 담는" 화면이 된다 — 안내 배지의 "전체 보기"가 이 경로를 쓴다.
+ * 근거: Jira S15P11A705-307 후속 요구사항.
+ */
+function fitMapToRecords(
+  kakao: KakaoNamespace,
+  map: KakaoMap,
+  bounds: RecordMapBbox,
+  items: readonly RecordMapItem[],
+  recenterOnMedian: boolean,
+): number {
+  const sw = new kakao.maps.LatLng(bounds.swLat, bounds.swLng);
+  const ne = new kakao.maps.LatLng(bounds.neLat, bounds.neLng);
+  map.setBounds(
+    new kakao.maps.LatLngBounds(sw, ne),
+    FIT_BOUNDS_PADDING,
+    FIT_BOUNDS_PADDING,
+    FIT_BOUNDS_PADDING,
+    FIT_BOUNDS_PADDING,
+  );
+  clampMapCenterIntoKorea(kakao, map, false);
+
+  if (countPointsOutsideViewport(items, readViewport(map)) === 0) {
+    return 0;
+  }
+  if (recenterOnMedian) {
+    const center = getMedianPoint(items);
+    if (center) {
+      map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+    }
+  }
+  return countPointsOutsideViewport(items, readViewport(map));
+}
+
 type SdkStatus = 'loading' | 'ready' | 'error';
+
+// loadKakaoMaps()는 SDK를 1회만 로드하는 module-level 싱글턴이라, "SDK는 이미 로드돼 있는데
+// RecordMapView가 (StrictMode든 다른 원인이든) 다시 mount"되는 경우 sdkStatus를 'loading'부터 다시
+// 시작하면 이미 로드된 지도를 다시 그릴 필요가 없는데도 줌/내 주변 버튼이 잠깐 사라졌다 나타나는
+// 결과로 이어진다. 아래 useState 초기값에서 이 상태를 확인해 그 구간 자체를 없앤다.
+function isKakaoMapsSdkReady(): boolean {
+  return typeof window !== 'undefined' && !!window.kakao?.maps;
+}
 
 interface RecordMapViewProps {
   /**
@@ -33,30 +171,44 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
-  const markersRef = useRef<KakaoMarker[]>([]);
+  const markersRef = useRef<KakaoCustomOverlay[]>([]);
   const hasFitInitialBoundsRef = useRef(false);
 
-  const [sdkStatus, setSdkStatus] = useState<SdkStatus>('loading');
-  // 드래그/줌으로 지도 범위가 바뀌었는지만 상태로 들고, 버튼 노출 여부는 렌더 시점에 파생한다.
-  const [dragged, setDragged] = useState(false);
+  const [sdkStatus, setSdkStatus] = useState<SdkStatus>(() =>
+    isKakaoMapsSdkReady() ? 'ready' : 'loading',
+  );
+  // "내 주변" 클릭 → 응답 대기 중에만 true. 실패해도 별도 에러 상태 없이 조용히 false로 돌아간다.
+  const [locating, setLocating] = useState(false);
+  // 최대 축소 상한에 걸려 화면 밖으로 밀려난 Record 수. 0이면 안내 배지를 띄우지 않는다.
+  const [offscreenRecordCount, setOffscreenRecordCount] = useState(0);
 
-  const { data, isLoading, isFetching, isError, refetchWithBbox } = useRecordMapMarkersQuery();
+  const { data, isLoading, isFetching, isError } = useRecordMapMarkersQuery();
 
   useEffect(() => {
+    // React StrictMode(dev)는 mount 시 이 effect를 setup→cleanup→setup 순으로 두 번 호출한다.
+    // 아래 cancelled 플래그만으로는 "SDK가 이미 로드돼 있어 loadKakaoMaps()가 즉시 resolve되는" 경우를
+    // 못 막는다 — 두 번째 setup의 .then()도 cancelled=false로 정상 진입해, 가드가 없으면 같은
+    // containerRef에 kakao.maps.Map을 두 개 만들어 리스너가 겹치고 줌/내 주변 버튼이 잠깐 나타났다
+    // 사라지는 현상으로 이어졌다(마운트마다 다시 그려지는 지도와 새 Map 인스턴스가 서로 덮어씀).
+    // mapRef.current 존재 여부로 이미 생성된 Map을 재사용하도록 막는다. 근거: Jira S15P11A705-307.
+    if (mapRef.current) {
+      return;
+    }
     let cancelled = false;
     loadKakaoMaps()
       .then((kakao) => {
-        if (cancelled || !containerRef.current) {
+        if (cancelled || !containerRef.current || mapRef.current) {
           return;
         }
         const map = new kakao.maps.Map(containerRef.current, {
           center: new kakao.maps.LatLng(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng),
           level: INITIAL_ZOOM_LEVEL,
+          // 최대 축소 제한은 SDK에 맡긴다. 우리가 zoom_changed에서 되돌리던 방식은 우리 핸들러를
+          // 거치는 경로(줌 버튼)만 확실히 막았고 트랙패드 핀치줌은 그대로 빠져나갔다. maxLevel은
+          // 줌 버튼·휠·핀치·setLevel·setBounds 어느 경로든 SDK 안에서 강제된다(실측 확인).
+          maxLevel: MAX_ZOOM_OUT_LEVEL,
         });
         mapRef.current = map;
-        // 지도 이동/줌 변경은 즉시 재조회하지 않고 "이 지역에서 재검색" 버튼만 노출한다.
-        kakao.maps.event.addListener(map, 'dragend', () => setDragged(true));
-        kakao.maps.event.addListener(map, 'zoom_changed', () => setDragged(true));
         setSdkStatus('ready');
       })
       .catch(() => {
@@ -78,59 +230,116 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
 
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = data.items.map((item) => {
-      const marker = new kakao.maps.Marker({
-        map,
-        position: new kakao.maps.LatLng(item.lat, item.lng),
-        title: item.name,
-      });
-      kakao.maps.event.addListener(marker, 'click', () => {
+      const element = createRecordMarkerElement(
+        getRecordMarkerAsset(item.collectionId ?? null),
+        item.name,
+      );
+      element.addEventListener('click', () => {
         if (onMarkerClick) {
           onMarkerClick(item.recordId);
         } else {
           navigate({ to: '/records/$recordId', params: { recordId: item.recordId } });
         }
       });
-      return marker;
+      return new kakao.maps.CustomOverlay({
+        map,
+        position: new kakao.maps.LatLng(item.lat, item.lng),
+        content: element,
+        // yAnchor는 1(엘리먼트 맨 아래)이 아니다 — asset 아래쪽 여백은 내장 그림자 자리라
+        // 핀의 실제 뾰족한 끝 비율(RECORD_MARKER_TIP_Y_RATIO)에 맞춰야 좌표와 어긋나지 않는다.
+        xAnchor: 0.5,
+        yAnchor: RECORD_MARKER_TIP_Y_RATIO,
+      });
     });
 
     // 최초 응답에만 bounds로 fitBounds 적용. 이후 재검색 결과에는 사용자가 이미 맞춰둔 화면을 유지한다.
     if (!hasFitInitialBoundsRef.current) {
       if (data.bounds) {
-        const sw = new kakao.maps.LatLng(data.bounds.swLat, data.bounds.swLng);
-        const ne = new kakao.maps.LatLng(data.bounds.neLat, data.bounds.neLng);
-        map.setBounds(
-          new kakao.maps.LatLngBounds(sw, ne),
-          FIT_BOUNDS_PADDING,
-          FIT_BOUNDS_PADDING,
-          FIT_BOUNDS_PADDING,
-          FIT_BOUNDS_PADDING,
-        );
+        setOffscreenRecordCount(fitMapToRecords(kakao, map, data.bounds, data.items, true));
       }
       hasFitInitialBoundsRef.current = true;
     }
   }, [data, sdkStatus, navigate, onMarkerClick]);
 
-  function handleResearch() {
+  // 지도 이동 범위 제한. 카카오 SDK에는 이동 가능 영역을 막는 옵션이 없어(Map.prototype 조사:
+  // setMaxLevel/setMinLevel은 있지만 bounds 제한 API는 없다) 직접 되돌린다.
+  // dragend는 드래그(마우스·터치·트랙패드 두 손가락 스크롤)로 끌고 나간 경우를, zoom_changed는
+  // 포인터 위치를 기준으로 확대/축소하면서 중심이 밀려나는 경우를 각각 잡는다. 두 이벤트 모두
+  // 조작이 끝난 뒤에 불려서 진행 중인 제스처와 다투지 않는다. panTo가 만드는 이동은 되돌린
+  // 지점이 이미 범위 안이라 다시 걸리지 않는다.
+  useEffect(() => {
+    const map = mapRef.current;
+    const kakao = window.kakao;
+    if (sdkStatus !== 'ready' || !map || !kakao) {
+      return;
+    }
+    const clampCenter = () => clampMapCenterIntoKorea(kakao, map, true);
+    kakao.maps.event.addListener(map, 'dragend', clampCenter);
+    kakao.maps.event.addListener(map, 'zoom_changed', clampCenter);
+    return () => {
+      kakao.maps.event.removeListener(map, 'dragend', clampCenter);
+      kakao.maps.event.removeListener(map, 'zoom_changed', clampCenter);
+    };
+  }, [sdkStatus]);
+
+  // 카카오맵 레벨은 숫자가 작을수록 확대된 상태다. SDK 기본 ZoomControl 대신 브랜드 톤 커스텀
+  // 버튼 두 개로 map.setLevel()을 직접 호출한다(kakaoMaps.ts에 ZoomControl 타입 없음).
+  function handleZoomIn() {
     const map = mapRef.current;
     if (!map) {
       return;
     }
-    const bounds = map.getBounds();
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
-    const bbox: RecordMapBbox = {
-      swLat: sw.getLat(),
-      swLng: sw.getLng(),
-      neLat: ne.getLat(),
-      neLng: ne.getLng(),
-    };
-    setDragged(false);
-    void refetchWithBbox(bbox);
+    map.setLevel(map.getLevel() - 1);
   }
 
-  // 드래그/줌으로 범위가 바뀌었거나 직전 조회가 실패했으면 재검색 버튼을 보여준다.
-  // 실패 시에는 dragged를 false로 리셋하지 않으므로 isError만으로도 계속 노출된다.
-  const showResearchButton = dragged || isError;
+  function handleZoomOut() {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+    // 상한을 넘는 값을 넘겨도 SDK(maxLevel)가 알아서 막는다 — 여기서 따로 clamp하지 않는다.
+    map.setLevel(map.getLevel() + 1);
+  }
+
+  // 안내 배지 클릭 → "전체 보기". 상한(MAX_ZOOM_OUT_LEVEL)을 해제하는 것이 아니라, 상한 안에서
+  // 갈 수 있는 가장 축소된 화면으로 이동한다 — 중앙값 재중심 없이 전체 bounds 중심을 그대로 써서
+  // 최대한 많은 기록이 한 화면에 들어오게 한다. 저장되는 장소는 국내로 한정돼 있어(비즈니스 규칙)
+  // 전체 bounds 중심이 빈 지역이 될 일이 없고, 상한 레벨 13이 한반도 전체를 덮으므로 이 화면이
+  // 실질적인 "전체"다. 그래서 클릭 후에는 배지를 숨긴다.
+  function handleShowAllRecords() {
+    const map = mapRef.current;
+    const kakao = window.kakao;
+    if (!map || !kakao || !data?.bounds) {
+      return;
+    }
+    fitMapToRecords(kakao, map, data.bounds, data.items, false);
+    setOffscreenRecordCount(0);
+  }
+
+  // 권한 거부·조회 실패 시 에러를 던지지 않고 DEFAULT_CENTER 폴백을 유지한 채 조용히 무시한다.
+  // 별도 토스트/모달 없이 버튼 텍스트를 잠깐 바꾸는 정도로만 피드백한다.
+  function handleLocateMe() {
+    const map = mapRef.current;
+    if (!map || !navigator.geolocation) {
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocating(false);
+        const kakao = window.kakao;
+        if (!kakao || !mapRef.current) {
+          return;
+        }
+        mapRef.current.setCenter(
+          new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude),
+        );
+      },
+      () => {
+        setLocating(false);
+      },
+    );
+  }
 
   let apiStatusMessage: string | null = null;
   if (isLoading) {
@@ -144,7 +353,15 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
 
   return (
     <div className="relative h-full w-full">
-      <div ref={containerRef} className="h-full w-full" />
+      {/* isolate(= isolation: isolate)가 반드시 있어야 한다. 카카오 지도 SDK는 이 컨테이너 안에
+          position:absolute + z-index:1~2인 내부 레이어(타일·오버레이 등 실측 7개)를 직접 만든다.
+          컨테이너가 stacking context가 아니면 그 z-index들이 문서 최상위 stacking context로
+          그대로 새어 나가, z-index를 지정하지 않은(=auto) 형제 요소보다 위에 그려진다. 그 결과
+          ① 아래 줌·"내 주변" 버튼과 로딩/에러 오버레이가 지도 타일에 덮여 보이지 않고(지도가
+          그려지는 순간 사라지는 "깜빡임"으로 관측됐다), ② HomePage가 이 컴포넌트 위에 얹는
+          그라데이션+블러 오버레이도 지도에 덮여 전혀 나타나지 않았다. isolate로 SDK 내부
+          z-index를 이 컨테이너 안에 가둬 두 증상을 함께 없앤다. 근거: Jira S15P11A705-307. */}
+      <div ref={containerRef} className="isolate h-full w-full" />
 
       {sdkStatus === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center bg-paper-white/90 text-sm text-ink-gray">
@@ -158,24 +375,60 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
       )}
 
       {sdkStatus === 'ready' && apiStatusMessage && (
-        <div className="absolute left-4 top-4 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-ink-gray shadow">
+        <div className="absolute left-4 top-4 rounded-lg border border-line-card bg-snow-white px-4 py-2 text-xs font-semibold text-pin-navy shadow">
           {apiStatusMessage}
         </div>
       )}
       {sdkStatus === 'ready' && isFetching && !isLoading && (
-        <div className="absolute right-4 top-4 rounded-lg bg-white px-4 py-2 text-xs font-semibold text-ink-gray shadow">
+        <div className="absolute right-4 top-4 rounded-lg border border-line-card bg-snow-white px-4 py-2 text-xs font-semibold text-pin-navy shadow">
           다시 불러오는 중입니다…
         </div>
       )}
 
-      {sdkStatus === 'ready' && showResearchButton && (
+      {/* 최대 축소 캡 때문에 화면에 안 들어온 기록이 있을 때만 뜨는 안내 배지. "내 주변" 버튼
+          (bottom-10, 높이 44px)의 바로 위 bottom-24에 둬 서로 겹치지 않는다. 누르면 캡을 버리고
+          전체 fitBounds로 돌아가며, 그 시점부터 화면 밖 기록이 없으므로 배지 자체가 사라진다. */}
+      {sdkStatus === 'ready' && offscreenRecordCount > 0 && (
         <button
           type="button"
-          onClick={handleResearch}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-pin-navy px-5 py-2.5 text-sm font-bold text-white shadow-lg"
+          onClick={handleShowAllRecords}
+          className="absolute bottom-24 left-8 rounded-full border border-line-card bg-snow-white px-4 py-2 text-xs font-bold text-pin-navy shadow-lg transition-colors hover:border-log-mint hover:text-log-mint"
         >
-          이 지역에서 재검색
+          화면 밖 장소 {offscreenRecordCount}개
         </button>
+      )}
+
+      {sdkStatus === 'ready' && (
+        <button
+          type="button"
+          onClick={handleLocateMe}
+          disabled={locating}
+          className="absolute bottom-10 left-8 rounded-full border border-line-card bg-snow-white px-5 py-3 text-sm font-bold text-pin-navy shadow-lg transition-colors enabled:hover:border-log-mint enabled:hover:text-log-mint disabled:cursor-not-allowed"
+        >
+          {locating ? '위치 찾는 중…' : '내 주변'}
+        </button>
+      )}
+
+      {sdkStatus === 'ready' && (
+        <div className="absolute bottom-10 right-8 flex flex-col overflow-hidden rounded-2xl border border-line-card bg-snow-white shadow-lg">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            aria-label="지도 확대"
+            className="flex h-11 w-11 items-center justify-center text-xl font-bold text-pin-navy transition-colors hover:bg-log-mint/10 hover:text-log-mint"
+          >
+            +
+          </button>
+          <div className="h-px w-full bg-line-card" />
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            aria-label="지도 축소"
+            className="flex h-11 w-11 items-center justify-center text-xl font-bold text-pin-navy transition-colors hover:bg-log-mint/10 hover:text-log-mint"
+          >
+            −
+          </button>
+        </div>
       )}
     </div>
   );

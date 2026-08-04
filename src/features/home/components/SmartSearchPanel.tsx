@@ -61,14 +61,14 @@ export function SmartSearchPanel({ onSubmit, isPending }: SmartSearchPanelProps)
             onChange={(event) => setQuery(event.target.value)}
             placeholder="비 오는 날 혼자 책 읽기 좋은 카페 찾아줘"
             aria-label="저장한 장소 검색"
-            className="h-14 w-full rounded-full border border-pin-navy/15 bg-white pl-12 pr-16 text-sm text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20"
+            className="h-14 w-full rounded-full border border-pin-navy/15 bg-snow-white pl-12 pr-16 text-sm text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20"
           />
 
           <button
             type="submit"
             disabled={!query.trim() || isPending}
             aria-label={isPending ? '검색 중' : '검색'}
-            className="absolute right-1.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-pin-navy text-white transition-opacity disabled:opacity-40"
+            className="absolute right-1.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-pin-navy text-snow-white transition-colors enabled:hover:bg-log-mint disabled:cursor-not-allowed disabled:bg-pin-navy/90"
           >
             <svg
               aria-hidden="true"
@@ -89,7 +89,7 @@ export function SmartSearchPanel({ onSubmit, isPending }: SmartSearchPanelProps)
         <button
           type="button"
           onClick={sheet.open}
-          className="flex h-14 flex-none items-center gap-2 rounded-2xl border border-pin-navy/15 bg-white px-5 text-sm font-bold text-pin-navy transition-colors hover:bg-pin-navy/[0.04]"
+          className="flex h-14 flex-none items-center gap-2 rounded-2xl border border-pin-navy/15 bg-snow-white px-5 text-sm font-bold text-pin-navy transition-colors hover:border-log-mint hover:text-log-mint"
         >
           <svg
             aria-hidden="true"
