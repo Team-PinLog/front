@@ -14,8 +14,10 @@ interface NavItem {
 }
 
 // 책장 메뉴는 /library로 연결한다(144 완료 — 내 책장 + 팔로우 책장 통합 조회).
-// /shelf(141, 내 책장 단독 조회)는 남겨두되 상단 네비 진입점으로는 쓰지 않는다.
+// /shelf(141, 내 책장 단독 조회)는 남겨두되 진입점으로는 쓰지 않는다.
 // 169(설정/프로필)에서 진입점 구성이 바뀌면 이 매핑을 조정한다.
+// 304: 이 배열과 아이콘은 sm·mdlg의 상단 가로 nav, xl의 좌측 세로 사이드바 nav가 그대로 함께
+// 쓴다 — 새 SVG를 만들지 않고 배치(가로→세로)만 다른 컨테이너에서 바꾼다.
 const NAV_ITEMS: NavItem[] = [
   {
     to: '/',
@@ -40,9 +42,12 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * 로그인 후 화면 공통 셸. 상단 고정 네비게이션 + 우측 설정 패널 트리거를 제공한다.
- * 목업 app-topnav(PinLog.responsive.dc.html) 구조를 참고하되 색상은 tailwind.config.js
- * 브랜드 토큰을 쓴다. 설정 패널 내용(계정 정보·로그아웃·탈퇴)은 162에서 채웠다.
+ * 로그인 후 화면 공통 셸. 우측 설정 패널 트리거를 제공한다.
+ * sm·mdlg(<1280)는 상단 고정 가로 네비게이션(목업 app-topnav 구조, 162에서 확정)을 그대로 쓰고,
+ * xl(≥1280)은 304(공통 AppShell 좌측 사이드바 재구성) 확정 목업 기준으로 좌측 고정 세로
+ * 사이드바로 전환한다 — 같은 NAV_ITEMS·설정 트리거 로직을 두 레이아웃이 함께 쓰고, Tailwind
+ * hidden/xl:flex·xl:hidden으로 보이는 쪽만 CSS로 전환한다(마운트/언마운트 분기 아님). 색상은
+ * tailwind.config.js 브랜드 토큰을 쓴다. 설정 패널 내용(계정 정보·로그아웃·탈퇴)은 162에서 채웠다.
  */
 export function AppLayout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -73,9 +78,13 @@ export function AppLayout() {
   return (
     <WithdrawConfirmProvider>
       <div className="min-h-screen bg-paper-white">
+        {/* 304: xl(≥1280)에서는 좌측 사이드바(아래 <aside>)로 대체되므로 이 상단 헤더는 숨긴다.
+            display:none이 되면 ResizeObserver가 보고하는 navHeightPx도 자연히 0이 되는데, xl에서는
+            FeedList.tsx가 이 값을 애초에 쓰지 않아(고정 SHELF_SCROLL_MAX_H_PX만 사용) 별도 처리가
+            필요 없다. */}
         <header
           ref={headerRef}
-          className="fixed inset-x-0 top-0 z-40 border-b border-line-card bg-paper-white/95 backdrop-blur"
+          className="fixed inset-x-0 top-0 z-40 border-b border-line-card bg-paper-white/95 backdrop-blur xl:hidden"
         >
           {/* 287-8: 좌우 padding/max-width(PAGE_CONTAINER_CLASS)를 FeedPage/LibraryPage의 페이지
               컨텐츠 컨테이너와 그대로 공유한다 — 로고~설정 아이콘의 좌우 끝이 그 아래 페이지 컨텐츠
@@ -158,12 +167,85 @@ export function AppLayout() {
           </div>
         </header>
 
-        {/* 295 추가 수정(요구사항 2.2): xl은 기존 pt-20(80px)을 유지하고, sm·mdlg는 pt-14(56px)로
-            줄인다 — 위 header py 축소로 실제 헤더 높이가 짧아진 만큼(약 52px, 4px 여유) 맞춘
-            값이다. FeedPage/LibraryPage의 min-h-[calc(100dvh-...)]도 이 값과 반드시 같이 맞춘다.
-            (이슈 1.1: 이 pt 값 자체는 여전히 레이아웃 시프트 방지용 Tailwind 리터럴이고, 실제 예산
-            계산은 아래 Context로 흘려보내는 navHeightPx 실측값을 쓴다 — 둘은 별개다.) */}
-        <main className="pt-14 xl:pt-20">
+        {/* 304: xl(≥1280) 전용 좌측 고정 사이드바 — sm·mdlg에서는 hidden으로 완전히 숨긴다(마운트는
+            유지, CSS로만 전환). 폭은 shelfCabinetLayout.ts의 SIDEBAR_WIDTH_PX(240px = w-60)와 반드시
+            같은 값을 유지한다 — Feed 캐비닛 가로 예산 계산이 그 상수를 그대로 읽는다. */}
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line-card bg-paper-white xl:flex">
+          <div className="flex flex-col gap-8 p-6">
+            <Link to="/" title="홈으로 이동" className="block h-7 w-[95px] overflow-hidden">
+              <span
+                aria-label="핀로그"
+                role="img"
+                className="block h-full w-full bg-no-repeat"
+                style={{
+                  backgroundImage: `url(${logoFull})`,
+                  backgroundSize: '124px 93px',
+                  backgroundPosition: '-15px -31px',
+                }}
+              />
+            </Link>
+
+            <nav className="flex flex-col gap-1">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  activeOptions={{ exact: true }}
+                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-ink-gray-light transition-colors hover:text-log-mint"
+                  activeProps={{ className: 'bg-pin-navy/[0.06] text-pin-navy font-bold' }}
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    width="20"
+                    height="20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.9}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    {item.icon}
+                  </svg>
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            title="설정"
+            aria-label="설정 패널 열기"
+            className="mt-auto flex items-center gap-3 px-10 py-6 text-sm font-medium text-ink-gray-light transition-colors hover:text-pin-navy"
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            <span>설정</span>
+          </button>
+        </aside>
+
+        {/* 295 추가 수정(요구사항 2.2): sm·mdlg는 pt-14(56px)로 상단 헤더 높이만큼 밀어낸다(위 header
+            py 축소로 실제 헤더 높이가 짧아진 만큼(약 52px, 4px 여유) 맞춘 값). FeedPage/LibraryPage의
+            min-h-[calc(100dvh-...)]도 이 값과 반드시 같이 맞춘다.
+            304: xl은 상단 헤더가 없어져 pt가 필요 없다(pt-0) — 대신 좌측 사이드바 폭만큼
+            pl-60(SIDEBAR_WIDTH_PX와 동일 값)으로 민다. FeedPage/LibraryPage의 xl:min-h-[100dvh]도
+            이 변경과 짝을 맞춘다.
+            (이슈 1.1: pt/pl 값 자체는 여전히 레이아웃 시프트 방지용 Tailwind 리터럴이고, sm·mdlg의
+            실제 예산 계산은 아래 Context로 흘려보내는 navHeightPx 실측값을 쓴다 — 둘은 별개다.) */}
+        <main className="pt-14 xl:pl-60 xl:pt-0">
           <LayoutMetricsContext.Provider
             value={{ navHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
           >

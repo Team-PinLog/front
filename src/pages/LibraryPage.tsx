@@ -185,11 +185,14 @@ export function LibraryPage() {
     // 287-9: 제목도 PageTitle(shared/ui/PageTitle.tsx)로 FeedPage와 같은 고정 height를 공유한다 —
     // 이 페이지 폰트 스타일(text-[27px] font-bold tracking-tight)은 그대로 유지하되, 바깥 박스
     // 높이만 고정해 Feed의 h1(text-2xl)과 자연 높이가 달라도 캐비닛 크기가 어긋나지 않게 한다.
-    // 295 추가 수정(요구사항 2.2): xl은 기존 5rem(80px)을 유지하고, sm·mdlg는 3.5rem(56px)을 뺀다 —
-    // AppLayout의 헤더 padding 축소(FeedPage.tsx와 동일 근거)와 반드시 함께 맞춘다. 페이지 상하
-    // padding도 PAGE_VERTICAL_PADDING_CLASS로 바뀌었다.
+    // 295 추가 수정(요구사항 2.2): sm·mdlg는 3.5rem(56px)을 뺀다 — AppLayout의 헤더 padding
+    // 축소(FeedPage.tsx와 동일 근거)와 반드시 함께 맞춘다. 페이지 상하 padding도
+    // PAGE_VERTICAL_PADDING_CLASS로 바뀌었다.
+    // 304: xl은 상단 헤더가 좌측 사이드바로 바뀌어 세로로 뺄 헤더 높이가 없다 — AppLayout main이
+    // xl:pl-60(가로 오프셋)만 쓰므로 xl:min-h-[100dvh]로 뷰포트 높이 전체를 그대로 쓴다
+    // (FeedPage.tsx와 동일 근거).
     <main
-      className={`${PAGE_CONTAINER_CLASS} flex min-h-[calc(100dvh-3.5rem)] flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS} xl:min-h-[calc(100dvh-5rem)]`}
+      className={`${PAGE_CONTAINER_CLASS} flex min-h-[calc(100dvh-3.5rem)] flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS} xl:min-h-[100dvh]`}
     >
       <PageTitle className="text-[27px] font-bold tracking-tight text-pin-navy">
         나의 책장
