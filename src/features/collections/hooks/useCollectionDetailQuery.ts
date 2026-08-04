@@ -14,9 +14,14 @@ export function collectionDetailQueryKey(collectionId: number) {
   return [...collectionDetailQueryKeyPrefix(), collectionId] as const;
 }
 
-// PC 웹 펼침 UX: recordSize 기본값(1)은 모바일 책 넘김 기준이라, 웹은 2를 명시해서 요청한다
-// (docs/api-contract.md Collection: "모바일 = 1, 웹 펼침 = 2로 명시해서 요청한다").
-const RECORD_PAGE_SIZE = 2;
+// 요청 크기는 화면 펼침 단위(웹 2개)와 별개다(docs/api-contract.md Collection).
+// CollectionDetailView가 진입 시 hasNextPage가 끝날 때까지 fetchNextPage를 반복하므로 — 왼쪽 지도가
+// 전체 Record의 핀을 한 번에 보여줘야 해서 의도된 동작이다 — 요청 크기를 펼침 단위에 맞추면 그 수만큼
+// 요청이 직렬로 쌓인다. Record 27개 Collection이 요청 14번, 배포 환경에서 약 4초였다(front#92).
+// 펼침은 받아둔 Record 안에서 로컬 인덱스로 2개씩 넘기고, 요청만 크게 한다.
+// 서버는 이 값을 그대로 존중하고 상한 100(CursorPage.MAX_SIZE)으로만 자른다. 미전송 시 1이 되므로
+// 명시 전송은 유지한다.
+const RECORD_PAGE_SIZE = 30;
 
 // ⭐ 표준 패턴: 컴포넌트는 이 Hook만 호출한다. API 함수·httpClient를 직접 부르지 않는다.
 // TError를 ApiError로 명시한다 — httpClient가 던지는 에러는 Error 인스턴스가 아니라 ApiError 객체다.

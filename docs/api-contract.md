@@ -161,7 +161,10 @@ type PlaceSummary = {
 
 - **Collection 상세는 단일 DTO**(`GET /collections/{collectionId}`, Feed·Library·직접 진입 공통).
 - **`ownedByMe` 플래그로 소유자/타인을 구분**하고, **타인 조회 시 각 Record의 `contexts`는 `null`**이다.
-- **`recordSize` 기본값 1은 의도된 값**(책 넘김 UX). **모바일 = 1, 웹 펼침 = 2**로 명시해서 요청한다. 미전송 시 서버가 1을 주고, 다음 페이지는 `records.nextCursor`로 이어받는다.
+- **`recordSize` 기본값 1은 의도된 값**(책 넘김 UX)이며, 미전송 시 서버가 1을 준다. 다음 페이지는 `records.nextCursor`로 이어받는다.
+- **⚠️ `recordSize`(요청 크기)와 화면 펼침 단위는 별개다.** 펼침 단위를 그대로 요청 크기로 쓰지 않는다 — 요청은 크게 보내고 받아둔 Record 안에서 로컬 인덱스로 넘긴다. <!-- 근거: front#92 -->
+  - Collection 상세는 지도가 전체 Record의 핀을 한 번에 보여줘야 해서 진입 시 `hasNext`가 끝날 때까지 전부 받는다. 요청 크기가 작으면 그만큼 요청이 **직렬로** 쌓인다(Record 27개 → 14회, 배포 환경 약 4초).
+  - 서버는 값을 그대로 존중하고 **상한 100**으로만 자른다. 현재 프론트는 **30**을 보낸다(`useCollectionDetailQuery`).
 - **`recordIds` 배열 상한은 100개**다(`POST /collections`, `POST /collections/{collectionId}/records`). 초과 시 `400 INVALID_INPUT`. Record 추가는 멱등(이미 담긴 Record는 건너뜀)이므로 100개를 넘으면 나눠 호출해도 중복 문제가 없다. <!-- 근거: 05-1_파트간_요구사항.md §1.5 -->
 - **Collection 내부 Record 정렬 기본값은 담은 순 오름차순(오래된 것부터)**이다 — `collection_records.created_at ASC`, 동률이면 `id ASC`. `recordSort=ADDED_AT_DESC`로 최신순을 요청할 수 있다(`08_API_명세` 7.3). 과거 "정책(오름차순) vs 구현(`created_at DESC`) 충돌"은 오름차순 기본으로 해소됐다. <!-- 근거: 08_API_명세.md §7.3·§14-8, 06_데이터모델_및_무결성.md §2.7, 10_MVP_기능범위.md -->
   - Collection 목록(`7.2`·`9.3`)과 공개 책장(`8.1`)도 같은 규칙이다 — 기본 ASC, `sort`로 최신순.
