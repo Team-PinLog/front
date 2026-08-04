@@ -11,6 +11,7 @@ import {
   getFeedDynamicBudgetPx,
   getFeedGridAreaWidthPx,
   SHELF_SCROLL_MAX_H_PX,
+  SIDEBAR_WIDTH_PX,
   solveFeedScale,
 } from '@/shared/lib/shelfCabinetLayout';
 import {
@@ -130,7 +131,12 @@ export function FeedList() {
   const pageSize = columns * rows;
   const gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
 
-  const availableGridWidthPx = getFeedGridAreaWidthPx(viewportWidth);
+  // 304: xl에서는 좌측 사이드바(SIDEBAR_WIDTH_PX)가 실제 가용 폭을 그만큼 줄인다 — sm·mdlg는
+  // 사이드바가 없어 기존과 동일하게 0을 넘긴다.
+  const availableGridWidthPx = getFeedGridAreaWidthPx(
+    viewportWidth,
+    tier === 'xl' ? SIDEBAR_WIDTH_PX : 0,
+  );
   const scale = solveFeedScale({
     columns,
     rows,

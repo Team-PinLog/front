@@ -11,10 +11,21 @@ import type { ShelfWidthTier } from './useShelfBreakpoint';
 // (LIBRARY_COLUMNS_BY_TIER)뿐이고, 책장 한 칸 내부의 책 크기 스케일 방식은 그대로다.
 
 // --- 페이지 레벨 공통 컨테이너 -------------------------------------------------------------
-// AppLayout 상단 네비게이션 바 컨테이너(로고~설정 아이콘, 좌우 끝 정렬 지점)가 쓰는 max-width·좌우
-// padding과 정확히 같은 값이다 — 페이지 컨텐츠(캐비닛 포함)의 좌우 끝을 네비게이션 바와 같은 x좌표에
-// 맞추기 위해 AppLayout과 FeedPage/LibraryPage가 이 클래스를 그대로 공유한다.
+// sm·mdlg(<1280): AppLayout 상단 네비게이션 바 컨테이너(로고~설정 아이콘, 좌우 끝 정렬 지점)가 쓰는
+// max-width·좌우 padding과 정확히 같은 값이다 — 페이지 컨텐츠(캐비닛 포함)의 좌우 끝을 네비게이션
+// 바와 같은 x좌표에 맞추기 위해 AppLayout과 FeedPage/LibraryPage가 이 클래스를 그대로 공유한다.
+// xl(≥1280, 304 좌측 사이드바 재구성): 상단 네비게이션 바 자체가 없어지고, 이 컨테이너는
+// AppLayout의 <main xl:pl-60>(사이드바 폭만큼 밀린 컨텐츠 영역) 안에서 mx-auto로 중앙 정렬된다 —
+// "네비게이션 바와 정렬"이 아니라 "사이드바를 제외한 나머지 폭 안에서 중앙 정렬"로 정렬 기준이
+// 바뀌었다. 클래스 리터럴 자체(px-4/sm:px-6/lg:px-8, max-w-6xl)는 그대로지만, 실제로 계산되는 폭이
+// 사이드바 폭(SIDEBAR_WIDTH_PX)만큼 좁아진다 — getFeedGridAreaWidthPx가 이를 반영한다.
 export const PAGE_CONTAINER_CLASS = 'mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8';
+
+// 304(공통 AppShell 좌측 사이드바 재구성): xl에서만 존재하는 좌측 고정 사이드바의 폭.
+// AppLayout.tsx의 <aside className="... xl:w-60 ...">와 반드시 같은 값을 유지한다(w-60 = 15rem =
+// 240px, Tailwind 리터럴이라 JS가 직접 읽을 수 없음). sm·mdlg는 사이드바가 없으므로(기존 상단
+// 헤더 유지) 이 값을 쓰지 않는다.
+export const SIDEBAR_WIDTH_PX = 240;
 
 // Feed("새로운 장소를 발견해 보세요" 제목 아래 gap-4=16px)를 기준값으로 삼는다 — Library가 이 값에
 // 맞춘다(이전엔 Library가 gap-6=24px로 Feed와 8px 어긋나 있었다).
@@ -251,9 +262,18 @@ function getPageHorizontalPaddingPx(viewportWidthPx: number): number {
   return 16; // px-4
 }
 
-export function getFeedGridAreaWidthPx(viewportWidthPx: number): number {
+// reservedLeftPx: 304(사이드바) 도입 이후 xl에서만 넘기는 SIDEBAR_WIDTH_PX. sm·mdlg 호출부는 인자를
+// 생략해 기존 동작(0)을 그대로 유지한다. padding 구간 판단(getPageHorizontalPaddingPx)은 반드시
+// 원본 viewportWidthPx로 해야 한다 — px-4/sm:px-6/lg:px-8는 실제 브라우저 viewport 폭 media query에
+// 반응하는 것이지, 사이드바를 뺀 "가용 폭"에 반응하는 게 아니기 때문이다(sm:640px/lg:1024px 같은
+// CSS breakpoint는 사이드바 유무와 무관하게 항상 실제 window 폭 기준이다). 반면 max-w-6xl(1152) 캡은
+// AppLayout의 <main xl:pl-60> 안에서 "사이드바를 뺀 나머지 폭"을 기준으로 걸리므로, reservedLeftPx는
+// Math.min보다 먼저 viewportWidthPx에서 빼야 한다 — min() 이후에 빼면(예: 1300px 창에서 1152로 이미
+// 캡된 뒤 240을 빼면 848) 실제 CSS가 만드는 값(240을 먼저 뺀 1060을 1152와 비교 → 1060)과 달라진다.
+export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx = 0): number {
+  const effectiveWidthPx = viewportWidthPx - reservedLeftPx;
   const containerWidth =
-    Math.min(viewportWidthPx, 1152) - 2 * getPageHorizontalPaddingPx(viewportWidthPx);
+    Math.min(effectiveWidthPx, 1152) - 2 * getPageHorizontalPaddingPx(viewportWidthPx);
   return containerWidth - 16 /* 캐비닛 border-[8px]×2 */ - 40; /* 캐비닛 body px-5×2 */
 }
 
