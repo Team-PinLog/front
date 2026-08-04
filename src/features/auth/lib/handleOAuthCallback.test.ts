@@ -118,4 +118,55 @@ describe('handleOAuthCallback', () => {
       expect(getPreLoginPath()).toBe('/collections/42');
     });
   });
+
+  // 탈퇴 왕복의 실패는 로그인 실패와 성격이 다르다 — 회원이 그대로 살아 있다.
+  // 서버가 연결 해제에 성공한 경우에만 삭제하고, 실패하면 인증 쿠키도 지우지 않는다(08 §3.6.2).
+  describe('탈퇴 왕복 실패(error=WITHDRAWAL_*)', () => {
+    let alertSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+      vi.mocked(logoutRequest).mockReset();
+    });
+
+    afterEach(() => {
+      alertSpy.mockRestore();
+    });
+
+    it.each([
+      ['WITHDRAWAL_CANCELLED', '탈퇴를 취소했습니다.'],
+      ['WITHDRAWAL_FAILED', '탈퇴에 실패했습니다. 잠시 후 다시 시도해 주세요.'],
+      ['WITHDRAWAL_UNLINK_FAILED', '탈퇴에 실패했습니다. 잠시 후 다시 시도해 주세요.'],
+      ['WITHDRAWAL_ACCOUNT_MISMATCH', '가입에 사용한 계정으로 인증해야 탈퇴할 수 있습니다.'],
+    ])('%s 이면 그 문구를 보여주고 홈으로 되돌린다', async (error, message) => {
+      expect.assertions(3);
+      try {
+        await handleOAuthCallback({ search: { error } });
+      } catch (thrown) {
+        expect(isRedirect(thrown)).toBe(true);
+        expect(getRedirectTarget(thrown)).toBe('/');
+      }
+      expect(alertSpy).toHaveBeenCalledWith(message);
+    });
+
+    it('로그아웃 API를 호출하지 않는다 — 세션이 살아 있어야 다시 시도할 수 있다', async () => {
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: { error: 'WITHDRAWAL_CANCELLED' } });
+      } catch {
+        // 리다이렉트만 확인하면 되므로 무시한다.
+      }
+      expect(logoutRequest).not.toHaveBeenCalled();
+    });
+
+    it('로그인 실패 문구를 쓰지 않는다', async () => {
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: { error: 'WITHDRAWAL_CANCELLED' } });
+      } catch {
+        // 리다이렉트만 확인하면 되므로 무시한다.
+      }
+      expect(alertSpy).not.toHaveBeenCalledWith('로그인에 실패했습니다. 다시 시도해 주세요.');
+    });
+  });
 });
