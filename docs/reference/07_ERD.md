@@ -74,6 +74,7 @@ erDiagram
         boolean is_published
         timestamptz published_at "발행 시 필수 (CHECK)"
         int record_count "활성 연결 수 비정규화"
+        varchar cover_image_url "표지 이미지 URL, NULL 허용"
         timestamptz created_at
         timestamptz updated_at
         timestamptz deleted_at
