@@ -1,3 +1,8 @@
+import {
+  SHELF_SCROLL_BOTTOM_PADDING_PX,
+  SHELF_SCROLL_TOP_PADDING_PX,
+  SPINE_MAX_HEIGHT,
+} from './shelfSpine';
 import type { ShelfWidthTier } from './useShelfBreakpoint';
 
 // 287-8(→295 반응형 재설계에서 Feed 부분 대체): Feed·Library 캐비닛의 반응형 규칙(좌우 컨테이너,
@@ -33,11 +38,15 @@ export const SIDEBAR_WIDTH_PX = 240;
 
 // Feed("새로운 장소를 발견해 보세요" 제목 아래 gap-4=16px)를 기준값으로 삼는다 — Library가 이 값에
 // 맞춘다(이전엔 Library가 gap-6=24px로 Feed와 8px 어긋나 있었다).
-// 295 추가 수정(요구사항 2.2): xl(≥1280, PC)은 기존 16px을 유지하고, sm·mdlg(<1280, 모바일/태블릿)는
-// 8px로 줄인다 — 고정 UI(제목-캐비닛 gap)가 차지하는 비중을 줄여 캐비닛에 더 많은 세로 공간을
-// 내준다. 이 값은 아래 TITLE_GAP_PX_BY_TIER와 반드시 일치해야 한다(동적 예산 계산식이 이 리터럴을
-// 그대로 상수로 들고 있다 — Tailwind 클래스 문자열엔 JS 상수를 주입할 수 없다).
-export const PAGE_TITLE_GAP_CLASS = 'gap-2 xl:gap-4';
+// 295 추가 수정(요구사항 2.2): xl은 16px, sm·mdlg는 8px로 줄였다 — 고정 UI가 차지하는 비중을 줄여
+// 캐비닛에 세로 공간을 더 내주려는 의도였다.
+// 319 디자인 피드백: 그 축소가 과했다. 8px은 서브카피("저장한 장소를 책처럼…")와 책장이 거의 붙어
+// 보이는 값이라 두 페이지 모두에서 답답하다는 피드백이 나왔다(Feed·Library 동일). 20/32px로 올린다
+// — 여기서 내준 세로는 아래 동적 예산(getPageContentBudgetPx)이 그대로 차감하므로, 책장이 화면
+// 아래로 넘치지 않고 행 수·책 크기 계산에 정확히 반영된다.
+// 이 값은 아래 TITLE_GAP_PX_BY_TIER와 반드시 일치해야 한다(동적 예산 계산식이 이 리터럴을 그대로
+// 상수로 들고 있다 — Tailwind 클래스 문자열엔 JS 상수를 주입할 수 없다).
+export const PAGE_TITLE_GAP_CLASS = 'gap-5 xl:gap-8';
 
 // 295 추가 수정(요구사항 2.2): 페이지(main) 자체의 상하 padding. xl은 기존 py-6(24px)을 유지하고,
 // sm·mdlg는 py-3(12px)로 줄인다. 이전엔 `py-4 md:py-6`(768px 경계)이라 mdlg(768~1279)가 오히려
@@ -69,16 +78,77 @@ export function scalePx(px: number): string {
   return `calc(var(--shelf-scale) * ${px}px)`;
 }
 
+// 319: SHELF_SCALE_CSS의 JS 쌍둥이. 같은 clamp를 JS에서도 계산해야 하는 이유는 아래
+// getLibraryVisibleRowCount가 "한 행이 실제로 몇 px인지"를 알아야 하는데, 그 높이가
+// --shelf-scale에 비례하기 때문이다. CSS 변수는 JS가 레이아웃 전에 읽을 수 없으므로 같은 식을
+// 여기서 다시 편다 — 위 상수 4개를 공유하므로 값이 어긋날 여지는 없다(식만 두 번 쓴다).
+export function getShelfScale(viewportWidthPx: number): number {
+  const ratio =
+    (viewportWidthPx - SHELF_SCALE_MIN_VW_PX) / (SHELF_SCALE_MAX_VW_PX - SHELF_SCALE_MIN_VW_PX);
+  const raw = SHELF_SCALE_MIN + ratio * (SHELF_SCALE_MAX - SHELF_SCALE_MIN);
+  return Math.min(SHELF_SCALE_MAX, Math.max(SHELF_SCALE_MIN, raw));
+}
+
 // --- 세로 스크롤 영역(뷰포트 높이 기준) ---------------------------------------------------------
-// Library(MyShelfList/FollowedShelfCard)의 책 스크롤 박스가 쓰는 flex-1 높이 제약. 부모가 flex
-// flex-col + min-h(뷰포트 높이 기준)로 잡혀 있을 때, 이 영역이 flex-1로 남는 세로 공간을 채우되
-// 아래 min/max를 벗어나지 않는다(정확한 산출값이 아니라, 스케일 1 기준 자연 컨텐츠 높이에 맞춘
-// 여유 있는 상/하한이다 — 짧은 뷰포트에서도 최소 2행 이상은 보이고, 큰 뷰포트에서도 캐비닛 안쪽에
-// 불필요한 빈 공간이 과하게 생기지 않는 선).
-// Feed(FeedList.tsx)는 이제 행 수·카드 치수가 breakpoint별 고정값(FEED_GRID_BY_KEY)이라 이 중
-// MAX_H_PX만 "혹시 계산이 어긋나는 극단적 경우"에 대비한 안전판(maxHeight)으로만 재사용한다.
+// Library의 책 스크롤 박스가 쓰던 flex-1 높이 제약(min 360 / max 590)이었다.
+// 319 디자인 피드백("하단 여백이 너무 많다 / 책장이 화면을 거의 채우도록"): MAX_H_PX를 없앴다.
+// 이 상한이 정확히 그 증상의 원인이었다 — 뷰포트가 아무리 높아도 책 영역이 590px에서 멈춰,
+// 캐비닛 아래로 남는 공간이 전부 빈 여백이 됐다(게다가 좌우 페이지 버튼은 캐비닛이 아니라 그
+// "남는 공간까지 포함한" 래퍼의 세로 중앙에 놓여 캐비닛 중앙보다 아래로 내려가 있었다 —
+// 피드백의 "버튼 위치가 별로다"가 같은 원인이다). 이제 Library도 Feed(314)와 같은 동적 예산
+// (getPageContentBudgetPx)을 쓰고, 그 예산에서 행 수를 역산한다(getLibraryVisibleRowCount).
+// MIN_H_PX는 동적 예산의 하한(극단적으로 낮은 뷰포트에서 0이나 음수가 나오지 않게)으로 남는다.
 export const SHELF_SCROLL_MIN_H_PX = 360;
-export const SHELF_SCROLL_MAX_H_PX = 590;
+
+// --- Library: 캐비닛 세로 예산 → 행 수 역산 --------------------------------------------------------
+// ⚠️ 아래 세 상수는 Tailwind 클래스 리터럴을 JS로 옮겨 적은 값이다(파일 상단 공통 주석과 같은 이유).
+// 짝이 되는 클래스가 바뀌면 여기도 함께 바꿔야 한다.
+//   CABINET: shared/ui/Shelf.tsx ShelfCabinet — border-[10px]×2(20) + 본문 p-2.5×2(20)
+//   COLUMN:  shared/ui/Shelf.tsx ShelfColumn — p-2.5×2(20) + ShelfLabel h-7(28) + 세로 gap-3(12)
+//   TIER_GAP: MyShelfList/FollowedShelfCard 스크롤 박스의 gap-1.5(6)
+// 스크롤 박스의 위/아래 여백(SHELF_SCROLL_TOP/BOTTOM_PADDING_PX)은 shelfSpine.ts가 단일 소스라
+// 리터럴이 아니라 그 상수를 그대로 읽어 뺀다.
+const LIBRARY_CABINET_CHROME_PX = 40;
+const LIBRARY_COLUMN_CHROME_PX = 60;
+export const SHELF_TIER_GAP_PX = 6;
+
+// Shelf.tsx ShelfBoard의 두께. 행 높이 계산에 들어가는 값이라 여기를 단일 소스로 둔다.
+export const SHELF_BOARD_HEIGHT_PX = 10;
+
+// 행 하나(책 + 그 아래 선반 판)의 실제 높이. 책 높이는 --shelf-scale에 비례하고(ShelfRow가
+// SPINE_MAX_HEIGHT를 고정 height로 준다) 선반 판은 스케일 대상이 아니다.
+export function getLibraryTierHeightPx(shelfScale: number): number {
+  return Math.round(SPINE_MAX_HEIGHT * shelfScale) + SHELF_BOARD_HEIGHT_PX;
+}
+
+// 319: 하한 2행 — 한 행짜리 책장은 "책장"으로 보이지 않는다. 상한 4행 — 그 이상은 아주 높은
+// 뷰포트에서 책이 잘게 깔려 시안의 "큼직한 책" 인상과 어긋난다(Feed의 FEED_MAX_ROWS_BY_KEY와 같은
+// 성격의 임의 상한이다).
+export const LIBRARY_MIN_ROW_COUNT = 2;
+export const LIBRARY_MAX_ROW_COUNT = 4;
+
+/**
+ * 319: 캐비닛에 주어진 세로(getPageContentBudgetPx) 안에 몇 행이 들어가는지 역산한다.
+ *
+ * 이전에는 행 수가 고정 3이고 스크롤 박스에 min/max-h가 걸려 있어서, 화면이 높으면 캐비닛 아래가
+ * 남고 낮으면 마지막 행이 잘렸다. 책 높이를 키우면서(SPINE_MAX_HEIGHT 168→190) 그 고정값을 유지할
+ * 수 없게 된 것이 직접적인 계기지만, 사용자가 "화면 비율에 따라 행 수가 달라져도 된다"고 확인해 준
+ * 것이 근거다.
+ *
+ * n행이 차지하는 높이는 n*tier + (n-1)*gap이므로, 여유 h에 들어가는 최대 n은
+ * floor((h + gap) / (tier + gap))이다.
+ */
+export function getLibraryVisibleRowCount(cabinetHeightPx: number, shelfScale: number): number {
+  const rowsAreaPx =
+    cabinetHeightPx -
+    LIBRARY_CABINET_CHROME_PX -
+    LIBRARY_COLUMN_CHROME_PX -
+    SHELF_SCROLL_TOP_PADDING_PX -
+    SHELF_SCROLL_BOTTOM_PADDING_PX;
+  const tierPx = getLibraryTierHeightPx(shelfScale);
+  const fitted = Math.floor((rowsAreaPx + SHELF_TIER_GAP_PX) / (tierPx + SHELF_TIER_GAP_PX));
+  return Math.min(LIBRARY_MAX_ROW_COUNT, Math.max(LIBRARY_MIN_ROW_COUNT, fitted));
+}
 
 // --- Library: breakpoint별 동시 노출 책장 수 -----------------------------------------------------
 // 295 반응형 재설계 요구사항 B. LibraryPage가 "내 책장 + 팔로우한 책장"을 합친 가상 시퀀스를 이
@@ -96,7 +166,7 @@ export const LIBRARY_COLUMNS_BY_TIER: Record<ShelfWidthTier, number> = {
 // 그대로 유지한다.
 // 295 추가 수정(요구사항 1/2): 다만 "카드 치수"는 더 이상 구간별 고정 표가 아니다 — 카드 가로:세로
 // 비율(FEED_CARD_RATIO≈3:4)을 최우선 제약으로 두고, 그 비율을 지키면서 (a) 그리드 가로폭이 넘치지
-// 않고 (b) 세로 예산(동적, getFeedDynamicBudgetPx)을 넘지 않는 한도 안에서 화면을 최대한 채우도록
+// 않고 (b) 세로 예산(동적, getPageContentBudgetPx)을 넘지 않는 한도 안에서 화면을 최대한 채우도록
 // scale을 실시간으로 역산한다(solveFeedScale).
 // 314: xl 예외(고정 표 scale=1)와 "구간별 고정 행 수"가 모두 사라졌다 — 전 구간이 같은 규칙을 쓴다.
 // 행 수는 decideFeedRows가 세로·가로를 둘 다 반영해 화면을 가장 많이 덮는 배치로 고르고, scale은
@@ -373,17 +443,18 @@ export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx =
 // 아래 MOBILE_NAV_HEIGHT_PX_FALLBACK/MOBILE_TITLE_HEIGHT_PX_FALLBACK(기존에 쓰던 추정치)로
 // 폴백한다 — 페이지 padding(py-3)·타이틀-캐비닛 gap(gap-2)·캐비닛 자체 chrome은 전부 우리가 직접
 // 소유한 Tailwind 리터럴이라 드리프트 위험이 없어 그대로 상수로 둔다.
-// 314: 이제 xl도 이 동적 예산을 쓴다(아래 getFeedDynamicBudgetPx 주석) — 페이지 padding·타이틀 gap이
+// 314: 이제 xl도 이 동적 예산을 쓴다(아래 getPageContentBudgetPx 주석) — 페이지 padding·타이틀 gap이
 // 구간마다 다르므로(PAGE_VERTICAL_PADDING_CLASS 'py-3 xl:py-6', PAGE_TITLE_GAP_CLASS 'gap-2 xl:gap-4')
 // 단일 상수 대신 구간별 표로 바꾼다. 두 표는 그 Tailwind 리터럴과 반드시 함께 움직여야 한다.
 const PAGE_PADDING_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 12, mdlg: 12, xl: 24 };
-const TITLE_GAP_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 8, mdlg: 8, xl: 16 };
+const TITLE_GAP_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 20, mdlg: 20, xl: 32 };
 
 const MOBILE_NAV_HEIGHT_PX_FALLBACK = 56; // AppLayout <main> pt-14 근사치 — 실측 전에만 쓴다
 // 313: PageTitle이 제목 아래 서브카피까지 포함하는 블록이 되면서 이 폴백도 블록 전체 높이가 됐다 —
 // h1(h-8, 32) + gap-1(4) + 서브카피 1줄(text-sm, 20). 32로 두면 실측이 들어오기 전 첫 프레임에만
 // 예산이 24px 과대 계상돼 마지막 행이 잠깐 넘쳤다가 제자리를 찾는다. FeedPage는 항상 서브카피를
-// 넘기므로(이 상수는 getFeedDynamicBudgetPx 전용 = Feed 전용) 서브카피 있는 쪽에 맞춘다.
+// 넘기므로 서브카피 있는 쪽에 맞춘다. 319: Library도 같은 예산 함수를 쓰게 되면서 이 폴백을
+// 공유한다 — 두 페이지의 PageTitle 구조가 같아(h1 + 서브카피 한 줄) 같은 근사치가 그대로 맞는다.
 const MOBILE_TITLE_HEIGHT_PX_FALLBACK = 56; // PageTitle 블록(제목+서브카피) 근사치 — 실측 전에만 쓴다
 // 314: 페이지 padding·타이틀 gap은 위 PAGE_PADDING_PX_BY_TIER/TITLE_GAP_PX_BY_TIER 구간별 표로 옮겼다
 // (xl이 동적 예산에 합류하면서 sm·mdlg 값만으로는 부족해졌다).
@@ -396,7 +467,11 @@ export interface FeedDynamicBudgetMeasured {
   titleHeightPx: number | null;
 }
 
-export function getFeedDynamicBudgetPx(
+// 319: getPageContentBudgetPx에서 이름을 바꿨다. 계산식은 그대로지만("뷰포트 높이에서 nav·페이지
+// padding·타이틀 블록·타이틀 gap·안전 여백을 뺀 나머지") 이제 Feed 전용이 아니다 — Library 캐비닛도
+// 같은 예산을 쓴다(getLibraryVisibleRowCount의 입력). 두 페이지의 <main> 구조와 PageTitle이 애초에
+// 동일하므로 식을 나눠 가질 이유가 없고, 오히려 한쪽만 고쳐 어긋나는 쪽이 위험하다.
+export function getPageContentBudgetPx(
   viewportHeightPx: number,
   measured: FeedDynamicBudgetMeasured,
   tier: ShelfWidthTier,
@@ -433,9 +508,9 @@ export const FEED_ROWS_PADDING_BOTTOM_PX = 24; // 맨 아래 선반 판 그림�
 const FEED_ROWS_PADDING_PX = FEED_ROWS_PADDING_TOP_PX + FEED_ROWS_PADDING_BOTTOM_PX;
 
 /**
- * 315: 세로 예산(getFeedDynamicBudgetPx) 중 카드·선반이 실제로 쓸 수 있는 몫.
+ * 315: 세로 예산(getPageContentBudgetPx) 중 카드·선반이 실제로 쓸 수 있는 몫.
  *
- * getFeedDynamicBudgetPx가 주는 값은 "스크롤 박스 바깥 치수"(= maxHeight로 그대로 쓰는 값)이고,
+ * getPageContentBudgetPx가 주는 값은 "스크롤 박스 바깥 치수"(= maxHeight로 그대로 쓰는 값)이고,
  * solveFeedScale/decideFeedRows가 필요로 하는 값은 "그 안쪽 컨텐츠 높이"다. 둘을 구분하지 않으면
  * 위아래 여백만큼 매번 예산이 초과된다.
  */

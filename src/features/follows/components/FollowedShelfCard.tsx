@@ -6,6 +6,7 @@ import {
   chunkIntoShelfRows,
   getEmptyTierPadding,
   SHELF_SCROLL_SIDE_PADDING_PX,
+  SHELF_SCROLL_BOTTOM_PADDING_PX,
   SHELF_SCROLL_TOP_PADDING_PX,
 } from '@/shared/lib/shelfSpine';
 import { ShelfBookSpine, ShelfIconButton, ShelfTier } from '@/shared/ui/Shelf';
@@ -26,6 +27,7 @@ interface FollowedShelfCardProps {
   followId: number;
   alias: string | null;
   columnSlot: number;
+  visibleRowCount: number;
 }
 
 /**
@@ -40,7 +42,12 @@ interface FollowedShelfCardProps {
  * 헤더 연필 아이콘은 목업의 shelf-edit-button/shelf-column-menu를 옮긴 것으로, 기존 별칭 수정·언팔로우
  * 로직을 여는 진입점 역할만 한다 — 두 mutation 자체는 그대로다.
  */
-export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelfCardProps) {
+export function FollowedShelfCard({
+  followId,
+  alias,
+  columnSlot,
+  visibleRowCount,
+}: FollowedShelfCardProps) {
   const navigate = useNavigate();
   const collectionsQuery = useFollowShelfCollectionsQuery(followId);
   const updateAliasMutation = useUpdateFollowAliasMutation();
@@ -90,7 +97,10 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
             onChange={(event) => setAliasInput(event.target.value)}
             disabled={updateAliasMutation.isPending}
             placeholder="별칭을 입력해 주세요"
-            className="h-8 min-w-0 flex-1 rounded-lg border border-log-mint bg-white/10 px-2 text-xs text-white outline-none placeholder:text-white/40 disabled:opacity-40"
+            // 319: 이전엔 bg-white/10 + text-white + placeholder:text-white/40이라, 밝은 칸 배경에서
+            // 입력 텍스트도 placeholder도 배경에 묻혀 사실상 보이지 않았다(편집 모드로 들어가야
+            // 나타나는 UI라 화면 훑기로는 놓치기 쉬운 자리다). 흰 면 + 네이비 글자로 뒤집는다.
+            className="h-8 min-w-0 flex-1 rounded-lg border border-line-card bg-snow-white px-2 text-xs text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint disabled:opacity-40"
           />
           <button
             type="button"
@@ -104,7 +114,7 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
             type="button"
             onClick={handleCancelEdit}
             disabled={updateAliasMutation.isPending}
-            className="h-8 flex-none rounded-lg border border-white/20 px-2 text-xs font-bold text-white disabled:opacity-40"
+            className="h-8 flex-none rounded-lg border border-line-card px-2 text-xs font-bold text-pin-navy disabled:opacity-40"
           >
             취소
           </button>
@@ -126,7 +136,7 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
         // (28px, ShelfIconButton과 정확히 같은 높이이자 ShelfLabel도 이번에 h-7로 맞췄다)로 바꿔
         // 두 열의 헤더 높이를 픽셀 단위로 동일하게 만든다.
         <div className="flex h-7 items-center gap-2">
-          {alias && <h3 className="truncate text-sm font-bold text-white">{alias}</h3>}
+          {alias && <h3 className="truncate text-sm font-bold text-pin-navy">{alias}</h3>}
           <div className="relative ml-auto flex-none">
             <ShelfIconButton label="책장 관리" onClick={() => setIsMenuOpen((open) => !open)}>
               <svg
@@ -145,7 +155,7 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
             </ShelfIconButton>
 
             {isMenuOpen && (
-              <div className="absolute right-0 top-9 z-10 w-36 rounded-lg border border-line-card bg-white p-1.5 shadow-[0_14px_30px_rgba(0,0,0,.28)]">
+              <div className="absolute right-0 top-9 z-10 w-36 rounded-lg border border-line-card bg-snow-white p-1.5 shadow-[0_12px_28px_rgba(4,33,66,.18)] ring-1 ring-pin-navy/5">
                 <button
                   type="button"
                   onClick={handleStartEdit}
@@ -168,20 +178,21 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
       )}
 
       {updateAliasMutation.isError && (
-        <p className="text-xs text-red-400">{updateAliasMutation.error.message}</p>
+        <p className="text-xs text-red-600">{updateAliasMutation.error.message}</p>
       )}
       {unfollowMutation.isError && (
-        <p className="text-xs text-red-400">{unfollowMutation.error.message}</p>
+        <p className="text-xs text-red-600">{unfollowMutation.error.message}</p>
       )}
 
       {collectionsQuery.isPending ? (
-        <p className="text-sm text-white/50">불러오는 중…</p>
+        <p className="text-sm text-ink-gray">불러오는 중…</p>
       ) : collectionsQuery.isError ? (
-        <p className="text-sm text-red-400">책장을 불러오지 못했어요.</p>
+        <p className="text-sm text-red-600">책장을 불러오지 못했어요.</p>
       ) : (
         <FollowedShelfCollections
           followId={followId}
           columnSlot={columnSlot}
+          visibleRowCount={visibleRowCount}
           collectionsQuery={collectionsQuery}
           onSelectCollection={(collectionId) => {
             markCollectionOverlayIntent();
@@ -200,6 +211,7 @@ export function FollowedShelfCard({ followId, alias, columnSlot }: FollowedShelf
 interface FollowedShelfCollectionsProps {
   followId: number;
   columnSlot: number;
+  visibleRowCount: number;
   collectionsQuery: ReturnType<typeof useFollowShelfCollectionsQuery>;
   onSelectCollection: (collectionId: number) => void;
 }
@@ -207,6 +219,7 @@ interface FollowedShelfCollectionsProps {
 function FollowedShelfCollections({
   followId,
   columnSlot,
+  visibleRowCount,
   collectionsQuery,
   onSelectCollection,
 }: FollowedShelfCollectionsProps) {
@@ -229,17 +242,17 @@ function FollowedShelfCollections({
   // 선반을 그린다)과 똑같이, collections가 비어 있어도 rows=[]로 아래 스크롤 박스·ShelfTier 렌더링을
   // 그대로 통과시킨다 — getEmptyTierPadding(0)=3이라 빈 선반 3개가 그려진다. 안내 문구는 스크롤 박스
   // "위"의 별도 텍스트로만 남긴다(MyShelfColumn의 "아직 만든 컬렉션이 없어요."와 동일한 패턴).
-  const emptyTierCount = getEmptyTierPadding(rows.length);
+  const emptyTierCount = getEmptyTierPadding(rows.length, visibleRowCount);
 
   return (
     <>
       {collections.length === 0 && (
-        <p className="text-xs text-white/50">공개된 컬렉션이 없습니다</p>
+        <p className="text-xs text-ink-gray">공개된 컬렉션이 없습니다</p>
       )}
 
-      {/* 287-8: MyShelfColumn과 동일하게 flex-1 min-h-0 + min-h-[360px]/max-h-[590px]로 바꿨다 —
-          팔로우한 책장의 책 수와 무관하게, 부모(ShelfColumn)가 내어주는 세로 공간을 그대로 채운다
-          (shelfCabinetLayout.ts SHELF_SCROLL_MIN_H_PX/MAX_H_PX와 반드시 일치해야 한다). paddingTop/
+      {/* 287-8/319: MyShelfColumn과 동일하게 flex-1 min-h-0이다 — 팔로우한 책장의 책 수와
+          무관하게, 부모(ShelfColumn)가 내어주는 세로 공간을 그대로 채운다(319에서 min-h-[360px]/
+          max-h-[590px] 고정 캡을 없앤 이유는 MyShelfList.tsx 상단 주석 참고). paddingTop/
           paddingLeft/paddingRight는 MyShelfColumn과 동일 이유(호버 리프트·기울기 clip 방지)로 맞춘다 —
           자세한 근거는 shelfSpine.ts의 SHELF_SCROLL_TOP_PADDING_PX·SHELF_SCROLL_SIDE_PADDING_PX 주석
           참고. 타이어 사이 gap도 MyShelfColumn과 동일하게 gap-1.5로 맞춘다.
@@ -248,6 +261,7 @@ function FollowedShelfCollections({
       <div
         style={{
           paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
+          paddingBottom: SHELF_SCROLL_BOTTOM_PADDING_PX,
           paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,
           paddingRight: SHELF_SCROLL_SIDE_PADDING_PX,
         }}
@@ -258,7 +272,7 @@ function FollowedShelfCollections({
             fetchNextPage: () => void collectionsQuery.fetchNextPage(),
           })
         }
-        className="flex min-h-[360px] max-h-[590px] flex-1 flex-col gap-1.5 overflow-y-auto"
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto"
       >
         {rows.map((row, rowIndex) => (
           <ShelfTier key={rowIndex}>
@@ -280,7 +294,7 @@ function FollowedShelfCollections({
         ))}
 
         {collectionsQuery.isFetchingNextPage && (
-          <p className="flex-none py-1 text-center text-xs text-white/50">불러오는 중…</p>
+          <p className="flex-none py-1 text-center text-xs text-ink-gray">불러오는 중…</p>
         )}
       </div>
     </>

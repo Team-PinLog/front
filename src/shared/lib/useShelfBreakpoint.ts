@@ -93,7 +93,7 @@ function getViewportSize(): ViewportSize {
 // 295 추가 수정(요구사항 1/2): sm·mdlg 구간 Feed 카드는 더 이상 breakpoint별 고정 표(스케일=1)가
 // 아니라, 실제 뷰포트 폭·높이에 맞춰 연속적으로 커지거나 작아진다(3:4 비율은 항상 고정, 크기만
 // 가변) — 폭은 그리드가 가로로 넘치지 않는 상한을, 높이는 캐비닛 세로 예산(동적)을 넘지 않는 상한을
-// 정하는 데 쓴다(shelfCabinetLayout.ts의 solveFeedScale/getFeedDynamicBudgetPx). 두 값을 한 번의
+// 정하는 데 쓴다(shelfCabinetLayout.ts의 solveFeedScale/getPageContentBudgetPx). 두 값을 한 번의
 // resize 리스너로 함께 관찰해 불필요한 훅 중복을 없앤다.
 export function useViewportSize(): ViewportSize {
   const [size, setSize] = useState<ViewportSize>(getViewportSize);
