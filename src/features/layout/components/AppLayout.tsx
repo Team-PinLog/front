@@ -80,7 +80,7 @@ export function AppLayout() {
       <div className="min-h-screen bg-paper-white">
         {/* 304: xl(≥1280)에서는 좌측 사이드바(아래 <aside>)로 대체되므로 이 상단 헤더는 숨긴다.
             display:none이 되면 ResizeObserver가 보고하는 navHeightPx도 자연히 0이 되는데, xl에서는
-            FeedList.tsx가 이 값을 애초에 쓰지 않아(고정 SHELF_SCROLL_MAX_H_PX만 사용) 별도 처리가
+            FeedList.tsx가 이 값을 애초에 쓰지 않아(고정 SHELF_SCROLL_MAX_H_PX — 319에서 삭제 — 만 사용) 별도 처리가
             필요 없다. */}
         <header
           ref={headerRef}

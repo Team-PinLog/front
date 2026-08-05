@@ -1,6 +1,8 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
+// 319: 선반 판은 Library 캐비닛(ShelfBoard)과 완전히 같은 판이라 shared/ui/Shelf.tsx로 옮겨 공유한다.
+import { ShelfPlank } from '@/shared/ui/Shelf';
 import {
   decideFeedRows,
   FEED_COLUMNS_BY_KEY,
@@ -9,7 +11,7 @@ import {
   FEED_ROWS_PADDING_TOP_PX,
   getFeedColumnsKey,
   getFeedCardDimensions,
-  getFeedDynamicBudgetPx,
+  getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
@@ -37,8 +39,8 @@ import type { FeedCollectionItem } from '../api/getFeedCollections';
 // 만든다.
 // 315: 그 역산이 이제 정확히 맞아떨어진다 — 카드 높이에서 고정항(정보 패널 + 테두리 2px)이 전부
 // 빠져 scale의 순수 1차식이 됐다(FEED_CARD_REF_HEIGHT).
-// 295 추가 수정(이슈 2: 동적 세로 예산): xl은 기존 고정 SHELF_SCROLL_MAX_H_PX(590)를 그대로 쓰고,
-// sm·mdlg는 실제 뷰포트 높이 기반 동적 예산(getFeedDynamicBudgetPx)을 쓴다. 카드 크기(scale)는 이
+// 295 추가 수정(이슈 2: 동적 세로 예산): xl은 기존 고정 SHELF_SCROLL_MAX_H_PX(590, 319에서 삭제)를 쓰고,
+// sm·mdlg는 실제 뷰포트 높이 기반 동적 예산(getPageContentBudgetPx)을 쓴다. 카드 크기(scale)는 이
 // 예산과 그리드 가로 폭(getFeedGridAreaWidthPx, 실제 뷰포트 폭 기반) 중 더 빡빡한 쪽에 맞춰 실시간
 // 역산한다(solveFeedScale) — "화면을 거의 가득 채우도록" 조정하되 카드/gap/선반 판이 서로 다른
 // 비율로 찌그러지지 않도록 전부 같은 scale 하나로 묶는다.
@@ -116,7 +118,7 @@ export function FeedList() {
   // 실측해 보고한 값이다(AppLayout.tsx/PageTitle.tsx 참고).
   // 315: budgetPx는 스크롤 박스 바깥 치수(maxHeight)이고, 카드·선반이 실제로 쓸 수 있는 몫은 위아래
   // 여백을 뺀 contentBudgetPx다 — 이 구분을 빼먹으면 여백만큼 매번 예산이 넘쳐 스크롤바가 뜬다.
-  const budgetPx = getFeedDynamicBudgetPx(viewportHeight, { navHeightPx, titleHeightPx }, tier);
+  const budgetPx = getPageContentBudgetPx(viewportHeight, { navHeightPx, titleHeightPx }, tier);
   const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
 
   // 304: xl에서는 좌측 사이드바(SIDEBAR_WIDTH_PX)가 실제 가용 폭을 그만큼 줄인다 — sm·mdlg는
@@ -434,53 +436,6 @@ function FeedArrowButton({
     >
       <ChevronIcon direction={direction} />
     </button>
-  );
-}
-
-// 279 추가 수정: 선반 보드를 Library(shared/ui/Shelf.tsx ShelfBoard)와 동일한 나무색 그라디언트로
-// 맞췄다.
-// 314: 시안의 선반은 "탄색 얇은 줄"이 아니라 흰 크림빛의 두꺼운 나무 판이다. 세 가지를 바꿨다.
-//  (1) 두께 — FEED_SCALE_REF.boardHeight 8 → 22
-//  (2) 색 — 밝은 크림 토큰 3단(shelf-wood-light 윗면 → shelf-wood 몸통 → shelf-wood-dark 앞 모서리).
-//      단순 2단이면 여전히 평평해 보여서, 윗면 하이라이트를 25%까지 넓게 잡아 판의 윗면이 빛을 받는
-//      것처럼 만든다.
-//  (3) 입체감 — 모서리를 굴리고(rounded-[4px]), 안쪽 상단에 흰 하이라이트 선을 넣고, 판 아래로
-//      떨어지는 그림자를 밝은 배경용 알파로 둔다(다크 배경 전제의 rgba(0,0,0,.3)에서 완화).
-//  (4) 나뭇결 — 레퍼런스(밝은 원목 텍스처)의 결은 직선이 아니라 물결치듯 흐르고, 굵기도 제각각이다.
-//      repeating-linear-gradient는 아무리 각도를 비틀어도 결국 평행 직선이라 이 느낌이 안 나온다
-//      (실제로 넣어보니 나뭇결이 아니라 빗살무늬로 보였다). 그래서 SVG feTurbulence로 노이즈를
-//      만들어 쓴다 — baseFrequency의 x를 아주 낮게(0.006), y를 높게(0.13) 주면 노이즈가 가로로 길게
-//      늘어나 나뭇결 방향(판의 길이 방향)과 같아지고, numOctaves 4가 굵은 결·잔결을 함께 만든다.
-//      feColorMatrix의 알파 행(1 0 0 0 -0.42)은 "빨강 채널 - 0.42"를 알파로 쓴다는 뜻이라, 노이즈
-//      값이 낮은 부분은 완전히 투명해지고 높은 부분만 결로 남는다(반투명 안개가 아니라 선명한 결).
-//      색은 판 위에 얹는 웜 브라운(0.55/0.45/0.32) 하나뿐이라 시안의 크림 톤은 그대로 유지된다.
-//      판 색(토큰 그라디언트)은 className으로 두고 결만 별도 자식으로 분리했다 — 둘 다
-//      background-image라 한 요소에 합치면 Tailwind 그라디언트가 덮여버린다.
-const PLANK_GRAIN_SVG = [
-  '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="60">',
-  '<filter id="g" x="0" y="0" width="100%" height="100%">',
-  '<feTurbulence type="fractalNoise" baseFrequency="0.006 0.13" numOctaves="4" seed="17"/>',
-  '<feColorMatrix type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.32 1 0 0 0 -0.42"/>',
-  '</filter>',
-  '<rect width="800" height="60" filter="url(#g)"/>',
-  '</svg>',
-].join('');
-
-// 800px 주기로 가로 반복한다 — 선반이 그보다 짧으면 반복 자체가 화면에 드러나지 않는다.
-const PLANK_GRAIN_IMAGE = `url("data:image/svg+xml,${encodeURIComponent(PLANK_GRAIN_SVG)}")`;
-
-function ShelfPlank({ heightPx }: { heightPx: number }) {
-  return (
-    <div
-      aria-hidden="true"
-      style={{ height: heightPx }}
-      className="relative overflow-hidden rounded-[4px] bg-gradient-to-b from-shelf-wood-light from-25% via-shelf-wood via-70% to-shelf-wood-dark shadow-[inset_0_1px_0_rgba(255,255,255,.9),0_10px_16px_rgba(4,33,66,.13)]"
-    >
-      <div
-        className="absolute inset-0 opacity-60"
-        style={{ backgroundImage: PLANK_GRAIN_IMAGE, backgroundSize: '800px 100%' }}
-      />
-    </div>
   );
 }
 

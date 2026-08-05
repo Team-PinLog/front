@@ -9,17 +9,27 @@ import {
   FEED_SIDE_GUTTER_PX,
   getFeedCardDimensions,
   getFeedColumnsKey,
-  getFeedDynamicBudgetPx,
+  getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
+  getLibraryTierHeightPx,
+  getLibraryVisibleRowCount,
+  getShelfScale,
+  LIBRARY_MAX_ROW_COUNT,
+  LIBRARY_MIN_ROW_COUNT,
+  SHELF_SCALE_MAX,
+  SHELF_SCALE_MAX_VW_PX,
+  SHELF_SCALE_MIN,
+  SHELF_SCALE_MIN_VW_PX,
+  SHELF_TIER_GAP_PX,
   SIDEBAR_WIDTH_PX,
   solveFeedScale,
   type FeedColumnsKey,
 } from './shelfCabinetLayout';
 import type { ShelfWidthTier } from './useShelfBreakpoint';
 
-// 315: Feed 책장 배치 계산은 순수 함수 네 개(getFeedDynamicBudgetPx → getFeedRowsContentBudgetPx →
+// 315: Feed 책장 배치 계산은 순수 함수 네 개(getPageContentBudgetPx → getFeedRowsContentBudgetPx →
 // decideFeedRows → solveFeedScale → getFeedCardDimensions)의 합성이고, 그 결과가 화면에 맞는지는
 // 지금까지 브라우저에서 눈으로만 확인해왔다. 이 티켓이 예산 계산의 축 자체를 바꾸므로(정보 패널
 // 고정항 제거 + 스크롤 박스 여백 차감), "어떤 뷰포트에서도 세로 예산·가로 가용폭을 넘지 않는다"를
@@ -61,7 +71,7 @@ const VIEWPORTS: Viewport[] = [
 function layoutFor(viewport: Viewport, measured = { navHeightPx: 0, titleHeightPx: 56 }) {
   const columnsKey: FeedColumnsKey = getFeedColumnsKey(viewport.tier, viewport.isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
-  const budgetPx = getFeedDynamicBudgetPx(
+  const budgetPx = getPageContentBudgetPx(
     viewport.height,
     {
       navHeightPx: viewport.tier === 'xl' ? 0 : measured.navHeightPx,
@@ -131,7 +141,7 @@ describe('Feed 책장 배치', () => {
   // 과대 계상되면 마지막 행이 잠깐 넘쳤다가 제자리를 찾는 깜빡임이 생긴다.
   it('nav·타이틀 높이 실측 전(폴백) 프레임에서도 예산을 넘지 않는다', () => {
     for (const viewport of VIEWPORTS) {
-      const budgetPx = getFeedDynamicBudgetPx(
+      const budgetPx = getPageContentBudgetPx(
         viewport.height,
         { navHeightPx: null, titleHeightPx: null },
         viewport.tier,
@@ -201,5 +211,64 @@ describe('solveFeedScale / getFeedCardDimensions', () => {
     });
     expect(scale).toBe(1);
     expect(getFeedCardDimensions(scale).cardHeight).toBe(FEED_CARD_REF_HEIGHT);
+  });
+});
+
+// 319 디자인 피드백("하단에는 여백이 너무 많아 … 책장이 화면을 거의 채우도록"). Library의 세로
+// 배치가 고정 상수(행 3개 + max-h-[590px])에서 뷰포트 기반 역산으로 바뀌었으므로, Feed와 같은
+// 수준으로 "어떤 뷰포트에서도 예산을 넘지 않는다"를 고정한다.
+describe('Library 세로 배치', () => {
+  const LIBRARY_VIEWPORTS: { name: string; w: number; h: number; tier: ShelfWidthTier }[] = [
+    { name: 'sm 375x667', w: 375, h: 667, tier: 'sm' },
+    { name: 'sm 375x812', w: 375, h: 812, tier: 'sm' },
+    { name: 'mdlg 768x1024', w: 768, h: 1024, tier: 'mdlg' },
+    { name: 'mdlg 1024x768', w: 1024, h: 768, tier: 'mdlg' },
+    { name: 'xl 1280x800', w: 1280, h: 800, tier: 'xl' },
+    { name: 'xl 1440x900', w: 1440, h: 900, tier: 'xl' },
+    { name: 'xl 1920x1080', w: 1920, h: 1080, tier: 'xl' },
+  ];
+
+  // getLibraryVisibleRowCount가 내부에서 빼는 값과 같다
+  // (캐비닛 40 + 칸 60 + 스크롤 박스 위 여백 12 + 아래 여백 20).
+  const LIBRARY_CHROME_PX = 132;
+
+  it.each(LIBRARY_VIEWPORTS)('$name — 고른 행 수가 캐비닛 예산 안에 들어간다', ({ w, h, tier }) => {
+    const budgetPx = getPageContentBudgetPx(
+      h,
+      { navHeightPx: tier === 'xl' ? 0 : 56, titleHeightPx: 56 },
+      tier,
+    );
+    const scale = getShelfScale(w);
+    const rows = getLibraryVisibleRowCount(budgetPx, scale);
+    const usedPx = rows * getLibraryTierHeightPx(scale) + (rows - 1) * SHELF_TIER_GAP_PX;
+
+    expect(rows).toBeGreaterThanOrEqual(LIBRARY_MIN_ROW_COUNT);
+    expect(rows).toBeLessThanOrEqual(LIBRARY_MAX_ROW_COUNT);
+    // 하한(2행)에 걸린 아주 낮은 뷰포트가 아니라면, 고른 행은 반드시 실제로 들어가야 한다 —
+    // 넘치면 마지막 선반이 잘린다.
+    if (rows > LIBRARY_MIN_ROW_COUNT) {
+      expect(usedPx).toBeLessThanOrEqual(budgetPx - LIBRARY_CHROME_PX);
+    }
+  });
+
+  it('한 행 더 놓을 여유가 있으면 실제로 한 행 더 놓는다', () => {
+    // "빈 공간을 남기지 않는다"의 반대 방향 검증 — floor가 한 행을 놓치면 그만큼 캐비닛이 빈다.
+    const scale = 1;
+    const tierPx = getLibraryTierHeightPx(scale);
+    // 정확히 3행이 딱 들어가는 예산을 만든다.
+    const budgetPx = LIBRARY_CHROME_PX + 3 * tierPx + 2 * SHELF_TIER_GAP_PX;
+    expect(getLibraryVisibleRowCount(budgetPx, scale)).toBe(3);
+    // 1px 모자라면 2행으로 떨어진다(넘치는 것보다 낫다).
+    expect(getLibraryVisibleRowCount(budgetPx - 1, scale)).toBe(2);
+  });
+
+  it('getShelfScale은 SHELF_SCALE_CSS와 같은 구간에서 같은 값을 낸다', () => {
+    expect(getShelfScale(320)).toBe(SHELF_SCALE_MIN);
+    expect(getShelfScale(SHELF_SCALE_MIN_VW_PX)).toBe(SHELF_SCALE_MIN);
+    expect(getShelfScale(SHELF_SCALE_MAX_VW_PX)).toBe(SHELF_SCALE_MAX);
+    expect(getShelfScale(2560)).toBe(SHELF_SCALE_MAX);
+    // 중간 지점은 선형 보간이다.
+    const mid = (SHELF_SCALE_MIN_VW_PX + SHELF_SCALE_MAX_VW_PX) / 2;
+    expect(getShelfScale(mid)).toBeCloseTo((SHELF_SCALE_MIN + SHELF_SCALE_MAX) / 2, 10);
   });
 });

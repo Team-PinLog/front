@@ -4,12 +4,16 @@ import { FollowedShelfCard } from '@/features/follows/components/FollowedShelfCa
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
 import type { FollowListItem } from '@/features/follows/api/getFollows';
 import {
+  getLibraryVisibleRowCount,
+  getPageContentBudgetPx,
+  getShelfScale,
   LIBRARY_COLUMNS_BY_TIER,
   PAGE_CONTAINER_CLASS,
   PAGE_TITLE_GAP_CLASS,
   PAGE_VERTICAL_PADDING_CLASS,
 } from '@/shared/lib/shelfCabinetLayout';
-import { useShelfWidthTier } from '@/shared/lib/useShelfBreakpoint';
+import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
+import { useShelfWidthTier, useViewportSize } from '@/shared/lib/useShelfBreakpoint';
 import { PageTitle } from '@/shared/ui/PageTitle';
 import { ShelfCabinet, ShelfColumn, ShelfColumnGrid } from '@/shared/ui/Shelf';
 
@@ -68,11 +72,14 @@ function getLibraryPageSlots(
  * 항상 직전 페이지의 nextCursor로만 이어받는다. 페이지네이션 상태를 이 페이지 레벨에 두는 이유는 열
  * 그리드 안의 칸과 캐비닛 바깥의 이전/다음 버튼이 같은 상태를 공유해야 해서다.
  * 이전/다음 버튼은 캐비닛 안쪽 텍스트 블록이 아니라 원형 아이콘 버튼이다. 실제 콘텐츠 그리드
- * (ShelfColumnGrid/ShelfColumn)는 건드리지 않고, 같은 gap-x-5/여백(28px = 캐비닛 border-[8px] + body
- * px-5, 둘 다 --shelf-scale 스케일 대상이 아닌 고정값이라 오버레이도 고정값으로 맞춘다)을 쓰는 투명
- * 오버레이를 ShelfCabinet의 형제로 하나 더 둬서 경계 위치만 그대로 재사용한다 — ShelfCabinet엔
- * overflow-hidden이 걸려 있어 버튼을 그 안(자손)에 두면 바깥으로 걸치는 부분이 잘리고, 세로 중앙
- * 기준도 캐비닛 전체 높이가 아니라 그리드 높이로 바뀌어 버리기 때문에 형제 오버레이 방식을 쓴다.
+ * (ShelfColumnGrid/ShelfColumn)는 건드리지 않고, 투명 오버레이를 ShelfCabinet의 형제로 하나 더 둬서
+ * 경계 위치만 재사용한다 — ShelfCabinet엔 overflow-hidden이 걸려 있어 버튼을 그 안(자손)에 두면
+ * 바깥으로 걸치는 부분이 잘리고, 세로 중앙 기준도 캐비닛 전체 높이가 아니라 그리드 높이로 바뀌어
+ * 버리기 때문에 형제 오버레이 방식을 쓴다.
+ *
+ * 319: 화면 톤을 시안의 아이보리 캐비닛으로 개편했다. 좌우 버튼은 네 벌의 중복 클래스 문자열에서
+ * ShelfPageButton 하나로 합치고, 위치도 캐비닛 안쪽 여백이 아니라 바깥 가장자리로 옮겼다(아래
+ * ShelfPageButton 주석). 열 수·스크롤 영역·페이지네이션 로직은 그대로다.
  *
  * 295 반응형 재설계(요구사항 B): 동시 노출 책장 수가 breakpoint별로 3(xl)→2(mdlg)→1(sm)로 줄어든다
  * (LIBRARY_COLUMNS_BY_TIER). xl은 기존 동작(내 책장 고정 + 팔로우 2개씩 페이징) 그대로고, mdlg·sm은
@@ -86,6 +93,21 @@ export function LibraryPage() {
   const tier = useShelfWidthTier();
   const columns = LIBRARY_COLUMNS_BY_TIER[tier];
   const isXl = tier === 'xl';
+
+  // 319 디자인 피드백: 캐비닛 높이를 Feed(314)와 같은 실측 기반 동적 예산으로 정한다 — 이전엔
+  // h-full 퍼센트 체인 + 스크롤 박스 max-h-[590px] 조합이라, 높은 화면에서 캐비닛이 래퍼를 다
+  // 채우지 못하고 아래가 크게 비었다. 여기서 확정한 높이를 캐비닛에 직접 넘기므로 (a) 캐비닛이
+  // 화면을 채우고 (b) 좌우 버튼 오버레이(캐비닛과 같은 박스)의 세로 중앙이 곧 캐비닛 중앙이 된다.
+  const { width: viewportWidth, height: viewportHeight } = useViewportSize();
+  const { navHeightPx, titleHeightPx } = useLayoutMetrics();
+  const cabinetHeightPx = getPageContentBudgetPx(
+    viewportHeight,
+    { navHeightPx, titleHeightPx },
+    tier,
+  );
+  // 행 수는 그 높이에 실제로 몇 행이 들어가는지로 정한다(고정 3행 폐기) — 책이 커진 만큼
+  // (SPINE_MAX_HEIGHT 168→190) 짧은 화면에서는 2행, 높은 화면에서는 4행까지 간다.
+  const visibleRowCount = getLibraryVisibleRowCount(cabinetHeightPx, getShelfScale(viewportWidth));
 
   const [virtualPageIndex, setVirtualPageIndex] = useState(0);
   // 구간이 바뀌면(리사이즈로 tier 전환) 가상 페이지 크기 자체가 달라져 이전 인덱스가 더 이상 같은
@@ -149,7 +171,7 @@ export function LibraryPage() {
   if (pageSlots.showMyShelf) {
     slotNodes.push(
       <ShelfColumn key="my-shelf">
-        <MyShelfColumn />
+        <MyShelfColumn visibleRowCount={visibleRowCount} />
       </ShelfColumn>,
     );
   }
@@ -160,6 +182,7 @@ export function LibraryPage() {
           followId={follow.followId}
           alias={follow.alias}
           columnSlot={indexInPage}
+          visibleRowCount={visibleRowCount}
         />
       </ShelfColumn>,
     );
@@ -169,7 +192,7 @@ export function LibraryPage() {
     slotNodes.push(
       <ShelfColumn key={`empty-${slotNodes.length}`}>
         {!statusMessageShown && followStatusMessage && (
-          <p className={followsQuery.isError ? 'text-sm text-red-400' : 'text-sm text-white/50'}>
+          <p className={followsQuery.isError ? 'text-sm text-red-600' : 'text-sm text-ink-gray'}>
             {followStatusMessage}
           </p>
         )}
@@ -201,66 +224,67 @@ export function LibraryPage() {
         나의 책장
       </PageTitle>
 
-      <div className="relative min-h-0 flex-1">
-        <ShelfCabinet headerTitle="나의 책장">
+      {/* 319 디자인 피드백: flex-1(남는 공간 전부)에서 flex-none으로 바꿨다. 래퍼가 캐비닛보다
+          크면 그 차이가 전부 캐비닛 아래 빈 여백이 되고, inset-0인 버튼 오버레이도 캐비닛이 아니라
+          그 빈 공간까지 포함한 박스의 중앙에 놓인다(피드백의 "버튼 위치가 별로다"). 이제 래퍼
+          높이는 캐비닛 높이 그 자체다 — 오버레이 inset-0 = 캐비닛 테두리와 정확히 일치한다. */}
+      <div className="relative min-h-0 flex-none">
+        <ShelfCabinet heightPx={cabinetHeightPx}>
           <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
         </ShelfCabinet>
 
-        {isXl ? (
-          // xl: 기존(250) 그대로 — "1열|2열" 내부 경계에 이전 버튼, 그리드 오른쪽 바깥 끝에 다음
-          // 버튼. 실제 콘텐츠 그리드와 동일한 grid-cols-3/gap-x-5/여백(28px)을 쓰는 투명 오버레이.
-          <div className="pointer-events-none absolute inset-0 grid grid-cols-3 gap-x-5 px-[28px]">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={handlePrevious}
-                disabled={!canGoPrevious}
-                aria-label="이전 팔로우 책장"
-                className="pointer-events-auto absolute right-0 top-1/2 grid h-8 w-8 translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-[#172742] text-[#d8e0ed] shadow-[0_4px_10px_rgba(4,18,38,.35)] transition hover:border-log-mint hover:bg-log-mint hover:text-pin-navy disabled:opacity-40"
-              >
-                <ChevronIcon direction="left" />
-              </button>
-            </div>
-            <div className="relative col-span-2">
-              <button
-                type="button"
-                onClick={handleNext}
-                disabled={!canGoNext}
-                aria-label="다음 팔로우 책장"
-                className="pointer-events-auto absolute right-0 top-1/2 grid h-8 w-8 translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-[#172742] text-[#d8e0ed] shadow-[0_4px_10px_rgba(4,18,38,.35)] transition hover:border-log-mint hover:bg-log-mint hover:text-pin-navy disabled:opacity-40"
-              >
-                <ChevronIcon direction="right" />
-              </button>
-            </div>
-          </div>
-        ) : (
-          // mdlg·sm: "내 책장"도 시퀀스에 포함돼 함께 페이징되므로, 버튼은 특정 열 경계가 아니라
-          // 그리드 전체의 좌우 바깥 끝에 둔다(같은 28px 여백 기준으로 안쪽 콘텐츠 경계에 맞춘다).
-          <div className="pointer-events-none absolute inset-0 px-[28px]">
-            <div className="relative h-full">
-              <button
-                type="button"
-                onClick={handlePrevious}
-                disabled={!canGoPrevious}
-                aria-label="이전 책장"
-                className="pointer-events-auto absolute left-0 top-1/2 grid h-8 w-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-[#172742] text-[#d8e0ed] shadow-[0_4px_10px_rgba(4,18,38,.35)] transition hover:border-log-mint hover:bg-log-mint hover:text-pin-navy disabled:opacity-40"
-              >
-                <ChevronIcon direction="left" />
-              </button>
-              <button
-                type="button"
-                onClick={handleNext}
-                disabled={!canGoNext}
-                aria-label="다음 책장"
-                className="pointer-events-auto absolute right-0 top-1/2 grid h-8 w-8 translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-[#172742] text-[#d8e0ed] shadow-[0_4px_10px_rgba(4,18,38,.35)] transition hover:border-log-mint hover:bg-log-mint hover:text-pin-navy disabled:opacity-40"
-              >
-                <ChevronIcon direction="right" />
-              </button>
-            </div>
-          </div>
-        )}
+        {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
+            버튼만 바깥에 뒀고(내 책장이 고정이라 이전/다음이 2·3열에만 걸린다는 뜻이었다),
+            mdlg·sm은 둘 다 바깥에 뒀다. 두 벌 모두 캐비닛 안쪽 여백(px-[28px])에 버튼을 맞추느라
+            테두리+본문 padding 합을 리터럴로 복제하고 있어서, 캐비닛 상자 모델이 바뀌면 조용히
+            어긋나는 값이었다. 시안은 구간과 무관하게 좌우 버튼이 캐비닛 "바깥" 가장자리에 걸쳐
+            있으므로, 오버레이를 하나로 합치고 위치 기준도 캐비닛 바깥 테두리(inset-0)로 옮겼다 —
+            이제 안쪽 여백 리터럴에 의존하지 않는다. 페이지 이동 로직(canGoPrevious/canGoNext,
+            getLibraryPageSlots)은 그대로다. aria-label만 구간에 따라 다르게 유지한다 — xl에서
+            넘어가는 대상은 팔로우한 책장뿐이고, mdlg·sm은 내 책장까지 포함한 시퀀스이기 때문이다. */}
+        <div className="pointer-events-none absolute inset-0">
+          <ShelfPageButton
+            direction="left"
+            onClick={handlePrevious}
+            disabled={!canGoPrevious}
+            label={isXl ? '이전 팔로우 책장' : '이전 책장'}
+          />
+          <ShelfPageButton
+            direction="right"
+            onClick={handleNext}
+            disabled={!canGoNext}
+            label={isXl ? '다음 팔로우 책장' : '다음 책장'}
+          />
+        </div>
       </div>
     </main>
+  );
+}
+
+interface ShelfPageButtonProps {
+  direction: 'left' | 'right';
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+// 319: 이전엔 완전히 동일한 클래스 문자열을 가진 버튼이 네 벌(xl 2 + mdlg·sm 2) 있었다. 톤을 밝게
+// 바꾸면서 네 곳을 각각 고치는 대신 하나로 합친다. 색은 FeedList(314)의 페이지 이동 버튼과 같은
+// 규격이다 — 두 화면의 좌우 이동 버튼이 같은 부품으로 보여야 한다.
+// 캐비닛 바깥 가장자리에 절반만 걸치게(translate-x-±1/2) 둬 시안처럼 가구 밖으로 튀어나오게 한다.
+function ShelfPageButton({ direction, label, disabled, onClick }: ShelfPageButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={`pointer-events-auto absolute top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-line-card bg-snow-white text-pin-navy shadow-[0_2px_8px_rgba(4,33,66,.12)] transition hover:border-log-mint hover:bg-log-mint hover:text-white disabled:pointer-events-none disabled:opacity-40 ${
+        direction === 'left' ? 'left-0 -translate-x-1/2' : 'right-0 translate-x-1/2'
+      }`}
+    >
+      <ChevronIcon direction={direction} />
+    </button>
   );
 }
 
