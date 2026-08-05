@@ -194,7 +194,10 @@ export function LibraryPage() {
     <main
       className={`${PAGE_CONTAINER_CLASS} flex min-h-[calc(100dvh-3.5rem)] flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS} xl:min-h-[100dvh]`}
     >
-      <PageTitle className="text-[27px] font-bold tracking-tight text-pin-navy">
+      <PageTitle
+        className="text-[27px] font-bold tracking-tight text-pin-navy"
+        description="저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요."
+      >
         나의 책장
       </PageTitle>
 

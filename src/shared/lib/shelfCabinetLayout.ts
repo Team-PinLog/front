@@ -291,7 +291,11 @@ export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx =
 // 폴백한다 — 페이지 padding(py-3)·타이틀-캐비닛 gap(gap-2)·캐비닛 자체 chrome은 전부 우리가 직접
 // 소유한 Tailwind 리터럴이라 드리프트 위험이 없어 그대로 상수로 둔다.
 const MOBILE_NAV_HEIGHT_PX_FALLBACK = 56; // AppLayout <main> pt-14 근사치 — 실측 전에만 쓴다
-const MOBILE_TITLE_HEIGHT_PX_FALLBACK = 32; // PageTitle h-8 근사치 — 실측 전에만 쓴다
+// 313: PageTitle이 제목 아래 서브카피까지 포함하는 블록이 되면서 이 폴백도 블록 전체 높이가 됐다 —
+// h1(h-8, 32) + gap-1(4) + 서브카피 1줄(text-sm, 20). 32로 두면 실측이 들어오기 전 첫 프레임에만
+// 예산이 24px 과대 계상돼 마지막 행이 잠깐 넘쳤다가 제자리를 찾는다. FeedPage는 항상 서브카피를
+// 넘기므로(이 상수는 getFeedDynamicBudgetPx 전용 = Feed 전용) 서브카피 있는 쪽에 맞춘다.
+const MOBILE_TITLE_HEIGHT_PX_FALLBACK = 56; // PageTitle 블록(제목+서브카피) 근사치 — 실측 전에만 쓴다
 const MOBILE_PAGE_PADDING_PX = 12; // FeedPage/LibraryPage <main> py-3, 상/하 각각 — 우리가 소유, 고정값
 const MOBILE_TITLE_GAP_PX = 8; // PAGE_TITLE_GAP_CLASS gap-2 — 우리가 소유, 고정값
 // 캐비닛 자체의 chrome(border+헤더바+본문 padding)은 breakpoint와 무관하게 항상 고정이다 — "캐비닛
