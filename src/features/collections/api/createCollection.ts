@@ -10,6 +10,9 @@ const createCollectionResponseSchema = z.object({
   collectionId: z.number(),
   title: z.string(),
   recordCount: z.number(),
+  // 318: 생성 직후에는 항상 null이다 — 표지는 생성 요청에 없고, 확정된 뒤 PATCH로 등록한다
+  // (docs/api-contract.md § Collection 표지 이미지). 값을 쓰지는 않지만 계약대로 받아둔다.
+  coverImageUrl: z.string().nullable().optional(),
   publishedAt: z.string(),
   createdAt: z.string(),
 });

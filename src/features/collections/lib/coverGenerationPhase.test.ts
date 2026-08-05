@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { CoverJobStatus, CoverRequestState } from '../api/coverGeneration';
 import {
+  COVER_POLL_TIMEOUT_MS,
+  isCoverPollingExpired,
   isCoverPollingSettled,
   isTerminalJobStatus,
+  pickRandomReadyCandidate,
   resolveCoverCandidates,
 } from './coverGenerationPhase';
 
@@ -86,6 +89,75 @@ describe('isCoverPollingSettled', () => {
         isCoverPollingSettled(state({ status: 'done', final: candidate('failed') }), 'finalizing'),
       ).toBe(true);
     });
+  });
+});
+
+describe('isCoverPollingExpired', () => {
+  // 318: 317에는 상한이 없어 잡이 끝내 terminal이 되지 않으면 모달을 닫을 때까지 1초마다 요청이
+  // 계속 나갔다. 상한은 "실패 판정"이 아니라 "그만 묻기"다.
+  const startedAt = 1_000_000;
+
+  it('시작 전(null)이면 만료가 아니다', () => {
+    expect(isCoverPollingExpired(null, startedAt + COVER_POLL_TIMEOUT_MS * 10)).toBe(false);
+  });
+
+  it('상한 이전에는 만료가 아니다', () => {
+    expect(isCoverPollingExpired(startedAt, startedAt + COVER_POLL_TIMEOUT_MS - 1)).toBe(false);
+  });
+
+  it('상한에 정확히 닿으면 만료다', () => {
+    expect(isCoverPollingExpired(startedAt, startedAt + COVER_POLL_TIMEOUT_MS)).toBe(true);
+  });
+
+  it('상한은 인자로 바꿀 수 있다(테스트·향후 조정용)', () => {
+    expect(isCoverPollingExpired(startedAt, startedAt + 10, 5)).toBe(true);
+    expect(isCoverPollingExpired(startedAt, startedAt + 3, 5)).toBe(false);
+  });
+});
+
+describe('pickRandomReadyCandidate', () => {
+  // 318: "표지 없는 컬렉션"을 남기지 않기 위한 대타 선택이다. 사용자가 고르지 않으면 완성된 것 중
+  // 하나가 표지가 된다 — 그래야 나중에 표지를 붙이는 별도 UI가 필요 없다.
+  const ready = (styleId: string) => ({
+    styleId,
+    label: styleId,
+    status: 'done' as const,
+    url: `/image/files/${styleId}.webp`,
+  });
+
+  it('완성된 후보 중에서만 뽑는다', () => {
+    const candidates = [
+      { styleId: 'a', label: 'a', status: 'running' as const, url: null },
+      ready('b'),
+      { styleId: 'c', label: 'c', status: 'failed' as const, url: null },
+    ];
+
+    expect(pickRandomReadyCandidate(candidates, () => 0)?.styleId).toBe('b');
+  });
+
+  it('status는 done인데 url이 없으면 뽑지 않는다', () => {
+    // 저장했다가 깨진 표지가 된다 — 서버는 파일 존재를 검증하지 않는다.
+    const candidates = [{ styleId: 'a', label: 'a', status: 'done' as const, url: null }];
+
+    expect(pickRandomReadyCandidate(candidates, () => 0)).toBeNull();
+  });
+
+  it('완성된 것이 없으면 null이다(호출부는 더 기다린다)', () => {
+    expect(pickRandomReadyCandidate([], () => 0)).toBeNull();
+  });
+
+  it('난수에 따라 서로 다른 후보를 뽑는다', () => {
+    const candidates = [ready('a'), ready('b'), ready('c')];
+
+    expect(pickRandomReadyCandidate(candidates, () => 0)?.styleId).toBe('a');
+    expect(pickRandomReadyCandidate(candidates, () => 0.5)?.styleId).toBe('b');
+    expect(pickRandomReadyCandidate(candidates, () => 0.99)?.styleId).toBe('c');
+  });
+
+  it('난수가 상한(1)에 닿아도 범위를 벗어나지 않는다', () => {
+    const candidates = [ready('a'), ready('b')];
+
+    expect(pickRandomReadyCandidate(candidates, () => 1)?.styleId).toBe('a');
   });
 });
 

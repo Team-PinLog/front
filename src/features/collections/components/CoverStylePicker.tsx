@@ -42,7 +42,9 @@ export function CoverStylePicker({ cover, onRetry }: CoverStylePickerProps) {
       <p className="mt-1 text-[11px] text-ink-gray-light">
         {isFinalizing
           ? '고른 화풍으로 표지를 완성하고 있어요. 잠시만 기다려 주세요.'
-          : '그림이 완성되는 대로 하나씩 나타나요. 지금 고르지 않아도 컬렉션은 이미 만들어졌어요.'}
+          : cover.isAutoPicking
+            ? '완성되는 대로 하나를 골라 표지로 씁니다.'
+            : '그림이 완성되는 대로 하나씩 나타나요. 마음에 드는 화풍을 골라 주세요.'}
       </p>
 
       {/* 요청 실패(네트워크·404·422·5xx)와 GPU 작업 실패(카드의 status: failed)는 다른 것이라
@@ -71,7 +73,11 @@ export function CoverStylePicker({ cover, onRetry }: CoverStylePickerProps) {
                   candidate={candidate}
                   isSelected={cover.selectedStyleId === candidate.styleId}
                   // 인쇄본 생성이 시작되면 선택을 바꿀 수 없다 — 이미 GPU 잡이 돌고 있다.
-                  isDisabled={isFinalizing || cover.isSelecting}
+                  // 다만 그 인쇄본이 실패했으면 다시 열어준다 — 안 그러면 실패 문구만 보이고
+                  // 다른 화풍으로 다시 시도할 길이 없는 막다른 상태가 된다.
+                  isDisabled={
+                    (isFinalizing && cover.final?.status !== 'failed') || cover.isSelecting
+                  }
                   onSelect={() => cover.select(candidate.styleId)}
                 />
               </li>
@@ -86,6 +92,14 @@ export function CoverStylePicker({ cover, onRetry }: CoverStylePickerProps) {
       {cover.final?.status === 'failed' && (
         <p className="mt-2 text-xs text-red-600">
           표지를 완성하지 못했어요. 다른 화풍으로 다시 시도해 주세요.
+        </p>
+      )}
+
+      {/* 318: 상한(5분)을 넘겨 폴링을 그만둔 상태. 실패로 단정하지 않는다 — 서버 작업은 계속
+          돌고 있을 수 있고 우리가 그만 묻는 것뿐이다. */}
+      {cover.isTimedOut && (
+        <p className="mt-2 text-xs text-ink-gray">
+          표지 생성이 오래 걸리고 있어요. 지금은 넘어가고 나중에 다시 시도해 주세요.
         </p>
       )}
     </div>
@@ -128,11 +142,14 @@ function CoverStyleCard({
           />
         ) : (
           <div
-            className={`grid h-full w-full place-items-center text-[10px] ${
-              candidate.status === 'failed' ? 'text-red-600' : 'animate-pulse text-ink-gray-light'
+            className={`grid h-full w-full place-items-center gap-1 text-[10px] ${
+              candidate.status === 'failed' ? 'text-red-600' : 'text-ink-gray-light'
             }`}
           >
-            {STATUS_LABEL[candidate.status]}
+            {/* 대기·생성 중에는 스피너를 함께 돌린다 — 글자만 있으면 GPU 큐에서 수십 초씩 멈춰
+                있을 때 화면이 멎은 것처럼 보인다. 실패한 카드에는 돌릴 것이 없다. */}
+            {candidate.status !== 'failed' && <Spinner />}
+            <span>{STATUS_LABEL[candidate.status]}</span>
           </div>
         )}
       </div>
@@ -140,5 +157,15 @@ function CoverStyleCard({
         {candidate.label}
       </span>
     </button>
+  );
+}
+
+/** 생성 대기·진행 중 표시. 원 궤도 중 4분의 1만 진하게 칠해 회전이 눈에 보이게 한다. */
+function Spinner() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
   );
 }
