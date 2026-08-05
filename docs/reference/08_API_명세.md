@@ -236,15 +236,15 @@ Context 목록은 별도 API 없이 Record 상세(`GET /records/{recordId}`)의 
 
 ## 2.5 Collection
 
-| Method                                                                                      | Endpoint                                         | 설명                              |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------- |
-| POST                                                                                        | `/collections`                                   | Collection 생성 및 자동 발행      |
-| GET                                                                                         | `/collections`                                   | 내 Collection 목록 조회           |
-| GET                                                                                         | `/collections/{collectionId}`                    | 소유권에 따라 개인·공개 상세 조회 |
-| PATCH                                                                                       | `/collections/{collectionId}`                    | 소유자의 Collection 제목 수정     |
-| DELETE                                                                                      | `/collections/{collectionId}`                    | 소유자의 Collection 삭제          |
-| POST                                                                                        | `/collections/{collectionId}/records`            | 소유자의 Record 추가              |
-| DELETE                                                                                      | `/collections/{collectionId}/records/{recordId}` | 소유자의 Record 제거              |
+| Method                                                                                      | Endpoint                                         | 설명                               |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------- |
+| POST                                                                                        | `/collections`                                   | Collection 생성 및 자동 발행       |
+| GET                                                                                         | `/collections`                                   | 내 Collection 목록 조회            |
+| GET                                                                                         | `/collections/{collectionId}`                    | 소유권에 따라 개인·공개 상세 조회  |
+| PATCH                                                                                       | `/collections/{collectionId}`                    | 소유자의 Collection 제목·표지 수정 |
+| DELETE                                                                                      | `/collections/{collectionId}`                    | 소유자의 Collection 삭제           |
+| POST                                                                                        | `/collections/{collectionId}/records`            | 소유자의 Record 추가               |
+| DELETE                                                                                      | `/collections/{collectionId}/records/{recordId}` | 소유자의 Record 제거               |
 | 공개 책장 탐색은 Feed 네임스페이스(2.7), 책장 Follow는 Follow 네임스페이스(2.6)를 사용한다. |
 
 ## 2.6 Follow
@@ -945,6 +945,7 @@ POST /api/core/v1/collections
 - 본인 활성 Record만 추가 가능
 - 생성 즉시 자동 발행
 - 동일 Record 중복 추가 금지
+- **표지는 생성 요청에 없다.** 표지 생성은 GPU 비동기 잡이라 완료를 기다리면 생성 버튼이 생성 큐에 묶인다. 표지는 확정된 뒤 7.4로 등록한다(플로우는 7.7)
 
 응답:
 
@@ -955,11 +956,14 @@ POST /api/core/v1/collections
     "collectionId": 7050,
     "title": "비 오는 날의 카페",
     "recordCount": 3,
+    "coverImageUrl": null,
     "publishedAt": "2026-07-23T10:00:00Z",
     "createdAt": "2026-07-23T10:00:00Z"
   }
 }
 ```
+
+생성 직후 `coverImageUrl`은 항상 `null`이다.
 
 ## 7.2 내 Collection 목록
 
@@ -1011,6 +1015,7 @@ collection_records.created_at ASC (기본), 동률이면 id ASC
     "title": "비 오는 날의 카페",
     "ownedByMe": true,
     "follow": null,
+    "coverImageUrl": "/image/files/3f2a9c1e-8d4b-4f6a-9c0e-5b7d2e8a1c44_image_0.webp",
     "records": {
       "items": [
         {
@@ -1054,6 +1059,7 @@ collection_records.created_at ASC (기본), 동률이면 id ASC
       "followId": 701,
       "alias": "서울 카페"
     },
+    "coverImageUrl": null,
     "records": {
       "items": [
         {
@@ -1085,7 +1091,7 @@ collection_records.created_at ASC (기본), 동률이면 id ASC
 - 팔로워·팔로잉 목록
 - 다른 팔로워가 설정한 별칭
 
-## 7.4 제목 수정
+## 7.4 제목·표지 수정
 
 ```http
 PATCH /api/core/v1/collections/{collectionId}
@@ -1095,9 +1101,19 @@ PATCH /api/core/v1/collections/{collectionId}
 
 ```json
 {
-  "title": "비 오는 날 다시 갈 카페"
+  "title": "비 오는 날 다시 갈 카페",
+  "coverImageUrl": "/image/files/3f2a9c1e-8d4b-4f6a-9c0e-5b7d2e8a1c44_image_0.webp"
 }
 ```
+
+두 필드 모두 선택이며 최소 하나는 있어야 한다. **보내지 않았거나 `null`인 필드는 기존 값을 유지한다** — 제목만 고칠 때 표지가 지워지지 않는다.
+
+`coverImageUrl` 규칙:
+
+- 이미지 서비스 최종본의 같은 origin 상대 경로만 받는다. 패턴은 `^/image/files/[A-Za-z0-9._-]+\.webp$`이며, 그 외(외부 절대 URL, 다른 경로, 다른 확장자)는 `400 INVALID_INPUT`이다. 프론트가 보낸 값을 그대로 믿고 저장하면 임의 문자열이 표지로 들어가므로 서버가 반드시 검증한다.
+- **표지 제거(비우기)는 제공하지 않는다.** 등록·교체만 있다. MVP UX에 제거 화면이 없고, JSON에서 "필드 생략"과 "null 명시"를 구분해 제거를 표현하는 비용이 실익보다 크다. 제거가 필요해지면 `DELETE /collections/{collectionId}/cover`를 별도로 더한다.
+- 서버는 해당 파일의 실제 존재 여부는 검증하지 않는다 — 존재 확인은 이미지 서비스 호출이 필요해 결합이 생긴다. 프론트는 상태 폴링에서 `final.status: "done"`으로 확인한 `final.url`만 보낸다(7.7).
+- 같은 필드로 표지 재등록(교체)도 처리한다. 별도 API를 두지 않는다.
 
 ## 7.5 Record 추가
 
@@ -1122,6 +1138,27 @@ DELETE /api/core/v1/collections/{collectionId}/records/{recordId}
 ```
 
 마지막 Record 제거 요청은 409 `DELETE_CONFIRMATION_REQUIRED`로 거절한다. 프론트는 "컬렉션도 함께 사라짐"을 안내한 뒤, 확인을 받으면 `DELETE /collections/{collectionId}`를 호출한다.
+
+## 7.7 표지 이미지
+
+Collection 표지는 이미지 서비스(INFRA 소유 `Team-PinLog/image`, `/image/api/*`, 연동 계약은 front#99 가이드)가 생성하고, **core는 최종본 URL만 저장한다.** 전체 플로우는 프론트가 오케스트레이션한다 — 화풍 6종 중 사용자가 하나를 고르는 UI 단계가 있어 서버가 뒤에서 대신할 수 없다.
+
+```text
+POST /collections { title, recordIds }        -- 표지 없이 즉시 생성 (7.1)
+→ POST /image/api/covers { title, keywords }  -- 후보 6종 생성 시작 (이미지 서비스)
+→ GET  /image/api/covers/{requestId}          -- 1초 폴링, done 카드부터 표시
+→ POST /image/api/covers/{requestId}/select   -- 화풍 선택
+→ final.status가 done이 되면
+→ PATCH /collections/{collectionId} { coverImageUrl: final.url }  (7.4)
+```
+
+규칙:
+
+- **Collection 생성은 표지를 기다리지 않는다.** GPU 큐 상황에 따라 표지는 수십 초 뒤에 완료될 수 있고, 그동안 Collection은 표지 없이 정상 동작한다.
+- `coverImageUrl`은 Collection이 실리는 모든 응답에 포함된다 — 생성(7.1)·상세(7.3)·책장 탐색(8.1)·팔로우 책장(9.2·9.3)·Feed(10.1). **`null`이어도 필드를 생략하지 않는다.** 프론트는 `null`이거나 이미지 로드에 실패하면 기본 표지로 폴백한다.
+- 이미지는 **세로형 2:3 비율**(미리보기 512×768 WebP)이다. `aspect-ratio: 2 / 3` + `object-fit: cover`로 표시하면 로딩 전 영역이 확보된다.
+- 사용자가 화풍을 고르기 전에 이탈하면 표지 없는 Collection이 남는다. 오류가 아니라 정상 상태이며, 표지는 이후 언제든 7.4로 등록·교체할 수 있다. 프론트는 재등록 진입점을 제공한다.
+- 원본 파일의 보관·서빙은 이미지 서비스 책임이다. 파일은 영속 볼륨에 남고 정리 배치가 없어 URL 참조가 유지된다(파트간 요구사항 §3.1). 파일이 사라지면 표지가 깨진 링크가 되므로, 이미지 서비스가 정리 정책을 도입할 때는 이 계약을 먼저 확인해야 한다.
 
 ---
 
@@ -1158,6 +1195,7 @@ GET /api/core/v1/feed/collections/{collectionId}/shelf?cursor={cursor}&size=20&s
           "title": "성수 산책 코스",
           "recordCount": 5,
           "keywords": ["산책", "카페"],
+          "coverImageUrl": null,
           "createdAt": "2026-07-18T10:00:00Z"
         }
       ],
@@ -1332,6 +1370,7 @@ GET /api/core/v1/follows?cursor={cursor}&size=10&collectionSize=5&collectionSort
               "title": "연남 카페",
               "recordCount": 3,
               "keywords": ["조용한", "커피"],
+              "coverImageUrl": "/image/files/3f2a9c1e-8d4b-4f6a-9c0e-5b7d2e8a1c44_image_0.webp",
               "createdAt": "2026-07-18T10:00:00Z"
             }
           ],
@@ -1405,6 +1444,7 @@ GET /api/core/v1/feed/collections?cursor={cursor}&size=20
         "title": "비 오는 날의 카페",
         "recordCount": 5,
         "keywords": ["조용한", "커피"],
+        "coverImageUrl": null,
         "createdAt": "2026-07-18T10:00:00Z"
       }
     ],
@@ -1570,6 +1610,7 @@ type CollectionDetail = {
     followId: number | null;
     alias: string | null;
   } | null;
+  coverImageUrl: string | null; // 표지 이미지 상대 경로. null이면 기본 표지로 폴백(7.7)
   records: CursorPage<RecordDetail>;
   publishedAt: string;
   createdAt: string;
@@ -1591,17 +1632,17 @@ type CursorPage<T> = {
 
 # 12. 접근 권한표
 
-| 기능                      |          본인 | 팔로우한 사용자 | 팔로우하지 않은 사용자 |
-| ------------------------- | ------------: | --------------: | ---------------------: |
-| 공개 Collection 목록 조회 |             O |               O |                      O |
-| 공개 Collection 상세 조회 |             O |               O |                      O |
-| Record Place 조회         |             O |               O |                      O |
-| Record Keyword 조회       |             O |               O |                      O |
-| Record 생성일 조회        |             O |               O |                      O |
-| Record Context 원문 조회  |             O |       X, `null` |              X, `null` |
-| Collection 제목·구성 수정 |      소유자만 |               X |                      X |
-| Context 수정·삭제         |      소유자만 |               X |                      X |
-| Follow 별칭 조회          | 지정한 본인만 |       해당 없음 |              해당 없음 |
+| 기능                           |          본인 | 팔로우한 사용자 | 팔로우하지 않은 사용자 |
+| ------------------------------ | ------------: | --------------: | ---------------------: |
+| 공개 Collection 목록 조회      |             O |               O |                      O |
+| 공개 Collection 상세 조회      |             O |               O |                      O |
+| Record Place 조회              |             O |               O |                      O |
+| Record Keyword 조회            |             O |               O |                      O |
+| Record 생성일 조회             |             O |               O |                      O |
+| Record Context 원문 조회       |             O |       X, `null` |              X, `null` |
+| Collection 제목·표지·구성 수정 |      소유자만 |               X |                      X |
+| Context 수정·삭제              |      소유자만 |               X |                      X |
+| Follow 별칭 조회               | 지정한 본인만 |       해당 없음 |              해당 없음 |
 
 ---
 
@@ -1718,6 +1759,16 @@ GET /records/map?keyword={검색어}     -- 검색어 입력 시
 
 지도 화면이 아니므로 `bounds`는 사용하지 않고 `items`만 사용한다. `items`는 장소명 오름차순이라 그대로 목록에 그리면 된다.
 
+## 13.12 컬렉션 만들기에서 표지 생성
+
+```text
+POST /collections { title, recordIds } (7.1)   -- 즉시 생성, coverImageUrl: null
+→ 이미지 서비스 후보 생성·폴링·화풍 선택 (7.7)
+→ PATCH /collections/{collectionId} { coverImageUrl } (7.4)
+```
+
+생성 완료 화면은 표지 자리에 스켈레톤을 먼저 그리고, 후보가 `done`이 되는 대로 채운다. 사용자가 화풍 선택 전에 떠나도 Collection은 이미 생성되어 있다(7.7).
+
 ---
 
 # 14. 구현 시 반드시 지킬 사항
@@ -1739,6 +1790,7 @@ GET /records/map?keyword={검색어}     -- 검색어 입력 시
 15. Context 추가·수정 시 `records.updated_at`을 갱신한다(최신 활동 시각 기록).
 16. 검색 응답 `keywords`는 Record의 활성 Context 전체 Keyword 집계값이며, 그 배열이 최종인지 여부는 같은 응답의 `keywordStatus`가 가른다(6.1).
 17. 연쇄 삭제가 발생하는 삭제 요청은 409로 거절하고, 프론트 확인 후 강제 삭제 API(`/records/{recordId}/force`) 또는 Collection 삭제 API로만 수행한다.
+18. Collection 생성은 표지 생성을 기다리지 않는다. `coverImageUrl`은 `null` 허용이며, 서버는 저장 전 `/image/files/*.webp` 경로 패턴을 검증한다(7.4·7.7).
 
 ---
 
@@ -1746,11 +1798,12 @@ GET /records/map?keyword={검색어}     -- 검색어 입력 시
 
 미확정 항목 없음. 주요 확정 내역:
 
-| 항목              | 확정 내용                                                                   |
-| ----------------- | --------------------------------------------------------------------------- |
-| 인증              | JWT. Access 30분, Refresh 7일(Redis 저장, 회전 발급)                        |
-| 커서              | Base64(정렬키+id). `size` 기본 20, 명세상 상한 없음(서버 방어 상한 권장)    |
-| Feed SAVE 이벤트  | 클라이언트가 저장 성공 후 `/feed/events`로 전송                             |
-| `similarity`      | 검색 응답에 항상 포함. UI 노출은 프론트 결정                                |
-| `keywordStatus`   | 검색 응답에만 포함하며 항상 반환. `COMPLETED`·`PROCESSING`·`FAILED` 셋(6.1) |
-| Context 수정 응답 | `PATCH 200` (사용자 관점의 수정. 새 `contextId` 반환)                       |
+| 항목              | 확정 내용                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 인증              | JWT. Access 30분, Refresh 7일(Redis 저장, 회전 발급)                                                              |
+| 커서              | Base64(정렬키+id). `size` 기본 20, 명세상 상한 없음(서버 방어 상한 권장)                                          |
+| Feed SAVE 이벤트  | 클라이언트가 저장 성공 후 `/feed/events`로 전송                                                                   |
+| `similarity`      | 검색 응답에 항상 포함. UI 노출은 프론트 결정                                                                      |
+| `keywordStatus`   | 검색 응답에만 포함하며 항상 반환. `COMPLETED`·`PROCESSING`·`FAILED` 셋(6.1)                                       |
+| Context 수정 응답 | `PATCH 200` (사용자 관점의 수정. 새 `contextId` 반환)                                                             |
+| Collection 표지   | core는 URL만 저장(7.7). 등록·교체만 있고 제거는 없다. 생성은 표지를 기다리지 않으며 `coverImageUrl`은 `null` 허용 |
