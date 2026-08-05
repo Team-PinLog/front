@@ -35,14 +35,14 @@ export const SIDEBAR_WIDTH_PX = 240;
 // 맞춘다(이전엔 Library가 gap-6=24px로 Feed와 8px 어긋나 있었다).
 // 295 추가 수정(요구사항 2.2): xl(≥1280, PC)은 기존 16px을 유지하고, sm·mdlg(<1280, 모바일/태블릿)는
 // 8px로 줄인다 — 고정 UI(제목-캐비닛 gap)가 차지하는 비중을 줄여 캐비닛에 더 많은 세로 공간을
-// 내준다. 이 값은 shelfCabinetLayout.ts의 MOBILE_TITLE_GAP_PX와 반드시 일치해야 한다(동적 예산
-// 계산식이 이 리터럴을 그대로 상수로 들고 있다 — Tailwind 클래스 문자열엔 JS 상수를 주입할 수 없다).
+// 내준다. 이 값은 아래 TITLE_GAP_PX_BY_TIER와 반드시 일치해야 한다(동적 예산 계산식이 이 리터럴을
+// 그대로 상수로 들고 있다 — Tailwind 클래스 문자열엔 JS 상수를 주입할 수 없다).
 export const PAGE_TITLE_GAP_CLASS = 'gap-2 xl:gap-4';
 
 // 295 추가 수정(요구사항 2.2): 페이지(main) 자체의 상하 padding. xl은 기존 py-6(24px)을 유지하고,
 // sm·mdlg는 py-3(12px)로 줄인다. 이전엔 `py-4 md:py-6`(768px 경계)이라 mdlg(768~1279)가 오히려
 // xl과 같은 py-6을 쓰고 있었다 — "md 이하가 핵심"이라는 이번 요구사항 기준으로는 mdlg도 sm과 함께
-// 줄어야 한다. MOBILE_PAGE_PADDING_PX와 반드시 일치해야 한다.
+// 줄어야 한다. 아래 PAGE_PADDING_PX_BY_TIER와 반드시 일치해야 한다.
 export const PAGE_VERTICAL_PADDING_CLASS = 'py-3 xl:py-6';
 
 // --- Library 책등 크기 스케일(뷰포트 폭 기준 연속 스케일링) ---------------------------------------
@@ -96,19 +96,27 @@ export const LIBRARY_COLUMNS_BY_TIER: Record<ShelfWidthTier, number> = {
 // 그대로 유지한다.
 // 295 추가 수정(요구사항 1/2): 다만 "카드 치수"는 더 이상 구간별 고정 표가 아니다 — 카드 가로:세로
 // 비율(FEED_CARD_RATIO≈3:4)을 최우선 제약으로 두고, 그 비율을 지키면서 (a) 그리드 가로폭이 넘치지
-// 않고 (b) 캐비닛 세로 예산(동적, getFeedDynamicBudgetPx)을 넘지 않는 한도 안에서 화면을 최대한
-// 채우도록 scale을 실시간으로 역산한다(solveFeedScale) — xl은 예외로, 기존 고정 표(scale=1,
-// FEED_XL_CARD_SPEC)를 그대로 쓴다(요구사항 2.4: "xl은 기존 여백 수준을 유지해도 무방").
-// mdlgPortrait·sm(둘 다 원래 3행)은 3행을 유지한 채로는 도저히 비율을 지킬 수 없을 만큼 예산이
-// 작아지면(decideFeedRows) 2행(6개)으로 낮춘다 — "비율 고정이 1순위, 행 수는 종속 변수"라는
-// 요구사항 1.2 우선순위를 그대로 코드로 옮긴 것이다. 이 판단은 실제 뷰포트 높이에 따라 매 렌더
-// 다시 계산된다(고정 표가 아니다) — 대부분의 실기기에서는 3행이 유지되고, 유난히 짧은 뷰포트에서만
-// 2행으로 떨어진다(자세한 수치는 PR 설명/보고 참고).
+// 않고 (b) 세로 예산(동적, getFeedDynamicBudgetPx)을 넘지 않는 한도 안에서 화면을 최대한 채우도록
+// scale을 실시간으로 역산한다(solveFeedScale).
+// 314: xl 예외(고정 표 scale=1)와 "구간별 고정 행 수"가 모두 사라졌다 — 전 구간이 같은 규칙을 쓴다.
+// 행 수는 decideFeedRows가 세로·가로를 둘 다 반영해 화면을 가장 많이 덮는 배치로 고르고, scale은
+// 그 행 수에서 두 제약 중 빡빡한 쪽에 맞춰 정해진다(상한 FEED_SCALE_CAP). "비율 고정이 1순위,
+// 행 수는 종속 변수"라는 295 요구사항 1.2의 우선순위는 그대로다.
 export type FeedColumnsKey = 'xl' | 'mdlgLandscape' | 'mdlgPortrait' | 'sm';
 
 export const FEED_COLUMNS_BY_KEY: Record<FeedColumnsKey, number> = {
   xl: 5,
   mdlgLandscape: 4,
+  mdlgPortrait: 3,
+  sm: 3,
+};
+
+// 314: 한 페이지에 몇 줄까지 놓을지의 상한. decideFeedRows는 이 상한 안에서 "화면을 가장 많이 덮는"
+// 행 수를 고른다 — 상한이 없으면 세로가 넉넉한 PC에서 3행(15권)까지 올라가 한 화면에 책이 너무 많이
+// 깔린다(시안은 5열 × 2행 = 10권이다). 짧은 뷰포트에서 2행으로 내려가는 동작은 그대로다.
+export const FEED_MAX_ROWS_BY_KEY: Record<FeedColumnsKey, number> = {
+  xl: 2,
+  mdlgLandscape: 2,
   mdlgPortrait: 3,
   sm: 3,
 };
@@ -131,12 +139,14 @@ export const FEED_CARD_RATIO = 3 / 4;
 
 // scale=1 기준(=xl 고정 치수와 동일) 스케일 대상 요소들 — sm/mdlg는 이 비율 관계를 유지한 채
 // 전체를 하나의 scale로 줄인다(요구사항 2.3: "요소가 서로 다른 비율로 찌그러지지 않게").
+// 314: badgeHeight(14)·itemColumnGap(8)·rowInternalGap(10)이 빠졌다 — 카드 아래 순번 배지를 없애고
+// 카드와 선반 판 사이 간격도 0으로 만들면서(책이 선반에 얹힌 것처럼 딱 닿아야 한다), 그 32px이
+// 카드 크기로 돌아갔다. 이제 한 행의 세로 구성은 "카드 + 선반 판" 둘뿐이다.
 export const FEED_SCALE_REF = {
   coverHeight: 140,
-  badgeHeight: 14,
-  itemColumnGap: 8,
-  rowInternalGap: 10,
-  boardHeight: 8,
+  // 314: 8 → 22. 시안의 선반은 얇은 줄이 아니라 두께가 드러나는 판이다(윗면 + 나뭇결 + 앞면 모서리).
+  // 8px로는 그라디언트가 한 픽셀씩밖에 안 잡혀 단색 선으로 보이고, 나뭇결도 그릴 자리가 없다.
+  boardHeight: 22,
   gridGap: 24,
   rowsGap: 32,
 };
@@ -145,14 +155,15 @@ export const FEED_SCALE_REF = {
 // 반드시 일치해야 한다.
 const FEED_CARD_BORDER_PX = 2;
 
-const FEED_SCALE_SUM_REF =
-  FEED_SCALE_REF.coverHeight +
-  FEED_SCALE_REF.badgeHeight +
-  FEED_SCALE_REF.itemColumnGap +
-  FEED_SCALE_REF.rowInternalGap +
-  FEED_SCALE_REF.boardHeight;
+const FEED_SCALE_SUM_REF = FEED_SCALE_REF.coverHeight + FEED_SCALE_REF.boardHeight;
 
 const FEED_SCALE_FLOOR = 0.02; // 수학적 안전판(0·음수 방지) — 가독성 하한이 아니다.
+
+// 314: 상한이 1이면 "FEED_SCALE_REF보다 커지지 않는다"는 뜻이라, 캐비닛을 걷어내 넓어진 공간을
+// 카드가 흡수하지 못한다. 남는 폭은 전부 1fr 컬럼의 여백(=책 사이 gap)으로 흘러가 책이 띄엄띄엄
+// 놓인 것처럼 보였다. 이제 예산이 허락하는 만큼 카드가 커지도록 상한을 올린다 — 다만 무한정
+// 커지면 한 화면에 책이 두어 권만 남으므로 1.5(카드 폭 약 250px)에서 멈춘다.
+const FEED_SCALE_CAP = 1.5;
 
 export interface SolveFeedScaleInput {
   columns: number;
@@ -185,16 +196,13 @@ export function solveFeedScale({
   const widthScale =
     widthScalableBase > 0 ? (availableGridWidthPx - widthFixed) / widthScalableBase : 1;
 
-  return Math.max(FEED_SCALE_FLOOR, Math.min(1, heightScale, widthScale));
+  return Math.max(FEED_SCALE_FLOOR, Math.min(FEED_SCALE_CAP, heightScale, widthScale));
 }
 
 export interface FeedCardDimensions {
   cardWidth: number;
   cardHeight: number;
   coverHeight: number;
-  badgeHeight: number;
-  itemColumnGap: number;
-  rowInternalGap: number;
   boardHeight: number;
   gridGap: number;
   rowsGap: number;
@@ -206,9 +214,6 @@ export function getFeedCardDimensions(scale: number, infoHeightPx: number): Feed
   const coverHeight = Math.max(0, Math.floor(FEED_SCALE_REF.coverHeight * scale));
   const cardHeight = FEED_CARD_BORDER_PX + infoHeightPx + coverHeight;
   const cardWidth = Math.floor(cardHeight * FEED_CARD_RATIO);
-  const badgeHeight = Math.max(1, Math.floor(FEED_SCALE_REF.badgeHeight * scale));
-  const itemColumnGap = Math.max(1, Math.floor(FEED_SCALE_REF.itemColumnGap * scale));
-  const rowInternalGap = Math.max(1, Math.floor(FEED_SCALE_REF.rowInternalGap * scale));
   const boardHeight = Math.max(1, Math.floor(FEED_SCALE_REF.boardHeight * scale));
   const gridGap = Math.max(1, Math.floor(FEED_SCALE_REF.gridGap * scale));
   const rowsGap = Math.max(1, Math.floor(FEED_SCALE_REF.rowsGap * scale));
@@ -217,9 +222,6 @@ export function getFeedCardDimensions(scale: number, infoHeightPx: number): Feed
     cardWidth,
     cardHeight,
     coverHeight,
-    badgeHeight,
-    itemColumnGap,
-    rowInternalGap,
     boardHeight,
     gridGap,
     rowsGap,
@@ -233,29 +235,72 @@ export function getFeedCardDimensions(scale: number, infoHeightPx: number): Feed
 // 고른다 — 예산이 넉넉하면 4행(더 많은 카드)까지, 그마저도 안 맞으면 2행까지 내려간다. 임계값
 // (0.4)은 "이 밑으로 내려가면 더 이상 책처럼 안 보인다"는 임의 기준이다(디자이너 확정 아님) — PR
 // 설명/보고에 명시했다.
-export const FEED_ROWS_FALLBACK_MIN_SCALE = 0.4;
-const FEED_ROWS_SEARCH_ORDER = [4, 3, 2];
+// 314: 0.4 → 0.5. 캐비닛 chrome 60px이 예산으로 돌아오면서, 임계값을 그대로 두면 그 여유를 전부
+// "행 수"가 먹는다 — decideFeedRows가 4행부터 탐색하므로 sm 844px 기준 3행(scale 0.70) 대신 4행
+// (scale 0.41)이 선택된다. scale 0.41이면 카드 높이 141px 중 82px이 고정 정보 패널이라 표지가
+// 57px밖에 안 남아 책으로 보이지 않는다. 회수한 공간은 "더 많은 책"이 아니라 "더 큰 책"에 쓰는 게
+// 시안(큼직한 책이 선반에 놓인 그림)에 맞다. 0.5는 sm 844px에서 4행(0.41)은 걸러내고 3행(0.70)은
+// 통과시키는 값이다 — 결과적으로 행 수는 변경 전과 같고 카드만 커진다(scale 0.60 → 0.70).
+export const FEED_ROWS_FALLBACK_MIN_SCALE = 0.5;
+const FEED_ROWS_CANDIDATES = [2, 3, 4];
 
-function getFeedHeightScaleAtRows(infoHeightPx: number, budgetPx: number, rows: number): number {
-  const fixedPerRow = FEED_CARD_BORDER_PX + infoHeightPx;
-  const heightFixed = rows * fixedPerRow;
-  const heightScalableBase = rows * FEED_SCALE_SUM_REF + FEED_SCALE_REF.rowsGap * (rows - 1);
-  return (budgetPx - heightFixed) / heightScalableBase;
+/**
+ * 314: 행 수를 세로 예산만 보고 정하면 안 된다.
+ *
+ * 이전 구현은 "세로 scale이 임계값을 넘는 가장 큰 행 수"를 골랐다 — 가로 제약(solveFeedScale의
+ * widthScale)을 전혀 보지 않아서, 행을 늘려 카드가 작아지면 그만큼 남는 가로 폭이 전부 1fr 컬럼의
+ * 여백으로 흘러가 책 사이가 휑하게 벌어졌다(mdlgPortrait 3×4에서 카드 폭 147px에 gap 108px).
+ * 반대로 xl은 2행 고정이라 세로가 크게 남았다.
+ *
+ * 이제 후보 행 수마다 세로·가로를 **둘 다** 반영한 실제 scale(solveFeedScale)을 구하고, 그 결과로
+ * 만들어지는 카드가 화면을 가장 많이 덮는 배치를 고른다(카드 넓이 × 높이 × 칸 수). 세로가 남으면
+ * 행이 늘고, 가로가 남으면 카드가 커지는 쪽으로 자연스럽게 수렴한다.
+ * FEED_ROWS_FALLBACK_MIN_SCALE은 여전히 가독성 하한이다 — 이 밑으로 떨어지는 배치는 후보에서
+ * 제외하고, 전부 탈락하면 가장 적은 행 수(2행)로 떨어진다.
+ */
+export interface DecideFeedRowsInput {
+  columns: number;
+  maxRows: number;
+  infoHeightPx: number;
+  budgetPx: number;
+  availableGridWidthPx: number;
 }
 
-export function decideFeedRows(infoHeightPx: number, budgetPx: number): number {
-  for (const rows of FEED_ROWS_SEARCH_ORDER) {
-    if (getFeedHeightScaleAtRows(infoHeightPx, budgetPx, rows) >= FEED_ROWS_FALLBACK_MIN_SCALE) {
-      return rows;
+export function decideFeedRows({
+  columns,
+  maxRows,
+  infoHeightPx,
+  budgetPx,
+  availableGridWidthPx,
+}: DecideFeedRowsInput): number {
+  let bestRows = FEED_ROWS_CANDIDATES[0];
+  let bestArea = -1;
+
+  for (const rows of FEED_ROWS_CANDIDATES.filter((candidate) => candidate <= maxRows)) {
+    const scale = solveFeedScale({
+      columns,
+      rows,
+      infoHeightPx,
+      budgetPx,
+      availableGridWidthPx,
+    });
+    if (scale < FEED_ROWS_FALLBACK_MIN_SCALE) {
+      continue;
+    }
+    const { cardWidth, cardHeight } = getFeedCardDimensions(scale, infoHeightPx);
+    const area = rows * columns * cardWidth * cardHeight;
+    if (area > bestArea) {
+      bestArea = area;
+      bestRows = rows;
     }
   }
-  return 2;
+
+  return bestRows;
 }
 
-// --- Feed: 페이지 좌우 컨테이너 폭 기준 캐비닛 내부 그리드 가용 폭 -----------------------------------
-// PAGE_CONTAINER_CLASS(px-4/sm:px-6/lg:px-8, max-w-6xl)와 ShelfCabinet 자체 chrome(border-[8px]×2,
-// body px-5×2)을 그대로 재현한다 — Tailwind 리터럴을 JS가 읽을 수 없어 이 두 값이 바뀌면 여기도
-// 같이 바꿔야 한다(파일 상단 공통 주석과 동일한 이유).
+// --- Feed: 페이지 좌우 컨테이너 폭 기준 그리드 가용 폭 -----------------------------------------------
+// PAGE_CONTAINER_CLASS(px-4/sm:px-6/lg:px-8, max-w-6xl)를 그대로 재현한다 — Tailwind 리터럴을 JS가
+// 읽을 수 없어 이 값이 바뀌면 여기도 같이 바꿔야 한다(파일 상단 공통 주석과 동일한 이유).
 function getPageHorizontalPaddingPx(viewportWidthPx: number): number {
   if (viewportWidthPx >= 1024) {
     return 32; // lg:px-8
@@ -274,34 +319,63 @@ function getPageHorizontalPaddingPx(viewportWidthPx: number): number {
 // AppLayout의 <main xl:pl-60> 안에서 "사이드바를 뺀 나머지 폭"을 기준으로 걸리므로, reservedLeftPx는
 // Math.min보다 먼저 viewportWidthPx에서 빼야 한다 — min() 이후에 빼면(예: 1300px 창에서 1152로 이미
 // 캡된 뒤 240을 빼면 848) 실제 CSS가 만드는 값(240을 먼저 뺀 1060을 1152와 비교 → 1060)과 달라진다.
+// 314: 캐비닛이 사라지면서 여기서 빼던 chrome(border-[8px]×2=16 + body px-5×2=40, 좌우 각 28px)도
+// 함께 사라졌다. 대신 같은 자리를 좌우 페이지 이동 버튼의 여유 폭으로 쓴다 — 오픈 책장에는 버튼이
+// 들어앉을 캐비닛 안쪽 여백이 없어서, 이 gutter를 확보하지 않으면 버튼이 양 끝 카드 위를 덮어
+// 카드 클릭을 가로챈다. 결과적으로 빼는 총량(56px)이 이전과 같아 카드 크기는 그대로다.
+export const FEED_SIDE_GUTTER_PX = 28; // 원형 버튼 h-7(28px)이 딱 들어가는 폭
+
+/**
+ * 314: 선반 한 덩어리(책 줄 + 좌우 gutter)의 실제 폭.
+ *
+ * 카드 폭이 세로 예산에 걸려 작아지면 가로에 남는 폭이 생기는데, 선반 판을 컨테이너 전체로 늘리면
+ * 그 남는 폭만큼 판이 책 없는 허공까지 뻗어 "우측이 비었다"로 보인다. 대신 선반 전체를 이 폭으로
+ * 잡고 가운데 정렬하면, 판은 책보다 좌우 gutter만큼만 넉넉하게 깔리고(시안의 오버행) 남는 폭은
+ * 양쪽으로 균등하게 빠진다. 그 gutter가 좌우 페이지 버튼의 자리이기도 하다.
+ */
+export function getFeedShelfWidthPx(
+  columns: number,
+  cardWidthPx: number,
+  gridGapPx: number,
+): number {
+  return columns * cardWidthPx + (columns - 1) * gridGapPx + 2 * FEED_SIDE_GUTTER_PX;
+}
+
 export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx = 0): number {
   const effectiveWidthPx = viewportWidthPx - reservedLeftPx;
   const containerWidth =
     Math.min(effectiveWidthPx, 1152) - 2 * getPageHorizontalPaddingPx(viewportWidthPx);
-  return containerWidth - 16 /* 캐비닛 border-[8px]×2 */ - 40; /* 캐비닛 body px-5×2 */
+  return containerWidth - 2 * FEED_SIDE_GUTTER_PX;
 }
 
-// --- Feed: 캐비닛 세로 예산(동적, sm·mdlg 전용 — 요구사항 2) -----------------------------------------
-// xl은 기존 고정 SHELF_SCROLL_MAX_H_PX(590)을 그대로 쓴다(요구사항 2.4). sm·mdlg는 "실제 뷰포트
-// 높이 - nav바 높이 - 페이지 타이틀 영역 높이 - 상하 최소 여백"으로 동적 계산한다.
+// --- Feed: 책장 세로 예산(동적, 전 구간) -------------------------------------------------------------
+// "실제 뷰포트 높이 - nav바 높이 - 페이지 타이틀 영역 높이 - 상하 최소 여백"으로 동적 계산한다.
+// 314: xl도 여기에 합류했다. 원래 xl은 고정 SHELF_SCROLL_MAX_H_PX(590)를 썼는데 그 값은 "캐비닛
+// 안쪽" 높이라는 뜻이었고, 캐비닛을 걷어내면서 근거를 잃었다. 590을 그대로 두면 900px대 뷰포트에서
+// 실제 가용 세로(약 820px) 중 230px이 그냥 비어, 책장 아래가 휑하게 남는다. 동적으로 바꾸면 그
+// 공간이 행 수·카드 크기 결정(decideFeedRows)에 반영된다.
 // 295 추가 수정(이슈 1.1): nav바 높이·타이틀 높이는 더 이상 하드코딩 추정치가 아니다 —
 // LayoutMetricsContext(AppLayout·PageTitle이 ref+ResizeObserver로 실측해 보고)에서 받은 값을 호출부
 // (FeedList)가 넘겨준다. 아직 측정 전(최초 렌더, 아주 짧은 순간)이면 null이 들어오는데, 그때만
 // 아래 MOBILE_NAV_HEIGHT_PX_FALLBACK/MOBILE_TITLE_HEIGHT_PX_FALLBACK(기존에 쓰던 추정치)로
 // 폴백한다 — 페이지 padding(py-3)·타이틀-캐비닛 gap(gap-2)·캐비닛 자체 chrome은 전부 우리가 직접
 // 소유한 Tailwind 리터럴이라 드리프트 위험이 없어 그대로 상수로 둔다.
+// 314: 이제 xl도 이 동적 예산을 쓴다(아래 getFeedDynamicBudgetPx 주석) — 페이지 padding·타이틀 gap이
+// 구간마다 다르므로(PAGE_VERTICAL_PADDING_CLASS 'py-3 xl:py-6', PAGE_TITLE_GAP_CLASS 'gap-2 xl:gap-4')
+// 단일 상수 대신 구간별 표로 바꾼다. 두 표는 그 Tailwind 리터럴과 반드시 함께 움직여야 한다.
+const PAGE_PADDING_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 12, mdlg: 12, xl: 24 };
+const TITLE_GAP_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 8, mdlg: 8, xl: 16 };
+
 const MOBILE_NAV_HEIGHT_PX_FALLBACK = 56; // AppLayout <main> pt-14 근사치 — 실측 전에만 쓴다
 // 313: PageTitle이 제목 아래 서브카피까지 포함하는 블록이 되면서 이 폴백도 블록 전체 높이가 됐다 —
 // h1(h-8, 32) + gap-1(4) + 서브카피 1줄(text-sm, 20). 32로 두면 실측이 들어오기 전 첫 프레임에만
 // 예산이 24px 과대 계상돼 마지막 행이 잠깐 넘쳤다가 제자리를 찾는다. FeedPage는 항상 서브카피를
 // 넘기므로(이 상수는 getFeedDynamicBudgetPx 전용 = Feed 전용) 서브카피 있는 쪽에 맞춘다.
 const MOBILE_TITLE_HEIGHT_PX_FALLBACK = 56; // PageTitle 블록(제목+서브카피) 근사치 — 실측 전에만 쓴다
-const MOBILE_PAGE_PADDING_PX = 12; // FeedPage/LibraryPage <main> py-3, 상/하 각각 — 우리가 소유, 고정값
-const MOBILE_TITLE_GAP_PX = 8; // PAGE_TITLE_GAP_CLASS gap-2 — 우리가 소유, 고정값
-// 캐비닛 자체의 chrome(border+헤더바+본문 padding)은 breakpoint와 무관하게 항상 고정이다 — "캐비닛
-// 세로 예산"은 그 chrome을 제외한, 실제 카드 행이 들어갈 안쪽 공간을 뜻한다(기존 SHELF_SCROLL_MAX_H_PX
-// 도 항상 이 안쪽 공간 기준이었다).
-const CABINET_CHROME_PX = 16 /* border-[8px]×2 */ + 32 /* 헤더바 h-8 */ + 12; /* body py-1.5×2 */
+// 314: 페이지 padding·타이틀 gap은 위 PAGE_PADDING_PX_BY_TIER/TITLE_GAP_PX_BY_TIER 구간별 표로 옮겼다
+// (xl이 동적 예산에 합류하면서 sm·mdlg 값만으로는 부족해졌다).
+// 314: 캐비닛(border 16 + 헤더바 32 + body padding 12 = 60px)이 사라져 이 항이 없어졌다 — 오픈
+// 책장은 선반 판과 카드만 있고 셸이 없다. sm·mdlg의 세로 예산이 그만큼 늘어난다.
 const MOBILE_SAFETY_MARGIN_PX = 8; // 브라우저별 폰트 지표 오차 등에 대비한 여유(요구사항의 "상하 최소 여백")
 
 export interface FeedDynamicBudgetMeasured {
@@ -312,15 +386,18 @@ export interface FeedDynamicBudgetMeasured {
 export function getFeedDynamicBudgetPx(
   viewportHeightPx: number,
   measured: FeedDynamicBudgetMeasured,
+  tier: ShelfWidthTier,
 ): number {
-  const navHeightPx = measured.navHeightPx ?? MOBILE_NAV_HEIGHT_PX_FALLBACK;
+  // xl은 상단 헤더가 좌측 사이드바로 바뀌어(AppLayout의 xl:hidden) 세로로 뺄 nav 높이가 없다 —
+  // 실측값도 0으로 들어오지만, 측정 전 첫 프레임의 폴백도 0이어야 예산이 56px 작게 잡히지 않는다.
+  const navFallbackPx = tier === 'xl' ? 0 : MOBILE_NAV_HEIGHT_PX_FALLBACK;
+  const navHeightPx = measured.navHeightPx ?? navFallbackPx;
   const titleHeightPx = measured.titleHeightPx ?? MOBILE_TITLE_HEIGHT_PX_FALLBACK;
   const overheadPx =
     navHeightPx +
-    MOBILE_PAGE_PADDING_PX * 2 +
+    PAGE_PADDING_PX_BY_TIER[tier] * 2 +
     titleHeightPx +
-    MOBILE_TITLE_GAP_PX +
-    CABINET_CHROME_PX +
+    TITLE_GAP_PX_BY_TIER[tier] +
     MOBILE_SAFETY_MARGIN_PX;
   return Math.max(SHELF_SCROLL_MIN_H_PX, viewportHeightPx - overheadPx);
 }
