@@ -11,6 +11,7 @@ import { LibraryPage } from '@/pages/LibraryPage';
 import { FeedPage } from '@/pages/FeedPage';
 import { TermsPage } from '@/pages/TermsPage';
 import { PrivacyPage } from '@/pages/PrivacyPage';
+import { PlaceRecordPreviewPage } from '@/pages/PlaceRecordPreviewPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { requireLoggedIn } from '@/features/auth/lib/requireLoggedIn';
 import { redirectIfLoggedIn } from '@/features/auth/lib/redirectIfLoggedIn';
@@ -128,12 +129,19 @@ const privacyRoute = createRoute({
   component: PrivacyPage,
 });
 
+const placeRecordPreviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dev/place-record',
+  component: PlaceRecordPreviewPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   callbackRoute,
   termsRoute,
   privacyRoute,
+  placeRecordPreviewRoute,
   recordDetailRoute,
   collectionDetailRoute,
   shelfRoute,

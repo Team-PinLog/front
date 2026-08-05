@@ -19,7 +19,7 @@ export interface PlaceRecordSheetState {
 export interface PlaceRecordSheetValue extends PlaceRecordSheetState {
   open(): void;
   close(): void;
-  setSearchQuery(query: string): void;
+  setSearchQuery(query: string, options?: { keepSelectedPlace?: boolean }): void;
   selectPlace(place: KakaoPlace | null): void;
   setContextBody(body: string): void;
   stageCollectionTitle(title: string): void;
