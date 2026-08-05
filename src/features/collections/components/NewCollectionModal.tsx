@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useMyRecordListQuery } from '@/features/map/hooks/useMyRecordListQuery';
 import { useCreateCollectionMutation } from '../hooks/useCreateCollectionMutation';
+import { useCoverGeneration } from '../hooks/useCoverGeneration';
+import { CoverStylePicker } from './CoverStylePicker';
 import type { CreateCollectionResponse } from '../api/createCollection';
 
 const TITLE_MAX_LENGTH = 20;
@@ -27,6 +29,13 @@ interface NewCollectionModalProps {
  * isOpen/onClose로 제어되는 순수 controlled 컴포넌트다(216의 AddToCollectionDialog처럼 전역 Context를
  * 갖지 않는다). 책등 색상은 고정 브랜드 색상(pin-navy)만 쓰고 선택 UI는 두지 않는다(색상별 책 이미지
  * 확장은 범위 밖).
+ *
+ * 317(표지 생성): mode="library"에서만 "만들기" 성공 후 **모달을 닫지 않고 표지 화풍 선택 단계로
+ * 넘어간다.** 컬렉션은 그 시점에 이미 만들어져 있고(표지를 기다리지 않는다 — api-contract.md
+ * § Collection 표지 이미지), 사용자가 화풍을 고르지 않고 닫아도 표지 없는 정상 상태로 남는다.
+ * mode="fromNewRecord"에는 붙이지 않는다 — 그 경로는 모달이 컬렉션을 만들지 않고(제목만 상위로
+ * 넘긴다) 실제 생성은 Record 저장 뒤 PlaceRecordSheet가 하며, 제목을 여러 개 쌓아 한 번에 여러
+ * 컬렉션을 만들 수 있어 "표지를 몇 번 고르게 할 것인가"가 별도 UX 결정이 된다.
  */
 export function NewCollectionModal({
   isOpen,
@@ -37,22 +46,31 @@ export function NewCollectionModal({
 }: NewCollectionModalProps) {
   const [title, setTitle] = useState('');
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
+  // 표지 단계로 넘어간 뒤에도 제목·컬렉션 id가 필요하다(표지 요청 payload). 생성 응답을 그대로 쥔다.
+  const [createdCollection, setCreatedCollection] = useState<CreateCollectionResponse | null>(null);
 
   const isLibraryMode = mode === 'library';
   const recordListQuery = useMyRecordListQuery(isOpen && isLibraryMode);
   const createCollectionMutation = useCreateCollectionMutation();
+  const cover = useCoverGeneration();
 
   if (!isOpen) {
     return null;
   }
 
+  const isCoverStep = createdCollection !== null;
+
   const resetState = () => {
     setTitle('');
     setSelectedRecordIds([]);
+    setCreatedCollection(null);
     createCollectionMutation.reset();
+    cover.reset();
   };
 
   const handleClose = () => {
+    // 표지 단계에서 닫아도 컬렉션은 이미 만들어져 있다 — 취소가 아니라 "표지는 나중에"다.
+    // 폴링은 이 컴포넌트가 사라지면서 함께 멈춘다(구독자가 없어지면 refetchInterval도 멈춘다).
     resetState();
     onClose();
   };
@@ -84,13 +102,64 @@ export function NewCollectionModal({
       { title: trimmedTitle, recordIds: selectedRecordIds },
       {
         onSuccess: (data: CreateCollectionResponse) => {
+          // 317: 컬렉션 생성은 여기서 이미 끝났다. 호출부(책장 갱신 등)에 먼저 알리고, 모달은
+          // 닫지 않은 채 표지 단계로 넘어간다 — 표지를 기다리느라 생성 완료를 늦추지 않는다.
           onCreated?.({ collectionId: data.collectionId, title: data.title });
-          resetState();
-          onClose();
+          setCreatedCollection(data);
+          cover.start({ collectionId: data.collectionId, title: data.title });
         },
       },
     );
   };
+
+  const handleFinishCoverStep = () => {
+    // 318에서 이 자리에 PATCH /collections/{id} { coverImageUrl }가 들어간다. 지금은 최종본 URL을
+    // 상위로 넘길 준비까지가 범위다(Jira S15P11A705-317).
+    resetState();
+    onClose();
+  };
+
+  if (isCoverStep) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4">
+        <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg bg-white p-6">
+          <h2 className="flex-none text-sm font-bold text-pin-navy">
+            &lsquo;{createdCollection.title}&rsquo; 표지 만들기
+          </h2>
+
+          <div className="mt-4 flex min-h-0 flex-1 flex-col">
+            <CoverStylePicker
+              cover={cover}
+              onRetry={() =>
+                cover.start({
+                  collectionId: createdCollection.collectionId,
+                  title: createdCollection.title,
+                })
+              }
+            />
+          </div>
+
+          <div className="mt-4 flex flex-none gap-2">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="h-11 flex-1 rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy"
+            >
+              나중에 하기
+            </button>
+            <button
+              type="button"
+              onClick={handleFinishCoverStep}
+              disabled={!cover.isSettled}
+              className="h-11 flex-1 rounded-lg bg-log-mint text-sm font-bold text-pin-navy disabled:opacity-40"
+            >
+              {cover.phase === 'finalizing' && !cover.isSettled ? '표지 만드는 중…' : '완료'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4">

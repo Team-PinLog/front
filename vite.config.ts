@@ -21,6 +21,17 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      // 317: Collection 표지 생성(AI 파트 이미지 서비스). 운영은 Traefik이 같은 호스트에서
+      // /image/* 를 이 서비스로 보내므로 same-origin이지만, 로컬에는 이미지 서비스도 GPU 워커도
+      // 없어 운영으로 직접 프록시한다 — 로컬에서 표지 생성을 확인하려면 이 경로가 필요하다.
+      // /api와 달리 target을 localhost로 둘 선택지가 없다.
+      // 프론트가 쓰는 경로는 /image/api/*(생성·상태·선택)와 /image/files/*(결과 이미지) 둘뿐이다.
+      // ❌ /image/jobs/* 는 워커 전용이라 호출하지 않는다(docs/api-contract.md Collection 표지 생성).
+      '/image': {
+        target: 'https://pin-log.com',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
   test: {
