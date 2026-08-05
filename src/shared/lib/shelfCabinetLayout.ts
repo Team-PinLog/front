@@ -104,11 +104,15 @@ export const LIBRARY_COLUMNS_BY_TIER: Record<ShelfWidthTier, number> = {
 // 행 수는 종속 변수"라는 295 요구사항 1.2의 우선순위는 그대로다.
 export type FeedColumnsKey = 'xl' | 'mdlgLandscape' | 'mdlgPortrait' | 'sm';
 
+// 315: sm 3 → 2. 정보가 표지 안으로 들어가면서 카드 폭이 곧 조판 폭이 됐다 — 375px 뷰포트에서
+// 3열이면 카드 폭이 90px이라 표지 루트 폰트가 7px 수준이고, 제목 한 줄에 대여섯 자밖에 못 들어가
+// 표지 안 조판이 성립하지 않는다. 2열로 낮추면 같은 폭에서 카드가 132px이 되고, 세로가 남는 만큼
+// decideFeedRows가 행을 3행으로 올려 권수(6권)는 그대로 유지된다.
 export const FEED_COLUMNS_BY_KEY: Record<FeedColumnsKey, number> = {
   xl: 5,
   mdlgLandscape: 4,
   mdlgPortrait: 3,
-  sm: 3,
+  sm: 2,
 };
 
 // 314: 한 페이지에 몇 줄까지 놓을지의 상한. decideFeedRows는 이 상한 안에서 "화면을 가장 많이 덮는"
@@ -131,19 +135,35 @@ export function getFeedColumnsKey(tier: ShelfWidthTier, isLandscape: boolean): F
   return isLandscape ? 'mdlgLandscape' : 'mdlgPortrait';
 }
 
-// 카드 전체(표지+정보 패널, 테두리 포함) 가로:세로 비율 — "책 표지처럼 보이게" 하는 이번 재설계의
-// 최우선 제약(요구사항 1.1). 정확히 0.75(3:4)로 고정하고, 카드 폭은 항상 `카드 높이 * 이 비율`로
-// 역산한다 — 그래야 INFO_HEIGHT(제목/키워드/메타, 텍스트라 scale과 무관하게 고정)가 구간마다 달라도
-// (sm은 키워드 2줄이라 다른 구간보다 크다) 최종 카드는 어느 구간에서든 항상 정확히 이 비율을 유지한다.
+// 카드(=표지 한 장) 가로:세로 비율 — "책 표지처럼 보이게" 하는 재설계의 최우선 제약(요구사항 1.1).
+// 정확히 0.75(3:4)로 고정하고, 카드 폭은 항상 `카드 높이 * 이 비율`로 역산한다.
+// 315: 이제 이 비율이 모든 scale에서 정확히 성립한다 — 카드 높이에 섞여 있던 고정항(정보 패널
+// 높이 + 테두리 2px)이 전부 사라져 카드 높이가 scale의 순수 1차식이 됐기 때문이다. 이전에는
+// floor 오차 외에도 구간마다 다른 고정항이 비율을 미세하게 흔들었다.
 export const FEED_CARD_RATIO = 3 / 4;
 
-// scale=1 기준(=xl 고정 치수와 동일) 스케일 대상 요소들 — sm/mdlg는 이 비율 관계를 유지한 채
-// 전체를 하나의 scale로 줄인다(요구사항 2.3: "요소가 서로 다른 비율로 찌그러지지 않게").
+/**
+ * 315: scale=1 기준 카드(=표지) 높이. 이 티켓의 핵심 변경이다.
+ *
+ * 314까지 카드 높이는 `테두리 2px + 정보 패널(구간별 78~82px 고정) + 표지(scale × 140)`이었다.
+ * 정보가 표지 안으로 들어가면서 앞의 두 항이 사라지는데, **coverHeight(140)를 그대로 두고
+ * infoHeightPx만 0으로 넘기면 안 된다** — scale=1 기준 카드 높이가 220에서 140으로 뚝 떨어져
+ * 카드가 지금보다 훨씬 작아진다. 그래서 "scale=1일 때의 카드 높이" 자체를 이 상수 하나로
+ * 다시 정의한다.
+ *
+ * 240은 314의 실측(xl 1710×948에서 카드 183×245)을 기준으로 고른 값이다 — 이 값을 쓰면 같은
+ * 뷰포트에서 186×248이 나와, 정보 패널만 표지 안으로 흡수되고 책 크기는 거의 그대로 유지된다.
+ */
+export const FEED_CARD_REF_HEIGHT = 240;
+
+// scale=1 기준 스케일 대상 요소들 — sm/mdlg는 이 비율 관계를 유지한 채 전체를 하나의 scale로
+// 줄인다(요구사항 2.3: "요소가 서로 다른 비율로 찌그러지지 않게").
 // 314: badgeHeight(14)·itemColumnGap(8)·rowInternalGap(10)이 빠졌다 — 카드 아래 순번 배지를 없애고
 // 카드와 선반 판 사이 간격도 0으로 만들면서(책이 선반에 얹힌 것처럼 딱 닿아야 한다), 그 32px이
 // 카드 크기로 돌아갔다. 이제 한 행의 세로 구성은 "카드 + 선반 판" 둘뿐이다.
+// 315: coverHeight가 빠져 FEED_CARD_REF_HEIGHT로 승격됐다(위 주석) — 이제 카드는 표지 그 자체라
+// "표지 높이"가 따로 있을 이유가 없다.
 export const FEED_SCALE_REF = {
-  coverHeight: 140,
   // 314: 8 → 22. 시안의 선반은 얇은 줄이 아니라 두께가 드러나는 판이다(윗면 + 나뭇결 + 앞면 모서리).
   // 8px로는 그라디언트가 한 픽셀씩밖에 안 잡혀 단색 선으로 보이고, 나뭇결도 그릴 자리가 없다.
   boardHeight: 22,
@@ -151,11 +171,7 @@ export const FEED_SCALE_REF = {
   rowsGap: 32,
 };
 
-// button border(1px×2) — 카드 높이 중 scale과 무관하게 항상 고정인 2px. FeedList.tsx CARD_BORDER_PX와
-// 반드시 일치해야 한다.
-const FEED_CARD_BORDER_PX = 2;
-
-const FEED_SCALE_SUM_REF = FEED_SCALE_REF.coverHeight + FEED_SCALE_REF.boardHeight;
+const FEED_SCALE_SUM_REF = FEED_CARD_REF_HEIGHT + FEED_SCALE_REF.boardHeight;
 
 const FEED_SCALE_FLOOR = 0.02; // 수학적 안전판(0·음수 방지) — 가독성 하한이 아니다.
 
@@ -168,33 +184,28 @@ const FEED_SCALE_CAP = 1.5;
 export interface SolveFeedScaleInput {
   columns: number;
   rows: number;
-  infoHeightPx: number; // 이 구간의 고정(비스케일) 정보 패널 높이 — FeedList.tsx INFO_HEIGHT_PX류
-  budgetPx: number; // 캐비닛 세로 예산(xl은 정적 590, 나머지는 getFeedDynamicBudgetPx)
+  budgetPx: number; // 카드가 실제로 쓸 수 있는 세로(getFeedRowsContentBudgetPx로 padding을 뺀 값)
   availableGridWidthPx: number; // getFeedGridAreaWidthPx(실제 뷰포트 폭)
 }
 
-// 이 구간(columns×rows, infoHeightPx)에서 세로 예산·가로 폭 둘 다 넘기지 않는 최대 scale을 구한다.
-// 세로: rows*(고정 테두리+정보패널) + scale*(rows*스케일합 + rowsGap*(rows-1)) ≤ budgetPx
+// 이 구간(columns×rows)에서 세로 예산·가로 폭 둘 다 넘기지 않는 최대 scale을 구한다.
+// 세로: scale*(rows*스케일합 + rowsGap*(rows-1)) ≤ budgetPx
 // 가로: columns*cardWidth(scale) + (columns-1)*gridGap(scale) ≤ availableGridWidthPx
 //       (cardWidth(scale) = FEED_CARD_RATIO * cardHeight(scale)이므로 가로 제약도 scale의 1차식이 된다)
+// 315: infoHeightPx가 사라지면서 두 식의 상수항(고정 테두리+정보 패널)도 함께 사라졌다 — 이제
+// 세로·가로 모두 scale에 정비례하는 순수 비례식이라, 예산을 두 배로 주면 카드도 정확히 두 배가 된다.
 export function solveFeedScale({
   columns,
   rows,
-  infoHeightPx,
   budgetPx,
   availableGridWidthPx,
 }: SolveFeedScaleInput): number {
-  const fixedPerRow = FEED_CARD_BORDER_PX + infoHeightPx;
-
-  const heightFixed = rows * fixedPerRow;
   const heightScalableBase = rows * FEED_SCALE_SUM_REF + FEED_SCALE_REF.rowsGap * (rows - 1);
-  const heightScale = heightScalableBase > 0 ? (budgetPx - heightFixed) / heightScalableBase : 1;
+  const heightScale = heightScalableBase > 0 ? budgetPx / heightScalableBase : 1;
 
-  const widthFixed = columns * FEED_CARD_RATIO * fixedPerRow;
   const widthScalableBase =
-    columns * FEED_CARD_RATIO * FEED_SCALE_REF.coverHeight + (columns - 1) * FEED_SCALE_REF.gridGap;
-  const widthScale =
-    widthScalableBase > 0 ? (availableGridWidthPx - widthFixed) / widthScalableBase : 1;
+    columns * FEED_CARD_RATIO * FEED_CARD_REF_HEIGHT + (columns - 1) * FEED_SCALE_REF.gridGap;
+  const widthScale = widthScalableBase > 0 ? availableGridWidthPx / widthScalableBase : 1;
 
   return Math.max(FEED_SCALE_FLOOR, Math.min(FEED_SCALE_CAP, heightScale, widthScale));
 }
@@ -202,17 +213,16 @@ export function solveFeedScale({
 export interface FeedCardDimensions {
   cardWidth: number;
   cardHeight: number;
-  coverHeight: number;
   boardHeight: number;
   gridGap: number;
   rowsGap: number;
 }
 
-// scale과 이 구간의 infoHeightPx로 실제 렌더링 px을 계산한다. Math.floor로 항상 내림해 budgetPx·
-// availableGridWidthPx 경계를 넘지 않는다(반올림으로 위로 튀는 것을 막는다).
-export function getFeedCardDimensions(scale: number, infoHeightPx: number): FeedCardDimensions {
-  const coverHeight = Math.max(0, Math.floor(FEED_SCALE_REF.coverHeight * scale));
-  const cardHeight = FEED_CARD_BORDER_PX + infoHeightPx + coverHeight;
+// scale로 실제 렌더링 px을 계산한다. Math.floor로 항상 내림해 budgetPx·availableGridWidthPx 경계를
+// 넘지 않는다(반올림으로 위로 튀는 것을 막는다).
+// 315: coverHeight를 더 이상 돌려주지 않는다 — 카드가 곧 표지라 카드 높이와 같은 값이다.
+export function getFeedCardDimensions(scale: number): FeedCardDimensions {
+  const cardHeight = Math.max(1, Math.floor(FEED_CARD_REF_HEIGHT * scale));
   const cardWidth = Math.floor(cardHeight * FEED_CARD_RATIO);
   const boardHeight = Math.max(1, Math.floor(FEED_SCALE_REF.boardHeight * scale));
   const gridGap = Math.max(1, Math.floor(FEED_SCALE_REF.gridGap * scale));
@@ -221,7 +231,6 @@ export function getFeedCardDimensions(scale: number, infoHeightPx: number): Feed
   return {
     cardWidth,
     cardHeight,
-    coverHeight,
     boardHeight,
     gridGap,
     rowsGap,
@@ -239,9 +248,16 @@ export function getFeedCardDimensions(scale: number, infoHeightPx: number): Feed
 // "행 수"가 먹는다 — decideFeedRows가 4행부터 탐색하므로 sm 844px 기준 3행(scale 0.70) 대신 4행
 // (scale 0.41)이 선택된다. scale 0.41이면 카드 높이 141px 중 82px이 고정 정보 패널이라 표지가
 // 57px밖에 안 남아 책으로 보이지 않는다. 회수한 공간은 "더 많은 책"이 아니라 "더 큰 책"에 쓰는 게
-// 시안(큼직한 책이 선반에 놓인 그림)에 맞다. 0.5는 sm 844px에서 4행(0.41)은 걸러내고 3행(0.70)은
-// 통과시키는 값이다 — 결과적으로 행 수는 변경 전과 같고 카드만 커진다(scale 0.60 → 0.70).
-export const FEED_ROWS_FALLBACK_MIN_SCALE = 0.5;
+// 시안(큼직한 책이 선반에 놓인 그림)에 맞다.
+//
+// 315: 이 하한을 scale이 아니라 **카드 폭(px)** 으로 바꾼다(FEED_ROWS_FALLBACK_MIN_SCALE 폐기).
+// scale은 기준값(FEED_CARD_REF_HEIGHT)에 대한 상대값이라, 이번처럼 기준 카드 높이가 220→240으로
+// 바뀌면 같은 "0.5"가 가리키는 실제 카드 크기가 조용히 달라진다. 반면 이 임계값이 실제로 판단하려는
+// 것은 언제나 "이 카드에 조판이 성립하는가"이고, 정보가 표지 안으로 들어온 지금은 그 판단 기준이
+// 곧 카드 폭이다 — 표지 안 글자 크기가 카드 폭에 비례하기 때문이다(CollectionBookCard).
+// 112px은 314의 0.5가 만들던 카드 폭(약 112px)과 같은 값이라, 이 교체만으로는 행 수 결정이 바뀌지
+// 않는다(회귀 없음).
+export const FEED_ROWS_MIN_CARD_WIDTH_PX = 112;
 const FEED_ROWS_CANDIDATES = [2, 3, 4];
 
 /**
@@ -255,13 +271,12 @@ const FEED_ROWS_CANDIDATES = [2, 3, 4];
  * 이제 후보 행 수마다 세로·가로를 **둘 다** 반영한 실제 scale(solveFeedScale)을 구하고, 그 결과로
  * 만들어지는 카드가 화면을 가장 많이 덮는 배치를 고른다(카드 넓이 × 높이 × 칸 수). 세로가 남으면
  * 행이 늘고, 가로가 남으면 카드가 커지는 쪽으로 자연스럽게 수렴한다.
- * FEED_ROWS_FALLBACK_MIN_SCALE은 여전히 가독성 하한이다 — 이 밑으로 떨어지는 배치는 후보에서
+ * FEED_ROWS_MIN_CARD_WIDTH_PX는 여전히 가독성 하한이다 — 이 밑으로 떨어지는 배치는 후보에서
  * 제외하고, 전부 탈락하면 가장 적은 행 수(2행)로 떨어진다.
  */
 export interface DecideFeedRowsInput {
   columns: number;
   maxRows: number;
-  infoHeightPx: number;
   budgetPx: number;
   availableGridWidthPx: number;
 }
@@ -269,7 +284,6 @@ export interface DecideFeedRowsInput {
 export function decideFeedRows({
   columns,
   maxRows,
-  infoHeightPx,
   budgetPx,
   availableGridWidthPx,
 }: DecideFeedRowsInput): number {
@@ -280,14 +294,13 @@ export function decideFeedRows({
     const scale = solveFeedScale({
       columns,
       rows,
-      infoHeightPx,
       budgetPx,
       availableGridWidthPx,
     });
-    if (scale < FEED_ROWS_FALLBACK_MIN_SCALE) {
+    const { cardWidth, cardHeight } = getFeedCardDimensions(scale);
+    if (cardWidth < FEED_ROWS_MIN_CARD_WIDTH_PX) {
       continue;
     }
-    const { cardWidth, cardHeight } = getFeedCardDimensions(scale, infoHeightPx);
     const area = rows * columns * cardWidth * cardHeight;
     if (area > bestArea) {
       bestArea = area;
@@ -400,4 +413,32 @@ export function getFeedDynamicBudgetPx(
     TITLE_GAP_PX_BY_TIER[tier] +
     MOBILE_SAFETY_MARGIN_PX;
   return Math.max(SHELF_SCROLL_MIN_H_PX, viewportHeightPx - overheadPx);
+}
+
+// --- Feed: 행 스크롤 박스의 상/하 여백 -------------------------------------------------------------
+// 314가 넣은 위쪽 여백(pt-2)의 이유: overflow-y-auto(계산이 어긋나는 극단적 경우의 안전판)는 맨 윗줄
+// 카드가 hover(-translate-y-1.5 = 6px)로 떠오를 때 그 카드를 위쪽 경계에서 잘라낸다. 이동량보다 조금
+// 큰 여백을 두면 떠오른 카드가 여백 안에 머문다.
+// 315: 아래쪽 여백이 빠져 있어 맨 아래 선반 판의 그림자가 잘리는 314 회귀를 함께 고친다. 선반 판의
+// shadow(0 10px 16px)는 판 아래로 offset 10 + blur의 절반 8 = 약 18px 뻗는데, overflow가 그걸 자른다.
+// 여유를 조금 더 둬 24px로 잡는다.
+//
+// ⚠️ 이 여백은 반드시 카드 예산에서 차감해야 한다(getFeedRowsContentBudgetPx). 스크롤 박스는
+// maxHeight = 세로 예산 + box-sizing: border-box라, 여백을 늘리면 카드가 실제로 쓸 수 있는 세로가
+// 그만큼 줄어드는데 solveFeedScale이 그걸 모르면 계산상으로만 딱 맞고 실제로는 스크롤바가 뜬다.
+// 값은 FeedList.tsx가 인라인 style로 직접 읽어 쓴다 — Tailwind 클래스 리터럴(pt-2 등)로 두면 JS
+// 상수와 두 곳에서 따로 관리돼 어긋날 수 있어서, 이 파일을 단일 소스로 삼는다.
+export const FEED_ROWS_PADDING_TOP_PX = 8; // hover 리프트(6px) 수용
+export const FEED_ROWS_PADDING_BOTTOM_PX = 24; // 맨 아래 선반 판 그림자
+const FEED_ROWS_PADDING_PX = FEED_ROWS_PADDING_TOP_PX + FEED_ROWS_PADDING_BOTTOM_PX;
+
+/**
+ * 315: 세로 예산(getFeedDynamicBudgetPx) 중 카드·선반이 실제로 쓸 수 있는 몫.
+ *
+ * getFeedDynamicBudgetPx가 주는 값은 "스크롤 박스 바깥 치수"(= maxHeight로 그대로 쓰는 값)이고,
+ * solveFeedScale/decideFeedRows가 필요로 하는 값은 "그 안쪽 컨텐츠 높이"다. 둘을 구분하지 않으면
+ * 위아래 여백만큼 매번 예산이 초과된다.
+ */
+export function getFeedRowsContentBudgetPx(budgetPx: number): number {
+  return Math.max(0, budgetPx - FEED_ROWS_PADDING_PX);
 }

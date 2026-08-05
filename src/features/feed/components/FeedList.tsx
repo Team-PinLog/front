@@ -1,16 +1,17 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
-import { formatDate } from '@/shared/lib/formatDate';
-import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
 import {
   decideFeedRows,
   FEED_COLUMNS_BY_KEY,
   FEED_MAX_ROWS_BY_KEY,
+  FEED_ROWS_PADDING_BOTTOM_PX,
+  FEED_ROWS_PADDING_TOP_PX,
   getFeedColumnsKey,
   getFeedCardDimensions,
   getFeedDynamicBudgetPx,
   getFeedGridAreaWidthPx,
+  getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
   SIDEBAR_WIDTH_PX,
   solveFeedScale,
@@ -24,46 +25,30 @@ import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
+import { CollectionBookCard } from './CollectionBookCard';
 import type { FeedCollectionItem } from '../api/getFeedCollections';
 
 // 279(→287-8→295 이산 배치→295 추가 수정에서 3:4 비율+동적 예산으로 재설계): 목업(Team-PinLog/
 // mockup 탐색 페이지)의 책장 레이아웃 — 한 행당 카드 수는 여전히 breakpoint(및 mdlg 구간의
 // orientation)별 이산 표(FEED_COLUMNS_BY_KEY)지만, 카드 "크기"는 더 이상 고정 표가 아니다.
 //
-// 295 추가 수정(이슈 1: 카드 비율): 카드 전체(표지+정보 패널) 가로:세로 비율을 3:4(FEED_CARD_RATIO)로
-// 고정한다 — breakpoint/그리드 구성과 무관한 최우선 제약이다. 카드 폭은 항상 `카드 높이 * 3/4`로
-// 역산해서 만든다(아래 TITLE/KEYWORDS/META처럼 텍스트 영역은 폭과 무관하게 고정 px이므로, 높이 →
-// 폭 방향으로 역산해야 비율이 항상 정확히 맞는다).
+// 295 추가 수정(이슈 1: 카드 비율): 카드 가로:세로 비율을 3:4(FEED_CARD_RATIO)로 고정한다 —
+// breakpoint/그리드 구성과 무관한 최우선 제약이다. 카드 폭은 항상 `카드 높이 * 3/4`로 역산해서
+// 만든다.
+// 315: 그 역산이 이제 정확히 맞아떨어진다 — 카드 높이에서 고정항(정보 패널 + 테두리 2px)이 전부
+// 빠져 scale의 순수 1차식이 됐다(FEED_CARD_REF_HEIGHT).
 // 295 추가 수정(이슈 2: 동적 세로 예산): xl은 기존 고정 SHELF_SCROLL_MAX_H_PX(590)를 그대로 쓰고,
 // sm·mdlg는 실제 뷰포트 높이 기반 동적 예산(getFeedDynamicBudgetPx)을 쓴다. 카드 크기(scale)는 이
 // 예산과 그리드 가로 폭(getFeedGridAreaWidthPx, 실제 뷰포트 폭 기반) 중 더 빡빡한 쪽에 맞춰 실시간
 // 역산한다(solveFeedScale) — "화면을 거의 가득 채우도록" 조정하되 카드/gap/선반 판이 서로 다른
 // 비율로 찌그러지지 않도록 전부 같은 scale 하나로 묶는다.
-// 295 추가 수정(이슈 1.2: 행 수 하향): mdlgPortrait·sm(원래 3행)은 3행으로는 비율을 지키며 도저히
-// 예산 안에 들어올 수 없을 만큼(scale이 FEED_ROWS_FALLBACK_MIN_SCALE 미만) 작아지면 2행(6개)으로
-// 낮춘다(decideFeedRows) — 실제 뷰포트 높이에 따라 매 렌더 다시 판단한다(고정 표가 아니다).
-// 295 추가 수정(이슈 3: 키워드 자리): 제목-메타 사이에 키워드가 들어갈 자리를 항상 예약한다 —
-// sm은 2줄(KEYWORDS_HEIGHT_PX_SM), 그 외 구간은 1줄(KEYWORDS_HEIGHT_PX_DEFAULT). 키워드 데이터가
-// 없어도(현재 더미 데이터) 이 높이만큼은 항상 비어있는 채로 유지되어, 실제 키워드가 들어와도
-// 레이아웃이 흔들리지 않는다. 이 여유를 만들기 위해 정보 패널 padding/gap도 구간별로 줄였다(sm은
-// 특히 더 — 3열 그리드가 320px 폭에서 매우 빡빡해, 정보 패널을 최대한 압축해야 표지가 아예
-// 사라지지 않는다).
-const TITLE_HEIGHT_PX = 30; // text-xs(12px) leading-tight(1.25) 2줄 = 15px*2, 전 구간 공통 고정
-const META_HEIGHT_PX = 14; // 장소개수·날짜 1줄(truncate), 전 구간 공통 고정
-const KEYWORDS_HEIGHT_PX_DEFAULT = 16; // 1줄 분량 pill
-const KEYWORDS_HEIGHT_PX_SM = 32; // 2줄 분량 pill — sm은 카드 자체가 좁아 키워드가 더 잘 줄바꿈된다
-const INFO_PADDING_PX_DEFAULT = 6; // p-1.5
-const INFO_PADDING_PX_SM = 2;
-const INFO_GAP_PX_DEFAULT = 3;
-const INFO_GAP_PX_SM = 1;
-
-function getInfoLayout(isSm: boolean) {
-  const keywordsHeight = isSm ? KEYWORDS_HEIGHT_PX_SM : KEYWORDS_HEIGHT_PX_DEFAULT;
-  const padding = isSm ? INFO_PADDING_PX_SM : INFO_PADDING_PX_DEFAULT;
-  const gap = isSm ? INFO_GAP_PX_SM : INFO_GAP_PX_DEFAULT;
-  const infoHeight = padding * 2 + TITLE_HEIGHT_PX + keywordsHeight + META_HEIGHT_PX + gap * 2;
-  return { keywordsHeight, padding, gap, infoHeight };
-}
+// 295 추가 수정(이슈 1.2: 행 수 하향): 3행으로는 비율을 지키며 도저히 예산 안에 들어올 수 없을
+// 만큼(카드 폭이 FEED_ROWS_MIN_CARD_WIDTH_PX 미만) 작아지면 2행으로 낮춘다(decideFeedRows) —
+// 실제 뷰포트 높이에 따라 매 렌더 다시 판단한다(고정 표가 아니다).
+// 315: 카드 아래 정보 패널(제목·키워드·메타를 담던 고정 높이 블록)이 통째로 사라지면서, 그 높이를
+// 구간별로 계산하던 상수들(TITLE_HEIGHT_PX·META_HEIGHT_PX·KEYWORDS_HEIGHT_PX_*·INFO_PADDING_PX_*·
+// INFO_GAP_PX_*·getInfoLayout)도 함께 없앴다. 정보는 이제 표지 안에 얹히고(CollectionBookCard),
+// 그 글자 크기는 고정 px이 아니라 카드 폭에 비례하는 em이라 세로 예산 계산에 들어갈 고정항이 없다.
 
 // 슬롯 수(pageSize = columns*rows)만큼 채우고 모자란 자리는 null로 채워 캐비닛 크기를 고정한다 —
 // 마지막 페이지처럼 슬롯 수 미만일 때도 책장 전체 크기는 그대로 두고 왼쪽부터 채운 뒤 나머지는 빈
@@ -106,7 +91,10 @@ function toShelfRows(
  * 뻗지 않는다.
  * 314: 카드 아래 순번 배지도 없앴다 — 책이 선반 판에 딱 닿아 얹혀 보여야 하는데 배지가 그 사이를
  * 벌리고 있었다. position은 표시에서만 빠지고 CLICK 이벤트에는 응답 값 그대로 실린다(재계산 금지).
- * 카드 "안쪽" 구조(표지 + 정보 패널)는 이 티켓에서 건드리지 않는다 — 315의 범위다.
+ * 315: 카드 안쪽도 표지 한 장으로 합쳤다 — 표지 아래 붙어 있던 정보 패널을 없애고 제목·키워드·
+ * 저장된 장소 수·날짜를 표지 위에 얹는다(CollectionBookCard). 그 결과 카드 높이에서 "scale과
+ * 무관한 고정항"이 완전히 사라져 세로 예산 계산이 순수 비례식이 됐다(shelfCabinetLayout.ts).
+ * 이 티켓에서도 페이지네이션·이벤트 큐잉 로직은 그대로다 — requestId·position은 응답 값 그대로다.
  */
 export function FeedList() {
   const navigate = useNavigate();
@@ -121,14 +109,15 @@ export function FeedList() {
 
   const columnsKey = getFeedColumnsKey(tier, isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
-  const isSm = tier === 'sm';
-  const { keywordsHeight, padding, gap, infoHeight } = getInfoLayout(isSm);
 
   // 314: 전 구간이 실제 뷰포트 높이 기반 동적 예산을 쓴다 — xl의 고정 590은 "캐비닛 안쪽" 높이라는
   // 뜻이었고 캐비닛이 사라지면서 근거를 잃었다(그대로 두면 책장 아래가 크게 빈다).
   // 295 추가 수정(이슈 1.1): nav바·타이틀 높이는 하드코딩 추정치가 아니라 LayoutMetricsContext가
   // 실측해 보고한 값이다(AppLayout.tsx/PageTitle.tsx 참고).
+  // 315: budgetPx는 스크롤 박스 바깥 치수(maxHeight)이고, 카드·선반이 실제로 쓸 수 있는 몫은 위아래
+  // 여백을 뺀 contentBudgetPx다 — 이 구분을 빼먹으면 여백만큼 매번 예산이 넘쳐 스크롤바가 뜬다.
   const budgetPx = getFeedDynamicBudgetPx(viewportHeight, { navHeightPx, titleHeightPx }, tier);
+  const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
 
   // 304: xl에서는 좌측 사이드바(SIDEBAR_WIDTH_PX)가 실제 가용 폭을 그만큼 줄인다 — sm·mdlg는
   // 사이드바가 없어 기존과 동일하게 0을 넘긴다.
@@ -143,19 +132,17 @@ export function FeedList() {
   const rows = decideFeedRows({
     columns,
     maxRows: FEED_MAX_ROWS_BY_KEY[columnsKey],
-    infoHeightPx: infoHeight,
-    budgetPx,
+    budgetPx: contentBudgetPx,
     availableGridWidthPx,
   });
   const pageSize = columns * rows;
   const scale = solveFeedScale({
     columns,
     rows,
-    infoHeightPx: infoHeight,
-    budgetPx,
+    budgetPx: contentBudgetPx,
     availableGridWidthPx,
   });
-  const dims = getFeedCardDimensions(scale, infoHeight);
+  const dims = getFeedCardDimensions(scale);
   // 314: 컬럼 폭을 1fr(남는 폭을 균등 분배)이 아니라 카드 폭 그대로 잡고 그리드 전체를 가운데
   // 정렬한다. 1fr이면 scale이 세로에 걸려 카드가 작아질 때 남는 가로 폭이 전부 칸 여백으로 흘러가
   // 책 사이가 휑하게 벌어졌다(gridGap 20px인데 실제 간격은 100px을 넘기도 했다). 고정 폭이면 책
@@ -285,7 +272,7 @@ export function FeedList() {
       <FeedArrowButton direction="right" disabled={!canGoNext} onClick={handleNext} />
 
       {/* maxHeight를 budgetPx 하나만 안전판으로 두고, 실제 높이는 scale이 만드는 자연 높이를 쓴다. */}
-      <div style={{ gap: dims.rowsGap, maxHeight: budgetPx }} className={FEED_ROWS_SCROLL_CLASS}>
+      <div style={getRowsScrollStyle(dims.rowsGap, budgetPx)} className={FEED_ROWS_SCROLL_CLASS}>
         {toShelfRows(items, columns, pageSize).map((row, rowIndex) => (
           <div key={rowIndex} className="flex flex-col">
             <div
@@ -294,62 +281,16 @@ export function FeedList() {
             >
               {row.map((item, indexInRow) =>
                 item ? (
-                  <button
+                  // 315: 카드 JSX는 CollectionBookCard로 분리했다 — 정보가 표지 안으로 들어가면서
+                  // 카드 내부 조판이 길어졌고, 316에서 이 자리를 표지 레이아웃 6종이 대체한다.
+                  // 클릭 핸들러·이벤트 큐잉·페이지네이션은 그대로 이 컴포넌트가 갖는다.
+                  <CollectionBookCard
                     key={`${page.requestId}-${item.collectionId}-${item.position}`}
-                    type="button"
+                    item={item}
+                    widthPx={dims.cardWidth}
+                    heightPx={dims.cardHeight}
                     onClick={() => handleItemClick(item)}
-                    style={cardBoxStyle}
-                    className="flex flex-col overflow-hidden rounded-lg border border-line-card bg-white text-left shadow-[0_6px_14px_rgba(4,33,66,.08)] transition duration-150 ease-out hover:-translate-y-1.5 hover:shadow-[0_14px_26px_rgba(4,33,66,.2)]"
-                  >
-                    {/* 279 추가 수정: 표지에 명시적 높이(dims.coverHeight)를 직접 지정해 'auto'
-                            계산이 개입할 여지를 없앤다. */}
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        height: dims.coverHeight,
-                        backgroundColor: getCollectionAccentColor(item.collectionId),
-                      }}
-                    />
-                    <div
-                      style={{ height: infoHeight, padding, gap }}
-                      className="flex flex-col overflow-hidden"
-                    >
-                      {/* 279 추가 수정: line-clamp-2 + 명시적 height(TITLE_HEIGHT_PX)로 1줄이든
-                              2줄이든 항상 동일한 높이를 점유하게 한다. */}
-                      <p
-                        style={{ height: TITLE_HEIGHT_PX }}
-                        className="line-clamp-2 overflow-hidden text-xs font-bold leading-tight text-pin-navy"
-                      >
-                        {item.title}
-                      </p>
-
-                      {/* 295 추가 수정(이슈 3): 키워드 자리를 항상 예약한다(sm 2줄/그 외 1줄) —
-                              keywords가 빈 배열이어도(현재 더미 데이터) 이 높이만큼은 항상 비워둔다. */}
-                      <div
-                        style={{ height: keywordsHeight }}
-                        className="flex flex-wrap content-start gap-1 overflow-hidden"
-                      >
-                        {item.keywords.map((keyword) => (
-                          <span
-                            key={keyword}
-                            className="h-fit rounded-full bg-log-mint/10 px-1.5 py-px text-[9px] font-bold leading-[12px] text-log-mint"
-                          >
-                            {keyword}
-                          </span>
-                        ))}
-                      </div>
-
-                      <p
-                        style={{ height: META_HEIGHT_PX, lineHeight: `${META_HEIGHT_PX}px` }}
-                        className="truncate text-[9px] text-ink-gray-light"
-                      >
-                        <span className="font-semibold text-log-mint">
-                          {item.recordCount}개 장소
-                        </span>{' '}
-                        · {formatDate(item.createdAt)}
-                      </p>
-                    </div>
-                  </button>
+                  />
                 ) : (
                   // 페이지 크기(pageSize) 미만인 페이지(예: 마지막 페이지)의 남는 슬롯 — 책장
                   // 크기(현재 구간의 columns×rows)는 그대로 두고 빈 선반으로 보여준다.
@@ -412,7 +353,7 @@ function EmptyShelves({
       {/* overflow-y-auto는 안전판으로만 남긴다 — maxHeight(budgetPx)를 넘지 않도록 scale이 이미
           역산돼 있으므로 정상 케이스에서는 스크롤이 뜨지 않는다. */}
       <div
-        style={{ gap: layout.rowsGap, maxHeight: layout.budgetPx }}
+        style={getRowsScrollStyle(layout.rowsGap, layout.budgetPx)}
         className={FEED_ROWS_SCROLL_CLASS}
       >
         {toShelfRows([], layout.columns, layout.pageSize).map((row, rowIndex) => (
@@ -448,10 +389,21 @@ function EmptyShelves({
 // 이 여백이 좌우 페이지 버튼의 자리이자, 캐비닛의 border+px-5가 하던 역할을 대신한다.
 // 314: overflow-y-auto는 계산이 어긋나는 극단적 경우에 대비한 안전판인데, 그 때문에 맨 윗줄 카드가
 // hover(-translate-y-1.5 = 6px)로 떠오를 때 스크롤 박스 위쪽 경계에 잘렸다. 위쪽에 그 이동량보다
-// 조금 더 큰 padding을 두면 떠오른 카드가 padding 영역 안에 머물러 잘리지 않는다(box-sizing이
-// border-box라 maxHeight 안에서 8px을 나눠 쓰는 셈인데, MOBILE_SAFETY_MARGIN_PX와 같은 크기라
-// 예산 계산에 새로 반영할 필요는 없다).
-const FEED_ROWS_SCROLL_CLASS = 'flex flex-col overflow-y-auto pt-2';
+// 조금 더 큰 padding을 두면 떠오른 카드가 padding 영역 안에 머물러 잘리지 않는다.
+// 315: 아래쪽에도 같은 이유의 여백이 필요했는데 빠져 있어 맨 아래 선반 판의 그림자가 잘렸다. 이제
+// 위아래 padding을 Tailwind 리터럴(pt-2)이 아니라 인라인 style로 준다 — 이 값은 세로 예산에서
+// 차감돼야 하는 값이라(getFeedRowsContentBudgetPx) 클래스 문자열과 JS 상수로 이원화하면 반드시
+// 어긋난다. shelfCabinetLayout.ts를 단일 소스로 두고 여기서는 읽어 쓰기만 한다.
+const FEED_ROWS_SCROLL_CLASS = 'flex flex-col overflow-y-auto';
+
+function getRowsScrollStyle(rowsGapPx: number, budgetPx: number): CSSProperties {
+  return {
+    gap: rowsGapPx,
+    maxHeight: budgetPx,
+    paddingTop: FEED_ROWS_PADDING_TOP_PX,
+    paddingBottom: FEED_ROWS_PADDING_BOTTOM_PX,
+  };
+}
 
 const FEED_GRID_CLASS = 'grid items-start justify-center px-7';
 
