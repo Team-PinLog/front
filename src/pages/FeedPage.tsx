@@ -23,7 +23,10 @@ export function FeedPage() {
     <main
       className={`${PAGE_CONTAINER_CLASS} flex min-h-[calc(100dvh-3.5rem)] flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS} xl:min-h-[100dvh]`}
     >
-      <PageTitle className="text-2xl font-extrabold text-pin-navy">
+      <PageTitle
+        className="text-2xl font-extrabold text-pin-navy"
+        description="익명의 사용자가 만든 다양한 컬렉션을 구경해 보세요."
+      >
         새로운 장소를 발견해 보세요
       </PageTitle>
       <div className="min-h-0 flex-1">
