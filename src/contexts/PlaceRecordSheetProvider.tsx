@@ -14,9 +14,14 @@ export function PlaceRecordSheetProvider({ children }: { children: ReactNode }) 
       ...state,
       open: () => setState((prev) => ({ ...prev, isOpen: true })),
       close: () => setState(initialPlaceRecordSheetState),
-      setSearchQuery: (query) =>
+      setSearchQuery: (query, options) =>
         // 검색어를 새로 입력하면 이전 검색 결과 기준으로 골랐던 선택은 더 이상 유효하지 않다.
-        setState((prev) => ({ ...prev, searchQuery: query, selectedPlace: null })),
+        // 장소 수정(기존 선택 유지) 흐름만 keepSelectedPlace로 이 초기화를 건너뛴다.
+        setState((prev) => ({
+          ...prev,
+          searchQuery: query,
+          selectedPlace: options?.keepSelectedPlace ? prev.selectedPlace : null,
+        })),
       selectPlace: (place) =>
         setState((prev) => ({
           ...prev,

@@ -11,8 +11,11 @@ const KAKAO_KEYWORD_SEARCH_URL = 'https://dapi.kakao.com/v2/local/search/keyword
 const kakaoPlaceDocumentSchema = z.object({
   id: z.string(),
   place_name: z.string(),
+  category_name: z.string().optional(),
   address_name: z.string(),
   road_address_name: z.string(),
+  phone: z.string().optional(),
+  place_url: z.string().optional(),
   x: z.string(),
   y: z.string(),
 });
@@ -24,8 +27,11 @@ const kakaoSearchResponseSchema = z.object({
 export interface KakaoPlace {
   kakaoPlaceId: string;
   name: string;
+  categoryName?: string | null;
   address: string;
-  roadAddress: string;
+  roadAddress: string | null;
+  phone?: string | null;
+  placeUrl?: string | null;
   lat: number;
   lng: number;
 }
@@ -55,8 +61,11 @@ export async function searchKakaoPlaces(query: string): Promise<KakaoPlace[]> {
   return documents.map((doc) => ({
     kakaoPlaceId: doc.id,
     name: doc.place_name,
+    categoryName: doc.category_name ?? null,
     address: doc.address_name,
-    roadAddress: doc.road_address_name,
+    roadAddress: doc.road_address_name || null,
+    phone: doc.phone ?? null,
+    placeUrl: doc.place_url ?? null,
     lat: Number(doc.y),
     lng: Number(doc.x),
   }));

@@ -185,21 +185,24 @@ export function PlaceRecordResult({
   };
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden p-8">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-paper-white bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_51px,rgba(109,102,99,0.08)_52px)] p-6">
       <button
         type="button"
         onClick={onClose}
         aria-label="저장 결과 닫기"
-        className="absolute right-6 top-6 flex h-8 w-8 items-center justify-center rounded-full bg-pin-navy/10 text-pin-navy"
+        className="absolute right-5 top-5 grid h-[34px] w-[34px] place-items-center rounded-full bg-pin-navy/10 text-pin-navy hover:bg-pin-navy/15"
       >
-        ×
+        x
       </button>
 
-      <p className="text-sm font-bold tracking-[0.06em] text-log-mint">{resultLabel}</p>
-      <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-pin-navy">
-        {data.place.name}
+      <p className="text-[11px] font-bold tracking-[0.12em] text-log-mint">SAVED</p>
+      <h2 className="mt-2 max-w-[calc(100%-44px)] text-[21px] font-bold text-pin-navy">
+        {resultLabel}
       </h2>
-      <p className="text-base font-semibold text-log-mint">{data.place.address}</p>
+      <h3 className="mt-4 text-3xl font-extrabold tracking-tight text-pin-navy">
+        {data.place.name}
+      </h3>
+      <p className="mt-1 text-sm font-semibold leading-6 text-log-mint">{data.place.address}</p>
 
       <CollectionOutcomeSection
         heading="기존 컬렉션에 추가"
@@ -229,11 +232,13 @@ export function PlaceRecordResult({
           ))}
         </div>
       ) : (
-        <p className="mt-6 text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
+        <p className="mt-6 text-xs text-ink-gray-light">
+          키워드는 잠시 후 자동으로 채워질 수 있어요.
+        </p>
       )}
 
       {savedContext && (
-        <div className="mt-auto whitespace-pre-wrap rounded-lg border border-line-card bg-white p-4 text-sm leading-relaxed text-ink-gray">
+        <div className="mt-auto whitespace-pre-wrap rounded-[10px] border border-pin-navy/10 bg-white/80 p-4 text-sm leading-7 text-ink-gray">
           {savedContext.body}
         </div>
       )}
@@ -241,7 +246,7 @@ export function PlaceRecordResult({
       <button
         type="button"
         onClick={onClose}
-        className="mt-4 h-11 flex-none rounded-lg bg-pin-navy text-sm font-bold text-white"
+        className="mt-4 h-[52px] flex-none rounded-[10px] bg-log-mint text-[15px] font-bold text-pin-navy"
       >
         확인
       </button>
