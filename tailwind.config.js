@@ -28,6 +28,13 @@ export default {
         'shelf-wood-light': '#FBF6EF', // 판 윗면(빛 받는 면)
         'shelf-wood': '#F0E5D6', // 판 몸통
         'shelf-wood-dark': '#DFCDB4', // 판 앞면 아래 모서리
+        // 316: 시안(북디자인 표지)의 금박 액센트. brand-resource의 4색에는 없는 색이지만, 시안에서
+        // "책 표지"라는 인상을 만드는 것은 사실상 이 얇은 금색 괘선과 프레임이다(제목 아래 56px
+        // 짧은 선, 표지 가장자리 1px 프레임, 제목 위아래 괘선). shelf-wood*와 같은 성격의 토큰이다
+        // — 출처가 브랜드 가이드가 아니라 시안이고, 소비처가 한 곳(Feed 표지)으로 한정된다.
+        // ⚠️ 표지 밖(본문 UI)에서 쓰지 않는다. 브랜드 색이 아니다.
+        'cover-gold': '#B68235', // 괘선·표제 라벨 (시안 rgba(182,130,53))
+        'cover-gold-soft': '#DCC7A0', // 옅은 프레임 (시안 --color-accent-200)
       },
       fontFamily: {
         sans: ['Pretendard Variable', 'Pretendard', 'sans-serif'],
