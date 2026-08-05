@@ -13,6 +13,12 @@ const shelfExploreCollectionItemSchema = z.object({
   title: z.string(),
   recordCount: z.number(),
   keywords: z.array(z.string()),
+  // 318: 표지 이미지 URL. Collection이 실리는 모든 응답에 포함되고 null이어도 생략되지 않는다
+  // (docs/api-contract.md § Collection 표지 이미지). null은 표지가 없는 정상 상태이므로 오류로
+  // 처리하지 않고 기본 표지로 폴백한다.
+  // optional까지 두는 이유: 백엔드 배포가 프론트보다 늦을 수 있다 — 필드가 없다고 파싱이 깨지면
+  // 표지와 무관한 목록 전체가 죽는다(thumbnailUrl 선례, getCollectionDetail.ts).
+  coverImageUrl: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 

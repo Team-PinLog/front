@@ -72,10 +72,11 @@ export function CollectionBookCard({ item, widthPx, heightPx, onClick }: Collect
           recordCount={item.recordCount}
           createdAt={item.createdAt}
           accentColor={accentColor}
-          // 316: 표지 일러스트를 저장할 자리가 백엔드에 아직 없다(318 블로커) — 계약이 확정되기
-          // 전까지 Zod 스키마에 필드를 추측해 넣지 않는다. 판형은 이미지가 있는 전제로 작성돼
-          // 있고, null은 공통 파츠(CoverArtwork)가 accent 그라디언트 폴백으로 흡수한다.
-          imageUrl={null}
+          // 318: 실제 AI 표지 일러스트. null(표지를 아직 만들지 않은 컬렉션)이거나 이미지 로드에
+          // 실패하면 공통 파츠(CoverArtwork)가 accent 그라디언트 폴백으로 흡수한다 — 둘 다 오류가
+          // 아닌 정상 상태다(docs/api-contract.md § Collection 표지 이미지).
+          // 값은 같은 오리진 상대 경로(/image/files/….webp)라 API_BASE_URL을 붙이지 않고 그대로 쓴다.
+          imageUrl={item.coverImageUrl ?? null}
           isCompact={isCompact}
         />
       </div>

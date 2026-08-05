@@ -54,6 +54,9 @@ const collectionDetailSchema = z.object({
   title: z.string(),
   ownedByMe: z.boolean(),
   follow: followSummarySchema.nullable(),
+  // 318: 표지 이미지 URL(7.3). null은 표지가 없는 정상 상태다. 백엔드 배포가 프론트보다 늦을 수
+  // 있어 optional로 받는다(같은 파일 thumbnailUrl 선례).
+  coverImageUrl: z.string().nullable().optional(),
   records: z.object({
     items: z.array(collectionRecordItemSchema),
     nextCursor: z.string().nullable(),
