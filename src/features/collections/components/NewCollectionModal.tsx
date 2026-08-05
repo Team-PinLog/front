@@ -1,12 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useMyRecordListQuery } from '@/features/map/hooks/useMyRecordListQuery';
 import { useCreateCollectionMutation } from '../hooks/useCreateCollectionMutation';
-import { useCoverGeneration } from '../hooks/useCoverGeneration';
+import { useCoverGeneration, type CoverGeneration } from '../hooks/useCoverGeneration';
+import { useSaveCollectionCoverMutation } from '../hooks/useSaveCollectionCoverMutation';
 import { CoverStylePicker } from './CoverStylePicker';
 import type { CreateCollectionResponse } from '../api/createCollection';
 
 const TITLE_MAX_LENGTH = 20;
+
+/** 318: 완료 버튼은 세 단계를 거친다 — 인쇄본 생성 중 → 저장 중 → 완료. */
+function getFinishButtonLabel(cover: CoverGeneration, isSaving: boolean): string {
+  if (isSaving) {
+    return '표지 저장 중…';
+  }
+  if (cover.phase === 'finalizing' && !cover.isSettled) {
+    return '표지 만드는 중…';
+  }
+  return '완료';
+}
 
 type NewCollectionModalMode = 'library' | 'fromNewRecord';
 
@@ -53,27 +65,56 @@ export function NewCollectionModal({
   const recordListQuery = useMyRecordListQuery(isOpen && isLibraryMode);
   const createCollectionMutation = useCreateCollectionMutation();
   const cover = useCoverGeneration();
+  // 아직 컬렉션이 없는 단계(표지 단계 진입 전)에는 호출되지 않으므로 0을 넘겨도 안전하다 —
+  // 훅은 collectionId를 mutate 시점에만 쓴다.
+  const saveCoverMutation = useSaveCollectionCoverMutation(createdCollection?.collectionId ?? 0);
+  // 자동 저장은 한 번만 쏜다 — 폴링이 새 데이터를 줄 때마다 effect가 다시 도는데, mutate 접수와
+  // 상태 반영 사이의 틈에 두 번째 PATCH가 나가면 같은 값을 두 번 저장한다.
+  const autoSaveFiredRef = useRef(false);
+
+  const resetState = () => {
+    setTitle('');
+    setSelectedRecordIds([]);
+    setCreatedCollection(null);
+    autoSaveFiredRef.current = false;
+    createCollectionMutation.reset();
+    saveCoverMutation.reset();
+    cover.reset();
+  };
+
+  const handleClose = () => {
+    // 표지 단계에서 닫아도 컬렉션은 이미 만들어져 있다 — 취소가 아니라 표지만 없는 상태다.
+    // 폴링은 이 컴포넌트가 사라지면서 함께 멈춘다(구독자가 없어지면 refetchInterval도 멈춘다).
+    resetState();
+    onClose();
+  };
+
+  // "알아서 골라주기"로 맡긴 경우, 인쇄본이 완성되면 사용자를 기다리게 하지 않고 바로 저장하고
+  // 닫는다 — 맡긴다는 것은 "완료 버튼도 대신 눌러 달라"는 뜻이다. 직접 고른 경우에는 그대로 두고
+  // 사용자가 완성된 표지를 확인한 뒤 완료를 누르게 한다.
+  useEffect(() => {
+    if (!cover.isAutoPicking || !cover.isSettled || autoSaveFiredRef.current) {
+      return;
+    }
+    const coverImageUrl = cover.final?.status === 'done' ? cover.final.url : null;
+    if (!coverImageUrl) {
+      // 인쇄본이 실패했으면 저장할 것이 없다 — 화면에 실패를 남겨 사용자가 다시 고르게 한다.
+      return;
+    }
+    autoSaveFiredRef.current = true;
+    saveCoverMutation.mutate(coverImageUrl, {
+      onSuccess: () => {
+        resetState();
+        onClose();
+      },
+    });
+  });
 
   if (!isOpen) {
     return null;
   }
 
   const isCoverStep = createdCollection !== null;
-
-  const resetState = () => {
-    setTitle('');
-    setSelectedRecordIds([]);
-    setCreatedCollection(null);
-    createCollectionMutation.reset();
-    cover.reset();
-  };
-
-  const handleClose = () => {
-    // 표지 단계에서 닫아도 컬렉션은 이미 만들어져 있다 — 취소가 아니라 "표지는 나중에"다.
-    // 폴링은 이 컴포넌트가 사라지면서 함께 멈춘다(구독자가 없어지면 refetchInterval도 멈춘다).
-    resetState();
-    onClose();
-  };
 
   const toggleRecord = (recordId: number) => {
     setSelectedRecordIds((prev) =>
@@ -113,13 +154,31 @@ export function NewCollectionModal({
   };
 
   const handleFinishCoverStep = () => {
-    // 318에서 이 자리에 PATCH /collections/{id} { coverImageUrl }가 들어간다. 지금은 최종본 URL을
-    // 상위로 넘길 준비까지가 범위다(Jira S15P11A705-317).
-    resetState();
-    onClose();
+    // 318: 폴링에서 done으로 확인한 최종본 URL만 저장한다. 서버는 경로 패턴만 검사하고 파일의
+    // 실제 존재는 확인하지 않으므로, 완성 전 URL을 보내면 깨진 표지가 그대로 남는다.
+    const coverImageUrl = cover.final?.status === 'done' ? cover.final.url : null;
+    if (!coverImageUrl) {
+      // 인쇄본이 실패했거나 아직 없으면 저장할 것이 없다 — 표지 없는 정상 상태로 닫는다.
+      handleClose();
+      return;
+    }
+
+    saveCoverMutation.mutate(coverImageUrl, {
+      onSuccess: () => {
+        resetState();
+        onClose();
+      },
+      // 실패해도 모달은 열어둔다 — 컬렉션은 이미 만들어져 있고 표지만 저장에 실패한 상태라,
+      // 사용자가 다시 시도하거나 "나중에 하기"로 나갈 수 있어야 한다.
+    });
   };
 
   if (isCoverStep) {
+    // 표지를 만들 길이 없을 때만 "표지 없이 닫기"를 연다 — 요청 자체가 실패했거나(서비스 장애),
+    // 상한을 넘겨 그만 물었거나, 인쇄본이 실패한 경우다.
+    const canLeaveWithoutCover =
+      cover.error !== null || cover.isTimedOut || cover.final?.status === 'failed';
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4">
         <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg bg-white p-6">
@@ -139,21 +198,47 @@ export function NewCollectionModal({
             />
           </div>
 
-          <div className="mt-4 flex flex-none gap-2">
+          {saveCoverMutation.isError && (
+            <p className="mt-2 flex-none text-xs text-red-600">
+              표지를 저장하지 못했어요. 다시 시도해 주세요.
+            </p>
+          )}
+
+          {/* 표지를 만들 수 없는 상황(서비스 장애·상한 초과)에서의 유일한 탈출구. 이때는 표지 없는
+              컬렉션이 남지만, 그건 우리가 고를 수 있는 선택지가 아니라 만들 그림 자체가 없는 것이다. */}
+          {canLeaveWithoutCover && (
             <button
               type="button"
               onClick={handleClose}
-              className="h-11 flex-1 rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy"
+              className="mt-2 flex-none text-xs text-ink-gray underline"
             >
-              나중에 하기
+              표지 없이 닫기
+            </button>
+          )}
+
+          <div className="mt-4 flex flex-none gap-2">
+            {/* 318 수정: "나중에 하기"를 없앴다. 표지 없는 컬렉션을 남기면 나중에 표지를 붙이는
+                별도 UI가 반드시 필요해진다 — 고르기 싫은 사용자에게는 무작위 한 장이 빈 표지보다
+                낫다. 다만 이미지 서비스가 아예 응답하지 않는 상황에서는 나갈 길이 있어야 하므로,
+                그때만 "표지 없이 닫기"가 나타난다(아래). */}
+            <button
+              type="button"
+              onClick={cover.requestAutoPick}
+              disabled={cover.isAutoPicking || cover.phase !== 'generating'}
+              className="h-11 flex-1 rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy disabled:opacity-40"
+            >
+              {cover.isAutoPicking ? '고르는 중…' : '알아서 골라주기'}
             </button>
             <button
               type="button"
               onClick={handleFinishCoverStep}
-              disabled={!cover.isSettled}
+              // 인쇄본이 done일 때만 저장할 것이 있다. failed도 isSettled(더 기다릴 필요 없음)이지만
+              // 그때 완료를 열어두면 "완료를 눌렀는데 아무것도 저장되지 않는" 상태가 된다 —
+              // 그 경우엔 다른 화풍을 다시 고르거나 "표지 없이 닫기"로 나간다.
+              disabled={cover.final?.status !== 'done' || saveCoverMutation.isPending}
               className="h-11 flex-1 rounded-lg bg-log-mint text-sm font-bold text-pin-navy disabled:opacity-40"
             >
-              {cover.phase === 'finalizing' && !cover.isSettled ? '표지 만드는 중…' : '완료'}
+              {getFinishButtonLabel(cover, saveCoverMutation.isPending)}
             </button>
           </div>
         </div>

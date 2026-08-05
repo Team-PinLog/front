@@ -1,4 +1,4 @@
-import type { CoverJobStatus, CoverRequestState } from '../api/coverGeneration';
+import type { CoverCandidate, CoverJobStatus, CoverRequestState } from '../api/coverGeneration';
 
 /**
  * 317: 표지 생성 폴링의 단계와 종료 판정. 컴포넌트 파일과 분리해 lib/에 두는 것은 이 레포
@@ -50,6 +50,59 @@ export function isCoverPollingSettled(
     return state.final !== null && isTerminalJobStatus(state.final.status);
   }
   return isTerminalJobStatus(state.status);
+}
+
+/**
+ * 318: 폴링 상한. 317에는 상한이 없어서, 잡이 끝내 terminal이 되지 않으면 모달을 닫을 때까지
+ * 1초마다 요청이 계속 나갔다(사용자가 탭을 켜둔 채 자리를 비우면 몇 시간이 된다).
+ *
+ * 5분은 "GPU 큐가 밀려 오래 걸릴 수 있다"(front#99)를 넉넉히 감안한 값이다 — 정상 생성은 수십 초다.
+ * 상한에 닿아도 **실패로 단정하지 않는다.** 서버 작업은 계속 돌고 있을 수 있고, 우리가 그만 묻는
+ * 것뿐이다. 화면에는 "오래 걸리고 있어요"로 안내하고 다시 시도할 길을 준다.
+ */
+export const COVER_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * 폴링을 시작한 시점(startedAt)으로부터 상한을 넘겼는가.
+ *
+ * 시각을 인자로 받는 이유: Date.now()를 안에서 부르면 이 판정을 테스트할 수 없다.
+ */
+export function isCoverPollingExpired(
+  startedAt: number | null,
+  now: number,
+  timeoutMs: number = COVER_POLL_TIMEOUT_MS,
+): boolean {
+  if (startedAt === null) {
+    return false;
+  }
+  return now - startedAt >= timeoutMs;
+}
+
+/**
+ * 318: 사용자가 고르지 않을 때 대신 고를 후보 하나를 뽑는다.
+ *
+ * **왜 무작위인가**: "표지 없는 컬렉션"을 만들지 않기 위해서다. 사용자가 화풍을 안 고르고 나가면
+ * 표지가 비는데, 그러면 나중에 표지를 붙이는 별도 UI가 반드시 필요해진다. 어느 화풍이든 그 컬렉션의
+ * 제목·키워드로 그린 그림이므로, 고르지 않은 사용자에게는 아무거나 하나가 빈 표지보다 낫다.
+ *
+ * ⚠️ 표지 **판형** 배정(collectionCoverVariant.ts)의 Math.random 금지와 혼동하지 말 것. 그쪽은 매
+ * 렌더 다시 계산하므로 무작위면 책 얼굴이 계속 바뀐다. 이 선택은 **한 번 뽑아 서버에 저장하고 끝**이라
+ * 재현될 필요가 없다.
+ *
+ * 아직 그려지지 않은 후보(url이 없는 것)는 뽑지 않는다 — 저장했다가 깨진 표지가 된다.
+ * 뽑을 게 없으면 null이고, 호출부는 더 기다린다.
+ */
+export function pickRandomReadyCandidate(
+  candidates: CoverCandidate[],
+  random: () => number = Math.random,
+): CoverCandidate | null {
+  const ready = candidates.filter(
+    (candidate) => candidate.status === 'done' && candidate.url !== null,
+  );
+  if (ready.length === 0) {
+    return null;
+  }
+  return ready[Math.floor(random() * ready.length)] ?? ready[0];
 }
 
 /**
