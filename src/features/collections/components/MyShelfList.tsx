@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { handleShelfScrollFetchNext } from '@/shared/lib/handleShelfScrollFetchNext';
 import {
   chunkIntoShelfRows,
@@ -146,7 +145,6 @@ export function MyShelfColumn({
                 title={collection.title}
                 recordCount={collection.recordCount}
                 onClick={() => {
-                  markCollectionOverlayIntent();
                   void navigate({
                     to: '/collections/$collectionId',
                     params: { collectionId: collection.collectionId },

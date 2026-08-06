@@ -25,7 +25,6 @@ import {
   useViewportSize,
 } from '@/shared/lib/useShelfBreakpoint';
 import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
-import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
 import { CollectionBookCard } from './CollectionBookCard';
@@ -242,7 +241,6 @@ export function FeedList() {
       placeId: null,
       position: item.position,
     });
-    markCollectionOverlayIntent();
     void navigate({
       to: '/collections/$collectionId',
       params: { collectionId: item.collectionId },

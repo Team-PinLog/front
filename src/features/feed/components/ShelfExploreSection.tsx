@@ -1,7 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { getIsLoggedIn } from '@/features/auth/lib/getIsLoggedIn';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
-import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { handleShelfScrollFetchNext } from '@/shared/lib/handleShelfScrollFetchNext';
 import {
   chunkIntoShelfRows,
@@ -202,7 +201,6 @@ export function ShelfExploreSection({
                         recordCount={collection.recordCount}
                         onClick={() => {
                           onSelectCollection?.();
-                          markCollectionOverlayIntent();
                           void navigate({
                             to: '/collections/$collectionId',
                             params: { collectionId: collection.collectionId },
