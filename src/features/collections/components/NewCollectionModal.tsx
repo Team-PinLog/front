@@ -29,6 +29,11 @@ interface NewCollectionModalProps {
  * 갖지 않는다). 책등 색상은 고정 브랜드 색상(pin-navy)만 쓰고 선택 UI는 두지 않는다(색상별 책 이미지
  * 확장은 범위 밖).
  *
+ * 363: 그래서 제목 입력 위에 있던 "책등 미리보기"(남색 사각형 + 제목)를 없앴다. 고를 것이 없으니
+ * 미리보기가 보여줄 변화도 없었고 — 제목은 바로 아래 입력란에 이미 그대로 보인다 — 실제 책장의
+ * 책등과도 닮지 않았다(높이·기울기·색이 collectionId로 정해진다, shelfSpine.ts). 화면에서 정말
+ * 궁금한 미리보기는 표지이고, 그건 생성 직후 표지 단계(CollectionCoverModal)가 보여준다.
+ *
  * 317(표지 생성): mode="library"에서만 "만들기" 성공 후 **모달을 닫지 않고 표지 화풍 선택 단계로
  * 넘어간다.** 컬렉션은 그 시점에 이미 만들어져 있고(표지를 기다리지 않는다 — api-contract.md
  * § Collection 표지 이미지), 사용자가 화풍을 고르지 않고 닫아도 표지 없는 정상 상태로 남는다.
@@ -122,16 +127,6 @@ export function NewCollectionModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4">
       <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg bg-white p-6">
         <h2 className="text-sm font-bold text-pin-navy">새 컬렉션 만들기</h2>
-
-        <div className="mt-4 flex flex-none gap-3">
-          <div className="h-20 w-14 flex-none rounded-sm bg-pin-navy" aria-hidden="true" />
-          <div className="flex flex-col justify-center gap-1">
-            <p className="text-xs text-ink-gray-light">책등 미리보기</p>
-            <p className="line-clamp-2 text-sm font-bold text-pin-navy">
-              {trimmedTitle || '컬렉션 제목을 입력해 주세요'}
-            </p>
-          </div>
-        </div>
 
         <label htmlFor="new-collection-title" className="sr-only">
           컬렉션 제목
