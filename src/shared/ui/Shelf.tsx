@@ -67,10 +67,14 @@ export function ShelfCabinet({ children, heightPx }: { children: ReactNode; heig
 // ShelfColumn(flex flex-col)이 헤더 다음에 남기는 flex-1 스크롤 박스 높이가 같아진다 — 헤더 높이가
 // 다르면 두 스크롤 박스의 남는 세로 공간이 서로 달라져, 내용(tier 수)이 같아도 "최하단 선반~캐비닛
 // 바닥" 여백이 달라 보인다(FollowedShelfCard.tsx 주석 참고).
+// 329: 팔로우한 책장의 별칭도 이 pill을 쓰게 되면서(이전엔 맨 텍스트 h3라 "내 컬렉션"과 톤이
+// 어긋났다) 내용 길이가 가변이 됐다 — 별칭은 최대 20자다. min-w-0으로 좁은 열에서 줄어들 수 있게
+// 하고, 안쪽 span에서 말줄임한다(text-overflow는 블록 컨테이너에만 걸리므로 inline-flex인 이 span에
+// truncate를 직접 주면 동작하지 않는다). "내 컬렉션"처럼 짧은 라벨에는 아무 영향이 없다.
 export function ShelfLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex h-7 w-fit items-center rounded-full border border-line-card bg-snow-white px-3 text-[11px] font-bold text-pin-navy shadow-[0_1px_2px_rgba(4,33,66,.05)]">
-      {children}
+    <span className="inline-flex h-7 w-fit min-w-0 items-center rounded-full border border-line-card bg-snow-white px-3 text-[11px] font-bold text-pin-navy shadow-[0_1px_2px_rgba(4,33,66,.05)]">
+      <span className="truncate">{children}</span>
     </span>
   );
 }
@@ -357,19 +361,33 @@ export function ShelfAddSlot({ onClick, width, height }: ShelfAddSlotProps) {
 
 interface ShelfIconButtonProps {
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
   children: ReactNode;
+  // 329: 별칭 편집이 <form>이 되면서 저장 버튼은 submit이어야 한다(Enter 저장이 이 버튼을 누른 것과
+  // 같은 경로를 타야 하기 때문이다). onClick은 그 경우 필요 없어 optional이 됐다.
+  isSubmit?: boolean;
+  // 329: 저장 중(isPending) 중복 제출을 막는다. 색은 다른 밝은 톤 버튼들(FeedList·LibraryPage의
+  // 페이지 이동 버튼)과 같은 규격을 쓴다.
+  disabled?: boolean;
 }
 
-export function ShelfIconButton({ label, onClick, children }: ShelfIconButtonProps) {
+export function ShelfIconButton({
+  label,
+  onClick,
+  children,
+  isSubmit = false,
+  disabled = false,
+}: ShelfIconButtonProps) {
   return (
     <button
-      type="button"
+      // eslint(react/button-has-type)이 동적 type 표현식을 읽지 못하므로 분기해서 리터럴로 준다.
+      type={isSubmit ? 'submit' : 'button'}
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
       // 319: FeedList(314)의 페이지 이동 버튼과 같은 밝은 톤 원형 버튼 규격으로 맞춘다.
-      className="grid h-7 w-7 flex-none place-items-center rounded-full border border-line-card bg-snow-white text-pin-navy shadow-[0_1px_3px_rgba(4,33,66,.08)] transition hover:border-log-mint hover:bg-log-mint hover:text-white"
+      className="grid h-7 w-7 flex-none place-items-center rounded-full border border-line-card bg-snow-white text-pin-navy shadow-[0_1px_3px_rgba(4,33,66,.08)] transition hover:border-log-mint hover:bg-log-mint hover:text-white disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
