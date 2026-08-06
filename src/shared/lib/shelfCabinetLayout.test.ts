@@ -12,6 +12,7 @@ import {
   getFeedCardDimensions,
   getFeedColumnsKey,
   getPageContainerWidthPx,
+  SHELL_INSET_PX_BY_TIER,
   getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
@@ -361,24 +362,25 @@ describe('getNavPlacement / getSidebarWidthPx', () => {
 });
 
 describe('768 경계에서의 가로 예산', () => {
-  // 767(sm, 사이드바 없음) → 768(mdlg, 레일 72px)로 넘어가는 순간 가용폭이 레일만큼 떨어진다.
-  // 의도된 불연속이라 값 자체를 못박아 둔다.
-  it('사이드바가 생기는 만큼만 가용폭이 줄어든다', () => {
+  // 767(sm) → 768(mdlg)로 넘어가는 순간 가용폭이 떨어진다. 의도된 불연속이라 값 자체를 못박아 둔다.
+  // 364: 이 경계에서 생기는 것이 사이드바 레일 하나가 아니라 **둘**이 됐다 — 셸 좌우 여백도 md부터
+  // 붙는다(sm은 0). 둘을 합친 값이 아니면 실패해야 한다.
+  it('사이드바 레일과 셸 좌우 여백이 생기는 만큼 가용폭이 줄어든다', () => {
     const beforePx = getFeedGridAreaWidthPx(767, getSidebarWidthPx('sm'));
     const afterPx = getFeedGridAreaWidthPx(768, getSidebarWidthPx('mdlg'));
     // 767과 768은 getPageHorizontalPaddingPx 구간이 같으므로(둘 다 640↑1024미만 = 24) 차이는
-    // 폭 1px과 레일 폭뿐이다.
-    expect(beforePx - afterPx).toBe(SIDEBAR_RAIL_WIDTH_PX - 1);
+    // 폭 1px과 레일 폭, 그리고 셸 좌우 여백뿐이다.
+    expect(beforePx - afterPx).toBe(SIDEBAR_RAIL_WIDTH_PX - 1 + 2 * SHELL_INSET_PX_BY_TIER.mdlg.x);
   });
 
   it('가로 padding은 사이드바를 뺀 컨텐츠 폭이 아니라 뷰포트 폭 기준이다', () => {
     // 이건 버그가 아니라 CSS와 일치하는 동작이다 — PAGE_CONTAINER_CLASS의 sm:px-6은 window 폭
-    // media query라, 컨테이너가 696px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
-    // 768 - 72(레일) = 696, 696 - 2*24(padding) = 648.
-    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(648);
+    // media query라, 컨테이너가 664px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
+    // 364: 768 - 72(레일) - 2*16(셸 여백) = 664, 664 - 2*24(padding) = 616.
+    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(616);
     // 328: 그 컨테이너에서 좌우 gutter(28)와 선반 판 그림자 자리(8)를 더 뺀 값이 카드 예산이다.
-    // 648 - 2*28 - 2*8 = 576(이전에는 그림자 자리를 빼지 않아 592였다).
-    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(576);
+    // 616 - 2*28 - 2*8 = 544.
+    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(544);
   });
 
   it('레일 덕분에 768에서도 3열 카드가 가독성 하한을 넘는다', () => {
@@ -427,10 +429,13 @@ describe('선반 판 그림자 여백', () => {
 describe('세로 예산과 네비게이션 배치', () => {
   it('사이드바 구간(mdlg·xl)은 실측 전에도 nav 높이를 빼지 않는다', () => {
     const measured = { navChromeHeightPx: null, titleHeightPx: null };
-    // mdlg와 xl의 차이는 이제 페이지 padding·타이틀 gap뿐이다(nav 항은 둘 다 0).
+    // mdlg와 xl의 차이는 셸 상하 여백·페이지 padding·타이틀 gap뿐이다(nav 항은 둘 다 0).
+    // 364: 셸 상하 여백 항이 추가됐다(mdlg 16 / xl 24).
     const mdlgPx = getPageContentBudgetPx(1024, measured, 'mdlg');
     const xlPx = getPageContentBudgetPx(1024, measured, 'xl');
-    expect(mdlgPx - xlPx).toBe((24 - 12) * 2 + (32 - 20));
+    expect(mdlgPx - xlPx).toBe(
+      (SHELL_INSET_PX_BY_TIER.xl.y - SHELL_INSET_PX_BY_TIER.mdlg.y) * 2 + (24 - 12) * 2 + (32 - 20),
+    );
   });
 
   it('sm은 실측 전 폴백으로 하단 탭바 높이를 뺀다', () => {
