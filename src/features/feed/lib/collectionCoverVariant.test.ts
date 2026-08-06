@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
+import { getNavPlacement, getSidebarWidthPx } from '@/shared/lib/appChrome';
+import {
+  FEED_COLUMNS_BY_KEY,
+  FEED_MAX_ROWS_BY_KEY,
+  decideFeedRows,
+  getFeedCardDimensions,
+  getFeedColumnsKey,
+  getFeedGridAreaWidthPx,
+  getFeedRowsContentBudgetPx,
+  getPageContentBudgetPx,
+  solveFeedScale,
+} from '@/shared/lib/shelfCabinetLayout';
+import type { ShelfWidthTier } from '@/shared/lib/useShelfBreakpoint';
 import {
   COLLECTION_COVER_VARIANTS,
+  COVER_COMPACT_WIDTH_PX,
   getCollectionCoverSlots,
   getCollectionCoverVariant,
+  isCompactCoverWidth,
 } from './collectionCoverVariant';
 
 // 실제 collectionId는 생성 순서를 따르는 연속 정수다 — 무작위 정수가 아니라 이 분포로 검증해야
@@ -73,6 +88,95 @@ describe('getCollectionCoverVariant', () => {
       pairs.add(`${getCollectionAccentColor(id)}|${getCollectionCoverVariant(id)}`);
     }
     expect(pairs.size).toBeGreaterThan(40);
+  });
+});
+
+// 331: "탐색 화면에서 표지에 Keyword가 안 보인다"의 원인 후보 중 하나가 축약 모드였다 — 카드 폭이
+// COVER_COMPACT_WIDTH_PX 미만이면 getCollectionCoverSlots가 카테고리·부제를 **의도적으로** 버린다.
+// 카드 폭은 뷰포트에서 순수 함수 합성으로 나오므로(FeedList가 이 결과를 그대로 style에 쓴다) 그
+// 후보의 진위는 브라우저 없이 여기서 판정할 수 있고, 328에서 폭 계산이 바뀐 뒤에도 결론이 유지되는지
+// 이 테스트가 계속 감시한다. 결론: PC 구간에서는 축약이 걸리지 않는다 — 즉 PC에서 Keyword가 안
+// 보인다면 원인은 카드 폭이 아니라 응답의 keywords가 비었거나(정상 상태다) 판형 쪽이다.
+interface CardWidthCase {
+  name: string;
+  width: number;
+  height: number;
+  tier: ShelfWidthTier;
+  isLandscape: boolean;
+}
+
+// FeedList가 매 렌더 수행하는 계산과 같은 순서다(shelfCabinetLayout.test.ts의 layoutFor와 같은 합성).
+function cardWidthFor({ width, height, tier, isLandscape }: CardWidthCase): number {
+  const columnsKey = getFeedColumnsKey(tier, isLandscape);
+  const columns = FEED_COLUMNS_BY_KEY[columnsKey];
+  const contentBudgetPx = getFeedRowsContentBudgetPx(
+    getPageContentBudgetPx(
+      height,
+      // 실측 전 폴백이 아니라 실제로 보고되는 값에 가깝게 둔다(하단 탭바는 sm에만 있다).
+      { navChromeHeightPx: getNavPlacement(tier) === 'bottom' ? 80 : 0, titleHeightPx: 56 },
+      tier,
+    ),
+  );
+  const availableGridWidthPx = getFeedGridAreaWidthPx(width, getSidebarWidthPx(tier));
+  const rows = decideFeedRows({
+    columns,
+    maxRows: FEED_MAX_ROWS_BY_KEY[columnsKey],
+    budgetPx: contentBudgetPx,
+    availableGridWidthPx,
+  });
+  const scale = solveFeedScale({ columns, rows, budgetPx: contentBudgetPx, availableGridWidthPx });
+  return getFeedCardDimensions(scale).cardWidth;
+}
+
+// PinLog는 PC 웹이 기준이다(AGENTS.md) — 이 구간에서 축약이 걸리면 그건 원인이 아니라 버그다.
+const PC_CASES: CardWidthCase[] = [
+  { name: 'xl 1920x1080', width: 1920, height: 1080, tier: 'xl', isLandscape: true },
+  { name: 'xl 1512x982', width: 1512, height: 982, tier: 'xl', isLandscape: true },
+  { name: 'xl 1440x900', width: 1440, height: 900, tier: 'xl', isLandscape: true },
+  { name: 'xl 1366x768', width: 1366, height: 768, tier: 'xl', isLandscape: true },
+  { name: 'xl 1280x720(가장 좁은 xl)', width: 1280, height: 720, tier: 'xl', isLandscape: true },
+  { name: 'mdlg 1024x768 가로', width: 1024, height: 768, tier: 'mdlg', isLandscape: true },
+  { name: 'mdlg 768x1024 세로', width: 768, height: 1024, tier: 'mdlg', isLandscape: false },
+];
+
+describe('표지 축약 판정(Keyword 노출 구간)', () => {
+  it('PC 구간에서는 축약이 걸리지 않는다 — 카드 폭이 임계값 위다', () => {
+    for (const testCase of PC_CASES) {
+      const widthPx = cardWidthFor(testCase);
+      expect(widthPx, testCase.name).toBeGreaterThanOrEqual(COVER_COMPACT_WIDTH_PX);
+      expect(isCompactCoverWidth(widthPx), testCase.name).toBe(false);
+      // 축약이 아니면 keywords가 있는 한 카테고리·부제 슬롯이 반드시 채워진다.
+      expect(
+        getCollectionCoverSlots('제목', ['카페', '조용한'], isCompactCoverWidth(widthPx)).category,
+      ).toBe('카페');
+    }
+  });
+
+  it('축약은 좁은 휴대폰 폭에서만 일어난다', () => {
+    // 424px 근방이 경계다(같은 세로에서 폭만 줄여가며 확인한 값). 그 아래는 카테고리 글자가 6px
+    // 밑으로 내려가 읽히지 않으므로 생략이 맞다 — 정상 동작이지 회귀가 아니다.
+    expect(
+      isCompactCoverWidth(
+        cardWidthFor({
+          name: 'sm 390x844',
+          width: 390,
+          height: 844,
+          tier: 'sm',
+          isLandscape: false,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isCompactCoverWidth(
+        cardWidthFor({
+          name: 'sm 430x932',
+          width: 430,
+          height: 932,
+          tier: 'sm',
+          isLandscape: false,
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

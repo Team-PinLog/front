@@ -61,6 +61,25 @@ export interface CollectionCoverSlots {
 }
 
 /**
+ * 이 폭 미만이면 축약 모드 — 카테고리·부제·날짜를 생략하고 제목 + 저장된 장소 수만 남긴다. 폭
+ * 150px이면 카테고리 글자가 약 5.5px(0.46em × 12px)이라 읽히지 않는데, 안 읽히는 글자를 넣느니
+ * 제목에 자리를 더 주는 편이 낫다. 행 수 결정의 하한(FEED_ROWS_MIN_CARD_WIDTH_PX = 112)과는 다른
+ * 값이다 — 그쪽은 "배치를 포기하는 선", 이쪽은 "정보를 덜어내는 선"이다.
+ *
+ * 331: 상수를 CollectionBookCard에서 여기로 옮겼다. "Keyword가 표지에 안 보인다"의 원인 후보로
+ * 이 임계값이 지목됐는데, 판정에 필요한 것은 컴포넌트가 아니라 **폭 → 슬롯**이라는 이 파일의 규칙
+ * 전체이고, 그래야 회귀 테스트가 카드 폭 계산(shelfCabinetLayout)과 이 임계값을 한자리에서 물릴 수
+ * 있다. 실제 판정 결과는 collectionCoverVariant.test.ts에 고정돼 있다 — PC 구간(mdlg·xl)의 카드
+ * 폭은 162~219px이라 **축약이 걸리지 않으며**, 축약은 뷰포트 폭 약 424px 미만(sm)에서만 일어난다.
+ */
+export const COVER_COMPACT_WIDTH_PX = 150;
+
+/** 카드 폭이 축약 구간인지. 328 이후 카드 폭 계산이 바뀌어도 판정은 이 한 곳만 본다. */
+export function isCompactCoverWidth(widthPx: number): boolean {
+  return widthPx < COVER_COMPACT_WIDTH_PX;
+}
+
+/**
  * 축약 모드(카드가 좁아 글자가 읽히지 않는 구간)에서는 카테고리·부제를 버리고 제목만 남긴다 —
  * 어느 판형이든 이 규칙은 같아야 해서 컴포넌트가 아니라 여기서 한 번에 결정한다.
  */
