@@ -577,8 +577,11 @@ export function ShelfBookSpine({
       // 책등 표면 위 음영이라 배경 톤과 무관해 그대로 둔다.
       className="relative flex flex-none flex-col items-center justify-start overflow-hidden rounded-t-sm rounded-b-[2px] border border-black/10 pb-2 pt-3 shadow-[1px_0_4px_rgba(4,33,66,.18)] transition-transform duration-150 ease-out [transform:translateY(var(--spine-lift))_rotate(var(--spine-tilt))] before:pointer-events-none before:absolute before:inset-y-0 before:left-1 before:w-px before:bg-white/20 before:shadow-[2px_0_0_rgba(4,18,38,.13)] before:content-[''] after:pointer-events-none after:absolute after:inset-[8px_4px] after:border-y after:border-t-white/30 after:border-b-[rgba(4,18,38,.3)] after:shadow-[0_2px_0_rgba(4,18,38,.1),0_-2px_0_rgba(255,255,255,.1)] after:content-[''] hover:[transform:translateY(-10px)_rotate(0deg)] hover:shadow-[3px_12px_20px_rgba(4,33,66,.28)]"
     >
-      {/* 319: 글자색을 text-white로 고정하지 않고 책등 색의 상대 휘도로 고른다 — 시안 팔레트에는
-          흰 글자가 읽히지 않는 밝은 책등(앰버·연한 청회색)이 섞여 있다(getSpineTextColor).
+      {/* 319: 글자색을 한 색으로 고정하지 않고 책등 색의 상대 휘도로 고른다 — 시안 팔레트에는
+          밝은 잉크가 읽히지 않는 밝은 책등(앰버·연한 청회색)이 섞여 있다(getSpineTextColor).
+          361: 두 잉크가 순백·네이비에서 paper-white·pin-navy로 바뀌었다. 순백은 이 앱이 쓰지 않는
+          색이라 네이비 글자 책 옆에 놓이면 두 잉크가 한 벌로 읽히지 않았다 — 값만 바뀌고 고르는
+          규칙은 그대로다.
           같은 이유로 text-shadow도 뺐다 — 대비를 색으로 이미 확보했고, 어두운 글자 아래 깔린 어두운
           그림자는 도움이 되기는커녕 글자를 번져 보이게 한다. */}
       <span

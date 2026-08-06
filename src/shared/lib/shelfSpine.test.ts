@@ -20,6 +20,17 @@ const SAMPLE_IDS = Array.from({ length: 40 }, (_, index) => index + 1).concat([
 // 쓸 수 없어 4.5:1을 그대로 적용한다.
 const WCAG_AA_NORMAL_TEXT = 4.5;
 
+// tailwind.config.js의 shelf-cell(칸 안쪽 면). 이 파일은 Tailwind 설정을 읽을 수 없어 옮겨 적는다.
+const SHELF_CELL_BACKGROUND = '#F5F7F5';
+
+/** 색으로 직접 묻는 헬퍼 — getSpineTextColor는 collectionId로 진입하므로 팔레트 순회에는 이쪽을 쓴다. */
+function getSpineTextColorFor(spineColor: string): string {
+  return getContrastRatio(SPINE_TEXT_LIGHT, spineColor) >=
+    getContrastRatio(SPINE_TEXT_DARK, spineColor)
+    ? SPINE_TEXT_LIGHT
+    : SPINE_TEXT_DARK;
+}
+
 describe('getContrastRatio', () => {
   it('흰색과 검정의 대비는 21:1이다', () => {
     expect(getContrastRatio('#FFFFFF', '#000000')).toBeCloseTo(21, 5);
@@ -50,18 +61,47 @@ describe('책등 팔레트 가독성', () => {
     expect(best).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
   });
 
-  it('밝은 책등에는 네이비 글자를, 어두운 책등에는 흰 글자를 고른다', () => {
-    // 팔레트 전체를 훑어 두 글자색이 모두 실제로 쓰이는지 확인한다 — 한쪽으로만 쏠리면
-    // getSpineTextColor가 사실상 상수와 다를 바 없다는 뜻이다.
-    const chosen = new Set(
-      SPINE_COLORS.map((spineColor) =>
-        getContrastRatio(SPINE_TEXT_LIGHT, spineColor) >=
-        getContrastRatio(SPINE_TEXT_DARK, spineColor)
-          ? SPINE_TEXT_LIGHT
-          : SPINE_TEXT_DARK,
-      ),
+  // 361: 두 잉크는 브랜드 토큰(paper-white·pin-navy)이어야 한다. 순백·순흑으로 되돌아가는 것을
+  // 막는 것이 이 테스트의 목적이다 — 순백은 이 앱이 쓰지 않는 색이라, 네이비 글자 책과 나란히
+  // 놓이면 두 잉크가 한 벌로 읽히지 않는다(이 티켓이 고친 바로 그 증상이다).
+  it('두 잉크는 브랜드 토큰 값이고 순백·순흑이 아니다', () => {
+    expect(SPINE_TEXT_LIGHT).toBe('#FAF7F6'); // tailwind.config.js paper-white
+    expect(SPINE_TEXT_DARK).toBe('#042142'); // tailwind.config.js pin-navy
+  });
+
+  // 361: 잉크를 네이비 하나로 통일하면서 팔레트의 어두운 3색을 기준선 바로 위로 올렸다. 여유가
+  // 가장 적은 색이 슬레이트 블루·다크 올리브(4.6~4.9:1)라, 이 테스트가 "아직 여유가 남았는지"를
+  // 눈에 보이게 남겨 둔다 — 팔레트를 조금이라도 어둡게 옮기면 여기서 먼저 걸린다.
+  it('가장 빠듯한 책등도 AA 기준을 넘는다', () => {
+    const margins = SPINE_COLORS.map(
+      (spineColor) =>
+        Math.max(
+          getContrastRatio(SPINE_TEXT_LIGHT, spineColor),
+          getContrastRatio(SPINE_TEXT_DARK, spineColor),
+        ) - WCAG_AA_NORMAL_TEXT,
     );
-    expect(chosen).toEqual(new Set([SPINE_TEXT_LIGHT, SPINE_TEXT_DARK]));
+    expect(Math.min(...margins)).toBeGreaterThan(0);
+  });
+
+  // 361(사용자 결정): 이 테스트의 의미가 뒤집혔다. 이전에는 "두 잉크가 모두 쓰이는지"를 봤는데,
+  // 그 갈림 자체가 통일감을 깨는 원인이라는 피드백으로 잉크를 pin-navy 하나로 통일했다. 이제는
+  // 반대로 **팔레트 전체가 네이비 하나로 수렴하는지**를 고정한다 — 책등 색을 더하거나 어둡게
+  // 옮기면 여기서 먼저 걸린다.
+  it('팔레트 전체가 네이비 잉크 하나로 통일된다', () => {
+    const chosen = new Set(SPINE_COLORS.map((spineColor) => getSpineTextColorFor(spineColor)));
+    expect(chosen).toEqual(new Set([SPINE_TEXT_DARK]));
+  });
+
+  // 319가 지키려던 성질이 팔레트를 밝히면서 깨지지 않았는지 함께 본다 — 책등이 밝은 칸 배경
+  // (shelf-cell)에 묻히면 개별 책이 식별되지 않는다. WCAG 기준이 아니라 "면과 면이 구분되는가"의
+  // 하한이라, 기존 팔레트에서 가장 낮았던 연한 청회색(1.82:1)을 그대로 바닥으로 삼는다.
+  it('밝아진 책등도 칸 배경과 구분된다', () => {
+    for (const spineColor of SPINE_COLORS) {
+      expect(
+        getContrastRatio(spineColor, SHELF_CELL_BACKGROUND),
+        spineColor,
+      ).toBeGreaterThanOrEqual(1.8);
+    }
   });
 });
 
