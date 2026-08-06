@@ -16,6 +16,8 @@ import {
   getLibraryTierHeightPx,
   getLibraryVisibleRowCount,
   getShelfScale,
+  libraryPinsMyShelf,
+  LIBRARY_COLUMNS_BY_TIER,
   LIBRARY_MAX_ROW_COUNT,
   LIBRARY_MIN_ROW_COUNT,
   SHELF_SCALE_MAX,
@@ -23,10 +25,16 @@ import {
   SHELF_SCALE_MIN,
   SHELF_SCALE_MIN_VW_PX,
   SHELF_TIER_GAP_PX,
-  SIDEBAR_WIDTH_PX,
   solveFeedScale,
   type FeedColumnsKey,
 } from './shelfCabinetLayout';
+import {
+  BOTTOM_NAV_HEIGHT_PX_FALLBACK,
+  getNavPlacement,
+  getSidebarWidthPx,
+  SIDEBAR_RAIL_WIDTH_PX,
+  SIDEBAR_WIDE_WIDTH_PX,
+} from './appChrome';
 import type { ShelfWidthTier } from './useShelfBreakpoint';
 
 // 315: Feed 책장 배치 계산은 순수 함수 네 개(getPageContentBudgetPx → getFeedRowsContentBudgetPx →
@@ -59,6 +67,14 @@ const VIEWPORTS: Viewport[] = [
     isLandscape: true,
   },
   { name: 'mdlg 834x1112 세로', width: 834, height: 1112, tier: 'mdlg', isLandscape: false },
+  {
+    name: 'mdlg 810x1080 세로(iPad 10)',
+    width: 810,
+    height: 1080,
+    tier: 'mdlg',
+    isLandscape: false,
+  },
+  // 330 이후 가장 빡빡한 구간 — md 경계라 사이드바(레일 72px)가 막 생기는 폭이다.
   { name: 'mdlg 768x1024 세로', width: 768, height: 1024, tier: 'mdlg', isLandscape: false },
   { name: 'sm 430x932', width: 430, height: 932, tier: 'sm', isLandscape: false },
   { name: 'sm 375x812', width: 375, height: 812, tier: 'sm', isLandscape: false },
@@ -68,13 +84,14 @@ const VIEWPORTS: Viewport[] = [
 
 // FeedList가 매 렌더 수행하는 계산과 정확히 같은 순서로 배치를 만든다 — 어느 한 단계라도 순서가
 // 달라지면(예: 여백 차감을 빠뜨리면) 이 테스트는 실제 화면과 다른 것을 검증하게 된다.
-function layoutFor(viewport: Viewport, measured = { navHeightPx: 0, titleHeightPx: 56 }) {
+function layoutFor(viewport: Viewport, measured = { navChromeHeightPx: 0, titleHeightPx: 56 }) {
   const columnsKey: FeedColumnsKey = getFeedColumnsKey(viewport.tier, viewport.isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
   const budgetPx = getPageContentBudgetPx(
     viewport.height,
     {
-      navHeightPx: viewport.tier === 'xl' ? 0 : measured.navHeightPx,
+      navChromeHeightPx:
+        getNavPlacement(viewport.tier) === 'bottom' ? measured.navChromeHeightPx : 0,
       titleHeightPx: measured.titleHeightPx,
     },
     viewport.tier,
@@ -82,7 +99,7 @@ function layoutFor(viewport: Viewport, measured = { navHeightPx: 0, titleHeightP
   const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
   const availableGridWidthPx = getFeedGridAreaWidthPx(
     viewport.width,
-    viewport.tier === 'xl' ? SIDEBAR_WIDTH_PX : 0,
+    getSidebarWidthPx(viewport.tier),
   );
   const rows = decideFeedRows({
     columns,
@@ -143,10 +160,16 @@ describe('Feed 책장 배치', () => {
     for (const viewport of VIEWPORTS) {
       const budgetPx = getPageContentBudgetPx(
         viewport.height,
-        { navHeightPx: null, titleHeightPx: null },
+        { navChromeHeightPx: null, titleHeightPx: null },
         viewport.tier,
       );
-      const { usedHeightPx } = layoutFor(viewport, { navHeightPx: 56, titleHeightPx: 56 });
+      // 폴백 프레임의 자기 일관성을 본다 — 예산도 레이아웃도 같은 폴백 값을 쓴다. 여기에 실측
+      // 추정치를 손으로 적어 두면 폴백 상수가 바뀔 때(330: 떠 있는 탭바가 되며 56→88) 테스트가
+      // 예산과 다른 것을 검증하게 된다.
+      const { usedHeightPx } = layoutFor(viewport, {
+        navChromeHeightPx: BOTTOM_NAV_HEIGHT_PX_FALLBACK,
+        titleHeightPx: 56,
+      });
       expect(usedHeightPx).toBeLessThanOrEqual(getFeedRowsContentBudgetPx(budgetPx));
     }
   });
@@ -235,7 +258,7 @@ describe('Library 세로 배치', () => {
   it.each(LIBRARY_VIEWPORTS)('$name — 고른 행 수가 캐비닛 예산 안에 들어간다', ({ w, h, tier }) => {
     const budgetPx = getPageContentBudgetPx(
       h,
-      { navHeightPx: tier === 'xl' ? 0 : 56, titleHeightPx: 56 },
+      { navChromeHeightPx: getNavPlacement(tier) === 'bottom' ? 56 : 0, titleHeightPx: 56 },
       tier,
     );
     const scale = getShelfScale(w);
@@ -270,5 +293,90 @@ describe('Library 세로 배치', () => {
     // 중간 지점은 선형 보간이다.
     const mid = (SHELF_SCALE_MIN_VW_PX + SHELF_SCALE_MAX_VW_PX) / 2;
     expect(getShelfScale(mid)).toBeCloseTo((SHELF_SCALE_MIN + SHELF_SCALE_MAX) / 2, 10);
+  });
+});
+
+// --- 330: 네비게이션 배치 ↔ 레이아웃 예산 -------------------------------------------------------
+// 사이드바 경계가 xl에서 md로 내려오면서, 예전에 tier === 'xl' 하나가 담당하던 세 가지 의미
+// ("사이드바 있음" / "네비게이션이 세로를 먹음" / "3열 배치")가 갈라졌다. 그 경계를 고정한다.
+
+describe('getNavPlacement / getSidebarWidthPx', () => {
+  it('sm만 하단 탭바이고 md 이상은 사이드바다', () => {
+    expect(getNavPlacement('sm')).toBe('bottom');
+    expect(getNavPlacement('mdlg')).toBe('side');
+    expect(getNavPlacement('xl')).toBe('side');
+  });
+
+  it('사이드바 폭은 sm 0, md~lg 레일, xl 넓은 폭이다', () => {
+    expect(getSidebarWidthPx('sm')).toBe(0);
+    expect(getSidebarWidthPx('mdlg')).toBe(SIDEBAR_RAIL_WIDTH_PX);
+    expect(getSidebarWidthPx('xl')).toBe(SIDEBAR_WIDE_WIDTH_PX);
+  });
+});
+
+describe('768 경계에서의 가로 예산', () => {
+  // 767(sm, 사이드바 없음) → 768(mdlg, 레일 72px)로 넘어가는 순간 가용폭이 레일만큼 떨어진다.
+  // 의도된 불연속이라 값 자체를 못박아 둔다.
+  it('사이드바가 생기는 만큼만 가용폭이 줄어든다', () => {
+    const beforePx = getFeedGridAreaWidthPx(767, getSidebarWidthPx('sm'));
+    const afterPx = getFeedGridAreaWidthPx(768, getSidebarWidthPx('mdlg'));
+    // 767과 768은 getPageHorizontalPaddingPx 구간이 같으므로(둘 다 640↑1024미만 = 24) 차이는
+    // 폭 1px과 레일 폭뿐이다.
+    expect(beforePx - afterPx).toBe(SIDEBAR_RAIL_WIDTH_PX - 1);
+  });
+
+  it('가로 padding은 사이드바를 뺀 컨텐츠 폭이 아니라 뷰포트 폭 기준이다', () => {
+    // 이건 버그가 아니라 CSS와 일치하는 동작이다 — PAGE_CONTAINER_CLASS의 sm:px-6은 window 폭
+    // media query라, 컨테이너가 696px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
+    // 768 - 72(레일) = 696, 696 - 2*24(padding) - 2*28(gutter) = 592.
+    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(592);
+  });
+
+  it('레일 덕분에 768에서도 3열 카드가 가독성 하한을 넘는다', () => {
+    // 240px 사이드바였다면 가용폭이 424px로 떨어져 카드가 크게 작아졌을 구간이다.
+    const viewport = VIEWPORTS.find((item) => item.name === 'mdlg 768x1024 세로');
+    expect(viewport).toBeDefined();
+    const { columns, dims } = layoutFor(viewport!);
+    expect(columns).toBe(3);
+    expect(dims.cardWidth).toBeGreaterThanOrEqual(FEED_ROWS_MIN_CARD_WIDTH_PX);
+  });
+});
+
+describe('세로 예산과 네비게이션 배치', () => {
+  it('사이드바 구간(mdlg·xl)은 실측 전에도 nav 높이를 빼지 않는다', () => {
+    const measured = { navChromeHeightPx: null, titleHeightPx: null };
+    // mdlg와 xl의 차이는 이제 페이지 padding·타이틀 gap뿐이다(nav 항은 둘 다 0).
+    const mdlgPx = getPageContentBudgetPx(1024, measured, 'mdlg');
+    const xlPx = getPageContentBudgetPx(1024, measured, 'xl');
+    expect(mdlgPx - xlPx).toBe((24 - 12) * 2 + (32 - 20));
+  });
+
+  it('sm은 실측 전 폴백으로 하단 탭바 높이를 뺀다', () => {
+    const withFallbackPx = getPageContentBudgetPx(
+      812,
+      { navChromeHeightPx: null, titleHeightPx: 56 },
+      'sm',
+    );
+    const withMeasuredZeroPx = getPageContentBudgetPx(
+      812,
+      { navChromeHeightPx: 0, titleHeightPx: 56 },
+      'sm',
+    );
+    expect(withMeasuredZeroPx - withFallbackPx).toBe(BOTTOM_NAV_HEIGHT_PX_FALLBACK);
+  });
+});
+
+describe('libraryPinsMyShelf', () => {
+  it('3열 이상일 때만 내 책장을 첫 칸에 고정한다', () => {
+    expect(libraryPinsMyShelf(1)).toBe(false);
+    expect(libraryPinsMyShelf(2)).toBe(false);
+    expect(libraryPinsMyShelf(3)).toBe(true);
+  });
+
+  it('기존 tier별 동작이 그대로 보존된다', () => {
+    // 330 이전에는 호출부가 tier === 'xl'로 판단했다. 열 수로 바꿔도 결과가 같아야 한다.
+    expect(libraryPinsMyShelf(LIBRARY_COLUMNS_BY_TIER.sm)).toBe(false);
+    expect(libraryPinsMyShelf(LIBRARY_COLUMNS_BY_TIER.mdlg)).toBe(false);
+    expect(libraryPinsMyShelf(LIBRARY_COLUMNS_BY_TIER.xl)).toBe(true);
   });
 });

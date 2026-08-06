@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover가 없으면 iOS Safari에서 env(safe-area-inset-*)가 항상 0이다.
+         하단 고정 탭바(AppLayout)가 홈 인디케이터에 가리지 않으려면 반드시 필요하다. 근거: S15P11A705-330 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link
       rel="stylesheet"
       as="style"

@@ -3,6 +3,7 @@ import {
   SHELF_SCROLL_TOP_PADDING_PX,
   SPINE_MAX_HEIGHT,
 } from './shelfSpine';
+import { BOTTOM_NAV_HEIGHT_PX_FALLBACK, getNavPlacement } from './appChrome';
 import type { ShelfWidthTier } from './useShelfBreakpoint';
 
 // 287-8(→295 반응형 재설계에서 Feed 부분 대체): Feed·Library 캐비닛의 반응형 규칙(좌우 컨테이너,
@@ -16,30 +17,27 @@ import type { ShelfWidthTier } from './useShelfBreakpoint';
 // (LIBRARY_COLUMNS_BY_TIER)뿐이고, 책장 한 칸 내부의 책 크기 스케일 방식은 그대로다.
 
 // --- 페이지 레벨 공통 컨테이너 -------------------------------------------------------------
-// sm·mdlg(<1280): AppLayout 상단 네비게이션 바 컨테이너(로고~설정 아이콘, 좌우 끝 정렬 지점)가 쓰는
-// max-width·좌우 padding과 정확히 같은 값이다 — 페이지 컨텐츠(캐비닛 포함)의 좌우 끝을 네비게이션
-// 바와 같은 x좌표에 맞추기 위해 AppLayout과 FeedPage/LibraryPage가 이 클래스를 그대로 공유한다.
-// xl(≥1280, 304 좌측 사이드바 재구성): 상단 네비게이션 바 자체가 없어지고, 이 컨테이너는
-// AppLayout의 <main xl:pl-60>(사이드바 폭만큼 밀린 컨텐츠 영역) 안에서 mx-auto로 중앙 정렬된다 —
-// "네비게이션 바와 정렬"이 아니라 "사이드바를 제외한 나머지 폭 안에서 중앙 정렬"로 정렬 기준이
-// 바뀌었다. 클래스 리터럴 자체(px-4/sm:px-6/lg:px-8, max-w-6xl)는 그대로지만, 실제로 계산되는 폭이
-// 사이드바 폭(SIDEBAR_WIDTH_PX)만큼 좁아진다 — getFeedGridAreaWidthPx가 이를 반영한다.
+// 페이지 컨텐츠(캐비닛 포함)의 좌우 정렬 기준. 330에서 상단 네비게이션 바가 없어지면서 정렬 기준이
+// 하나로 정리됐다 — 이 컨테이너는 AppLayout의 <main>(sm은 전체 폭, md 이상은 사이드바 폭만큼 밀린
+// 영역) 안에서 mx-auto로 중앙 정렬된다. 클래스 리터럴 자체(px-4/sm:px-6/lg:px-8, max-w-6xl)는
+// 구간과 무관하게 같지만, md 이상에서 실제로 계산되는 폭이 사이드바 폭(appChrome.ts의
+// getSidebarWidthPx)만큼 좁아진다 — getFeedGridAreaWidthPx가 이를 반영한다.
 // 306(Home 히어로 재구성): HomePage도 이 상수를 쓴다 — 기존에는 자체 max-w-5xl을 따로 썼는데,
 // 다른 페이지와 좌우 정렬 기준(사이드바 대비 x좌표)을 맞추기 위해 통일했다. HomePage는
 // FeedList/ShelfCabinet처럼 이 폭을 JS에서 다시 계산해 쓰는 곳이 없어(지도·검색 결과 갤러리 모두
 // 상대 폭 기반) getFeedGridAreaWidthPx 같은 별도 계산식은 필요 없다.
 export const PAGE_CONTAINER_CLASS = 'mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8';
 
-// 304(공통 AppShell 좌측 사이드바 재구성): xl에서만 존재하는 좌측 고정 사이드바의 폭.
-// AppLayout.tsx의 <aside className="... xl:w-60 ...">와 반드시 같은 값을 유지한다(w-60 = 15rem =
-// 240px, Tailwind 리터럴이라 JS가 직접 읽을 수 없음). sm·mdlg는 사이드바가 없으므로(기존 상단
-// 헤더 유지) 이 값을 쓰지 않는다.
-export const SIDEBAR_WIDTH_PX = 240;
+// 330: 사이드바 폭은 appChrome.ts의 getSidebarWidthPx로 옮겼다 — md부터 사이드바가 생기면서
+// 폭이 tier에 따라 달라졌고(레일 72 / 넓은 240), 그건 캐비닛 규칙이 아니라 앱 셸 크롬의 개념이다.
 
 // Feed("새로운 장소를 발견해 보세요" 제목 아래 gap-4=16px)를 기준값으로 삼는다 — Library가 이 값에
 // 맞춘다(이전엔 Library가 gap-6=24px로 Feed와 8px 어긋나 있었다).
 // 295 추가 수정(요구사항 2.2): xl은 16px, sm·mdlg는 8px로 줄였다 — 고정 UI가 차지하는 비중을 줄여
 // 캐비닛에 세로 공간을 더 내주려는 의도였다.
+// 330 주의: 여기서 xl:은 더 이상 "사이드바가 있는 구간"을 뜻하지 않는다(사이드바는 md부터 있다).
+// 큰 화면의 타이포 위계를 뜻하는 값이라 경계를 md로 내리지 않았다 — 내리면 mdlg 세로 예산이
+// 그만큼 줄어드는데, mdlg는 330에서 이미 사이드바에 가로를 내준 구간이다.
 // 319 디자인 피드백: 그 축소가 과했다. 8px은 서브카피("저장한 장소를 책처럼…")와 책장이 거의 붙어
 // 보이는 값이라 두 페이지 모두에서 답답하다는 피드백이 나왔다(Feed·Library 동일). 20/32px로 올린다
 // — 여기서 내준 세로는 아래 동적 예산(getPageContentBudgetPx)이 그대로 차감하므로, 책장이 화면
@@ -48,11 +46,21 @@ export const SIDEBAR_WIDTH_PX = 240;
 // 상수로 들고 있다 — Tailwind 클래스 문자열엔 JS 상수를 주입할 수 없다).
 export const PAGE_TITLE_GAP_CLASS = 'gap-5 xl:gap-8';
 
-// 295 추가 수정(요구사항 2.2): 페이지(main) 자체의 상하 padding. xl은 기존 py-6(24px)을 유지하고,
+// 페이지(main) 자체의 상하 padding. 아래 xl: 역시 타이포·여백 위계이지 사이드바 유무가 아니다
+// (위 PAGE_TITLE_GAP_CLASS 주석 참고).
+// 295 추가 수정(요구사항 2.2): xl은 기존 py-6(24px)을 유지하고,
 // sm·mdlg는 py-3(12px)로 줄인다. 이전엔 `py-4 md:py-6`(768px 경계)이라 mdlg(768~1279)가 오히려
 // xl과 같은 py-6을 쓰고 있었다 — "md 이하가 핵심"이라는 이번 요구사항 기준으로는 mdlg도 sm과 함께
 // 줄어야 한다. 아래 PAGE_PADDING_PX_BY_TIER와 반드시 일치해야 한다.
 export const PAGE_VERTICAL_PADDING_CLASS = 'py-3 xl:py-6';
+
+// 330: 페이지 <main>의 최소 높이. AppLayout <main>의 하단 여백과 짝이다 — sm은 떠 있는 탭바가
+// 차지하는 높이(알약 + 위아래 여백 = 5rem, + safe-area 인셋)만큼 뷰포트에서 덜어내고,
+// md 이상은 탭바가 없어 전체 높이를 쓴다.
+// FeedPage·LibraryPage·HomePage에 같은 리터럴이 세 벌 복제돼 있던 것을 하나로 모았다.
+// Tailwind arbitrary value 안에는 공백이 들어갈 수 없어 calc() 내부를 붙여 쓴다.
+export const PAGE_MIN_HEIGHT_CLASS =
+  'min-h-[calc(100dvh-5rem-env(safe-area-inset-bottom))] md:min-h-[100dvh]';
 
 // --- Library 책등 크기 스케일(뷰포트 폭 기준 연속 스케일링) ---------------------------------------
 // 1024px(lg) 이상에서는 스케일 1(기존 고정 px 값 그대로 — 시각적 회귀 없음). 640px(sm) 이하에서는
@@ -159,6 +167,20 @@ export const LIBRARY_COLUMNS_BY_TIER: Record<ShelfWidthTier, number> = {
   mdlg: 2,
   xl: 3,
 };
+
+/**
+ * 내 책장을 첫 칸에 고정하고 팔로우한 책장만 넘길지 여부.
+ *
+ * 330 이전에는 호출부가 `tier === 'xl'`로 판단했는데, 실제 기준은 처음부터 열 수였다 —
+ * LibraryPage 주석이 규칙을 "1·2열일 때는 내 책장도 함께 넘어간다"로 서술한다. tier는 그 대리
+ * 변수였을 뿐이라, 사이드바 경계가 md로 내려간 지금은 tier로 묻는 것이 틀린 질문이 된다.
+ * 열 수만 보면 LIBRARY_COLUMNS_BY_TIER가 바뀌어도 규칙이 저절로 따라온다.
+ */
+export const LIBRARY_PINNED_MY_SHELF_MIN_COLUMNS = 3;
+
+export function libraryPinsMyShelf(columns: number): boolean {
+  return columns >= LIBRARY_PINNED_MY_SHELF_MIN_COLUMNS;
+}
 
 // --- Feed: breakpoint/orientation별 그리드(열×행) + 카드 치수 --------------------------------------
 // 295 반응형 재설계(요구사항 A). 열 수는 여전히 breakpoint(및 mdlg 구간의 orientation)별 이산 표
@@ -394,12 +416,12 @@ function getPageHorizontalPaddingPx(viewportWidthPx: number): number {
   return 16; // px-4
 }
 
-// reservedLeftPx: 304(사이드바) 도입 이후 xl에서만 넘기는 SIDEBAR_WIDTH_PX. sm·mdlg 호출부는 인자를
-// 생략해 기존 동작(0)을 그대로 유지한다. padding 구간 판단(getPageHorizontalPaddingPx)은 반드시
+// reservedLeftPx: 좌측 사이드바가 먹는 폭(appChrome.ts의 getSidebarWidthPx). 330 이후 md부터 값이
+// 생기고 sm은 0이다. padding 구간 판단(getPageHorizontalPaddingPx)은 반드시
 // 원본 viewportWidthPx로 해야 한다 — px-4/sm:px-6/lg:px-8는 실제 브라우저 viewport 폭 media query에
 // 반응하는 것이지, 사이드바를 뺀 "가용 폭"에 반응하는 게 아니기 때문이다(sm:640px/lg:1024px 같은
 // CSS breakpoint는 사이드바 유무와 무관하게 항상 실제 window 폭 기준이다). 반면 max-w-6xl(1152) 캡은
-// AppLayout의 <main xl:pl-60> 안에서 "사이드바를 뺀 나머지 폭"을 기준으로 걸리므로, reservedLeftPx는
+// AppLayout의 <main md:pl-…> 안에서 "사이드바를 뺀 나머지 폭"을 기준으로 걸리므로, reservedLeftPx는
 // Math.min보다 먼저 viewportWidthPx에서 빼야 한다 — min() 이후에 빼면(예: 1300px 창에서 1152로 이미
 // 캡된 뒤 240을 빼면 848) 실제 CSS가 만드는 값(240을 먼저 뺀 1060을 1152와 비교 → 1060)과 달라진다.
 // 314: 캐비닛이 사라지면서 여기서 빼던 chrome(border-[8px]×2=16 + body px-5×2=40, 좌우 각 28px)도
@@ -444,12 +466,11 @@ export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx =
 // 폴백한다 — 페이지 padding(py-3)·타이틀-캐비닛 gap(gap-2)·캐비닛 자체 chrome은 전부 우리가 직접
 // 소유한 Tailwind 리터럴이라 드리프트 위험이 없어 그대로 상수로 둔다.
 // 314: 이제 xl도 이 동적 예산을 쓴다(아래 getPageContentBudgetPx 주석) — 페이지 padding·타이틀 gap이
-// 구간마다 다르므로(PAGE_VERTICAL_PADDING_CLASS 'py-3 xl:py-6', PAGE_TITLE_GAP_CLASS 'gap-2 xl:gap-4')
+// 구간마다 다르므로(PAGE_VERTICAL_PADDING_CLASS 'py-3 xl:py-6', PAGE_TITLE_GAP_CLASS 'gap-5 xl:gap-8')
 // 단일 상수 대신 구간별 표로 바꾼다. 두 표는 그 Tailwind 리터럴과 반드시 함께 움직여야 한다.
 const PAGE_PADDING_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 12, mdlg: 12, xl: 24 };
 const TITLE_GAP_PX_BY_TIER: Record<ShelfWidthTier, number> = { sm: 20, mdlg: 20, xl: 32 };
 
-const MOBILE_NAV_HEIGHT_PX_FALLBACK = 56; // AppLayout <main> pt-14 근사치 — 실측 전에만 쓴다
 // 313: PageTitle이 제목 아래 서브카피까지 포함하는 블록이 되면서 이 폴백도 블록 전체 높이가 됐다 —
 // h1(h-8, 32) + gap-1(4) + 서브카피 1줄(text-sm, 20). 32로 두면 실측이 들어오기 전 첫 프레임에만
 // 예산이 24px 과대 계상돼 마지막 행이 잠깐 넘쳤다가 제자리를 찾는다. FeedPage는 항상 서브카피를
@@ -462,8 +483,10 @@ const MOBILE_TITLE_HEIGHT_PX_FALLBACK = 56; // PageTitle 블록(제목+서브카
 // 책장은 선반 판과 카드만 있고 셸이 없다. sm·mdlg의 세로 예산이 그만큼 늘어난다.
 const MOBILE_SAFETY_MARGIN_PX = 8; // 브라우저별 폰트 지표 오차 등에 대비한 여유(요구사항의 "상하 최소 여백")
 
-export interface FeedDynamicBudgetMeasured {
-  navHeightPx: number | null;
+// 330: navHeightPx → navChromeHeightPx. 이전 이름은 "상단 오프셋"을 뜻했는데, 네비게이션이 sm에서
+// 하단으로 내려가면서 위치와 무관한 "네비게이션이 세로에서 차지하는 높이"가 됐다.
+export interface PageBudgetMeasured {
+  navChromeHeightPx: number | null;
   titleHeightPx: number | null;
 }
 
@@ -473,13 +496,15 @@ export interface FeedDynamicBudgetMeasured {
 // 동일하므로 식을 나눠 가질 이유가 없고, 오히려 한쪽만 고쳐 어긋나는 쪽이 위험하다.
 export function getPageContentBudgetPx(
   viewportHeightPx: number,
-  measured: FeedDynamicBudgetMeasured,
+  measured: PageBudgetMeasured,
   tier: ShelfWidthTier,
 ): number {
-  // xl은 상단 헤더가 좌측 사이드바로 바뀌어(AppLayout의 xl:hidden) 세로로 뺄 nav 높이가 없다 —
-  // 실측값도 0으로 들어오지만, 측정 전 첫 프레임의 폴백도 0이어야 예산이 56px 작게 잡히지 않는다.
-  const navFallbackPx = tier === 'xl' ? 0 : MOBILE_NAV_HEIGHT_PX_FALLBACK;
-  const navHeightPx = measured.navHeightPx ?? navFallbackPx;
+  // 사이드바 구간은 네비게이션이 세로를 전혀 먹지 않는다(AppLayout의 탭바가 md:hidden) — 실측값도
+  // 0으로 들어오지만, 측정 전 첫 프레임의 폴백도 0이어야 예산이 그만큼 작게 잡히지 않는다.
+  // 330: 판단 기준이 "xl인가"에서 "네비게이션이 하단에 있는가"로 바뀌었다 — md부터 사이드바가
+  // 생기면서 mdlg도 더 이상 세로를 내주지 않는다.
+  const navFallbackPx = getNavPlacement(tier) === 'bottom' ? BOTTOM_NAV_HEIGHT_PX_FALLBACK : 0;
+  const navHeightPx = measured.navChromeHeightPx ?? navFallbackPx;
   const titleHeightPx = measured.titleHeightPx ?? MOBILE_TITLE_HEIGHT_PX_FALLBACK;
   const overheadPx =
     navHeightPx +

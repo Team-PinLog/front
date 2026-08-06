@@ -15,9 +15,9 @@ import {
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
-  SIDEBAR_WIDTH_PX,
   solveFeedScale,
 } from '@/shared/lib/shelfCabinetLayout';
+import { getSidebarWidthPx } from '@/shared/lib/appChrome';
 import {
   useIsLandscapeOrientation,
   useShelfWidthTier,
@@ -107,7 +107,7 @@ export function FeedList() {
   const tier = useShelfWidthTier();
   const isLandscape = useIsLandscapeOrientation();
   const { width: viewportWidth, height: viewportHeight } = useViewportSize();
-  const { navHeightPx, titleHeightPx } = useLayoutMetrics();
+  const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
 
   const columnsKey = getFeedColumnsKey(tier, isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
@@ -118,15 +118,16 @@ export function FeedList() {
   // 실측해 보고한 값이다(AppLayout.tsx/PageTitle.tsx 참고).
   // 315: budgetPx는 스크롤 박스 바깥 치수(maxHeight)이고, 카드·선반이 실제로 쓸 수 있는 몫은 위아래
   // 여백을 뺀 contentBudgetPx다 — 이 구분을 빼먹으면 여백만큼 매번 예산이 넘쳐 스크롤바가 뜬다.
-  const budgetPx = getPageContentBudgetPx(viewportHeight, { navHeightPx, titleHeightPx }, tier);
+  const budgetPx = getPageContentBudgetPx(
+    viewportHeight,
+    { navChromeHeightPx, titleHeightPx },
+    tier,
+  );
   const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
 
-  // 304: xl에서는 좌측 사이드바(SIDEBAR_WIDTH_PX)가 실제 가용 폭을 그만큼 줄인다 — sm·mdlg는
-  // 사이드바가 없어 기존과 동일하게 0을 넘긴다.
-  const availableGridWidthPx = getFeedGridAreaWidthPx(
-    viewportWidth,
-    tier === 'xl' ? SIDEBAR_WIDTH_PX : 0,
-  );
+  // 좌측 사이드바가 실제 가용 폭을 그만큼 줄인다. 330: 사이드바가 md부터 생기고 폭도 구간마다
+  // 다르므로(레일 72 / 넓은 240) 값을 getSidebarWidthPx가 판단한다 — sm은 0이라 기존과 동일하다.
+  const availableGridWidthPx = getFeedGridAreaWidthPx(viewportWidth, getSidebarWidthPx(tier));
 
   // 314: 행 수도 더 이상 구간별 고정값이 아니다 — 세로 예산과 가로 폭을 둘 다 반영해 화면을 가장
   // 많이 덮는 배치를 고른다(decideFeedRows). 이전에는 xl·mdlgLandscape가 2행 고정이라 세로가 남고,

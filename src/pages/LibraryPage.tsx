@@ -7,8 +7,10 @@ import {
   getLibraryVisibleRowCount,
   getPageContentBudgetPx,
   getShelfScale,
+  libraryPinsMyShelf,
   LIBRARY_COLUMNS_BY_TIER,
   PAGE_CONTAINER_CLASS,
+  PAGE_MIN_HEIGHT_CLASS,
   PAGE_TITLE_GAP_CLASS,
   PAGE_VERTICAL_PADDING_CLASS,
 } from '@/shared/lib/shelfCabinetLayout';
@@ -25,20 +27,20 @@ interface LibraryPageSlots {
   followStartIndex: number;
 }
 
-// 295 반응형 재설계(요구사항 B) 핵심 로직: "내 책장 + 팔로우한 책장"을 breakpoint별로 다르게 자른다.
-// xl: 내 책장은 시퀀스 밖에서 항상 고정(showMyShelf=true 불변) — 팔로우만 (columns-1)개씩 넘어간다
-// (기존 250 동작 그대로).
-// mdlg·sm: 사용자 확인("화면 크기에 따라 책장이 1,2열일 때는 나의 책장도 팔로우한 책장들과 한 줄로
+// 295 반응형 재설계(요구사항 B) 핵심 로직: "내 책장 + 팔로우한 책장"을 열 수에 따라 다르게 자른다.
+// 3열 이상(pinsMyShelf): 내 책장은 시퀀스 밖에서 항상 고정(showMyShelf=true 불변) — 팔로우만
+// (columns-1)개씩 넘어간다 (기존 250 동작 그대로).
+// 1·2열: 사용자 확인("화면 크기에 따라 책장이 1,2열일 때는 나의 책장도 팔로우한 책장들과 한 줄로
 // 묶여 좌우 버튼으로 넘어가야 한다. 그치만 시작은 항상 나의 책장이 시작이다")에 따라, [내 책장,
 // 팔로우1, 팔로우2, ...] 하나의 가상 시퀀스를 columns개씩 자른다 — virtualPageIndex 0은 항상 내
 // 책장으로 시작하고(팔로우 (columns-1)개와 함께), 그 이후 페이지는 팔로우한 책장만으로 채워진다.
 function getLibraryPageSlots(
   virtualPageIndex: number,
   columns: number,
-  isXl: boolean,
+  pinsMyShelf: boolean,
   allFollows: FollowListItem[],
 ): LibraryPageSlots {
-  if (isXl) {
+  if (pinsMyShelf) {
     const followsPerPage = columns - 1;
     const start = virtualPageIndex * followsPerPage;
     return {
@@ -92,17 +94,18 @@ function getLibraryPageSlots(
 export function LibraryPage() {
   const tier = useShelfWidthTier();
   const columns = LIBRARY_COLUMNS_BY_TIER[tier];
-  const isXl = tier === 'xl';
+  // 330: 판단 기준이 tier가 아니라 열 수다 — libraryPinsMyShelf 주석 참고.
+  const pinsMyShelf = libraryPinsMyShelf(columns);
 
   // 319 디자인 피드백: 캐비닛 높이를 Feed(314)와 같은 실측 기반 동적 예산으로 정한다 — 이전엔
   // h-full 퍼센트 체인 + 스크롤 박스 max-h-[590px] 조합이라, 높은 화면에서 캐비닛이 래퍼를 다
   // 채우지 못하고 아래가 크게 비었다. 여기서 확정한 높이를 캐비닛에 직접 넘기므로 (a) 캐비닛이
   // 화면을 채우고 (b) 좌우 버튼 오버레이(캐비닛과 같은 박스)의 세로 중앙이 곧 캐비닛 중앙이 된다.
   const { width: viewportWidth, height: viewportHeight } = useViewportSize();
-  const { navHeightPx, titleHeightPx } = useLayoutMetrics();
+  const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
   const cabinetHeightPx = getPageContentBudgetPx(
     viewportHeight,
-    { navHeightPx, titleHeightPx },
+    { navChromeHeightPx, titleHeightPx },
     tier,
   );
   // 행 수는 그 높이에 실제로 몇 행이 들어가는지로 정한다(고정 3행 폐기) — 책이 커진 만큼
@@ -125,8 +128,12 @@ export function LibraryPage() {
   const allFollows = pages.flatMap((page) => page.items);
   const hasMoreFromServer = pages.length > 0 ? pages[pages.length - 1].hasNext : true;
 
-  const pageSlots = getLibraryPageSlots(virtualPageIndex, columns, isXl, allFollows);
-  const expectedFollowCount = isXl ? columns - 1 : virtualPageIndex === 0 ? columns - 1 : columns;
+  const pageSlots = getLibraryPageSlots(virtualPageIndex, columns, pinsMyShelf, allFollows);
+  const expectedFollowCount = pinsMyShelf
+    ? columns - 1
+    : virtualPageIndex === 0
+      ? columns - 1
+      : columns;
   const needsMoreData = pageSlots.followStartIndex + expectedFollowCount > allFollows.length;
 
   // 295-18과 동일한 "스크롤이 바닥에 닿으면 다음 페이지" 패턴 대신, 여기서는 좌우 버튼으로 넘어갈
@@ -208,14 +215,9 @@ export function LibraryPage() {
     // 287-9: 제목도 PageTitle(shared/ui/PageTitle.tsx)로 FeedPage와 같은 고정 height를 공유한다 —
     // 이 페이지 폰트 스타일(text-[27px] font-bold tracking-tight)은 그대로 유지하되, 바깥 박스
     // 높이만 고정해 Feed의 h1(text-2xl)과 자연 높이가 달라도 캐비닛 크기가 어긋나지 않게 한다.
-    // 295 추가 수정(요구사항 2.2): sm·mdlg는 3.5rem(56px)을 뺀다 — AppLayout의 헤더 padding
-    // 축소(FeedPage.tsx와 동일 근거)와 반드시 함께 맞춘다. 페이지 상하 padding도
-    // PAGE_VERTICAL_PADDING_CLASS로 바뀌었다.
-    // 304: xl은 상단 헤더가 좌측 사이드바로 바뀌어 세로로 뺄 헤더 높이가 없다 — AppLayout main이
-    // xl:pl-60(가로 오프셋)만 쓰므로 xl:min-h-[100dvh]로 뷰포트 높이 전체를 그대로 쓴다
-    // (FeedPage.tsx와 동일 근거).
+    // 330: min-h는 PAGE_MIN_HEIGHT_CLASS를 FeedPage·HomePage와 공유한다(동일 근거).
     <main
-      className={`${PAGE_CONTAINER_CLASS} flex min-h-[calc(100dvh-3.5rem)] flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS} xl:min-h-[100dvh]`}
+      className={`${PAGE_CONTAINER_CLASS} ${PAGE_MIN_HEIGHT_CLASS} flex flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS}`}
     >
       <PageTitle
         className="text-[27px] font-bold tracking-tight text-pin-navy"
@@ -247,13 +249,13 @@ export function LibraryPage() {
             direction="left"
             onClick={handlePrevious}
             disabled={!canGoPrevious}
-            label={isXl ? '이전 팔로우 책장' : '이전 책장'}
+            label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
           />
           <ShelfPageButton
             direction="right"
             onClick={handleNext}
             disabled={!canGoNext}
-            label={isXl ? '다음 팔로우 책장' : '다음 책장'}
+            label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
           />
         </div>
       </div>
