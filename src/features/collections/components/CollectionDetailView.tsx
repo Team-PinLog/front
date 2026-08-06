@@ -179,7 +179,10 @@ function CollectionToc({ records, activeIndex, onSelect }: CollectionTocProps) {
             type="button"
             onClick={() => onSelect(index)}
             aria-current={index === activeIndex}
-            className={`flex items-center gap-3 border-b border-line-card px-1 py-3 text-left transition-colors ${
+            // 356: 인덱스 레일 탭과 같은 이유·같은 방식의 포커스 표시다(CollectionIndexRail 주석
+            // 참고). 이 목록도 overflow-y-auto 안이라 아웃라인을 안쪽으로 그린다. 항목 바탕이
+            // 흰 지면이거나 옅은 민트라 아웃라인 색은 민트 하나로 충분하다.
+            className={`flex items-center gap-3 border-b border-line-card px-1 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-log-mint ${
               index === activeIndex ? 'bg-log-mint/10' : 'hover:bg-line-subtle'
             }`}
           >
