@@ -17,6 +17,18 @@
 - **컴포넌트에서 API를 직접 호출하지 않는다.** 데이터 흐름은 `docs/architecture.md`를 따른다(화면 → Hook → API 함수 → HTTP Client).
 - 서버 상태(TanStack Query)와 UI 상태(Context API)를 한 곳에 섞지 않는다.
 - 검증 스키마는 Zod로 정의하고 API 경계에서 파싱한다.
+- **`httpClient`로 `FormData`(multipart) 요청을 보낼 때는 `Content-Type` 헤더를 지운다.** `httpClient`가 기본 헤더로 `Content-Type: application/json`을 고정하고 있어서, 그대로 두면 브라우저가 multipart boundary를 붙이지 못해 요청이 깨진다(서버가 `image/jpeg` 등을 JSON으로 파싱하려다 실패).
+
+  ```typescript
+  const formData = new FormData();
+  formData.append('image', image, image.name);
+
+  const { data } = await httpClient.post('/places/suggestions', formData, {
+    headers: { 'Content-Type': undefined },
+  });
+  ```
+
+  `'multipart/form-data'`를 직접 지정하지 않는다 — boundary 값을 브라우저가 요청 생성 시점에 채워야 하므로, 헤더를 아예 비워(`undefined`) 브라우저가 자동으로 채우게 한다. 예시: `suggestPlacesFromImage.ts`(S15P11A705-345).
 
 ## 3. Git
 
