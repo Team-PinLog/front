@@ -182,6 +182,11 @@ function fitMapToRecords(
   return countPointsOutsideViewport(items, readVisibleViewport(map, insets));
 }
 
+// SDK 스크립트 로드 상태. "지도 인스턴스가 준비됐다"와는 다른 사실이며, 오직 오버레이 문구와
+// 컨트롤 버튼 표시 여부(아래 isKakaoMapsSdkReady 주석)만 결정한다. 지도를 실제로 조작하는
+// effect·핸들러는 이 값이 아니라 map 인스턴스 state를 본다 — 둘을 섞으면 "SDK는 ready인데
+// 인스턴스는 아직 null"인 구간에서 effect가 early return한 뒤 다시 돌 기회를 잃는다.
+// 근거: Jira S15P11A705-346.
 type SdkStatus = 'loading' | 'ready' | 'error';
 
 // loadKakaoMaps()는 SDK를 1회만 로드하는 module-level 싱글턴이라, "SDK는 이미 로드돼 있는데
@@ -222,7 +227,7 @@ export function RecordMapView({
 }: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<KakaoMap | null>(null);
+  const createdMapRef = useRef<KakaoMap | null>(null);
   const markersRef = useRef<KakaoCustomOverlay[]>([]);
   const hasFitInitialBoundsRef = useRef(false);
 
@@ -241,6 +246,16 @@ export function RecordMapView({
   const [sdkStatus, setSdkStatus] = useState<SdkStatus>(() =>
     isKakaoMapsSdkReady() ? 'ready' : 'loading',
   );
+  /**
+   * 생성된 kakao.maps.Map 인스턴스. ref가 아니라 state로 들어야 한다 — 지도 생성은 비동기라
+   * 인스턴스가 생기는 시점이 렌더 밖이고, ref에 담으면 그 사실이 리렌더를 일으키지 못해 마커·이동·
+   * 리스너 effect가 다시 돌 기회를 잃는다. 실제로 홈 → 탐색 → 홈 재마운트에서, 인스턴스를 ref에
+   * 담던 이전 구조는 sdkStatus 초기값이 곧바로 'ready'(SDK가 이미 로드돼 있으므로)인데 ref는 새로
+   * 만들어져 null이라 마커 effect가 가드에 걸려 early return했고, 이후 setSdkStatus('ready')가 같은
+   * 값이라 리렌더도 없고 data는 캐시에서 즉시 와 deps도 안 바뀌어 마커가 영영 그려지지 않았다.
+   * 근거: Jira S15P11A705-346(GitHub front#128).
+   */
+  const [map, setMap] = useState<KakaoMap | null>(null);
   // "내 주변" 클릭 → 응답 대기 중에만 true. 실패해도 별도 에러 상태 없이 조용히 false로 돌아간다.
   const [locating, setLocating] = useState(false);
   // 최대 축소 상한에 걸려 화면 밖으로 밀려난 Record 수. 0이면 안내 배지를 띄우지 않는다.
@@ -254,14 +269,19 @@ export function RecordMapView({
     // 못 막는다 — 두 번째 setup의 .then()도 cancelled=false로 정상 진입해, 가드가 없으면 같은
     // containerRef에 kakao.maps.Map을 두 개 만들어 리스너가 겹치고 줌/내 주변 버튼이 잠깐 나타났다
     // 사라지는 현상으로 이어졌다(마운트마다 다시 그려지는 지도와 새 Map 인스턴스가 서로 덮어씀).
-    // mapRef.current 존재 여부로 이미 생성된 Map을 재사용하도록 막는다. 근거: Jira S15P11A705-307.
-    if (mapRef.current) {
+    // 근거: Jira S15P11A705-307.
+    //
+    // 이 가드만은 map state가 아니라 ref로 남긴다 — 두 setup 사이에는 렌더가 끼지 않아 첫 .then()의
+    // setMap()이 아직 반영되기 전에 두 번째 .then()이 실행되므로, state를 읽으면 여전히 null이라
+    // 중복 생성을 막지 못한다. 이 ref는 "이미 만들었다"는 생성 래치일 뿐이고 지도를 다루는 쪽은
+    // 어디서도 읽지 않는다(읽는 순간 다시 두 개의 진실이 된다). 근거: Jira S15P11A705-346.
+    if (createdMapRef.current) {
       return;
     }
     let cancelled = false;
     loadKakaoMaps()
       .then((kakao) => {
-        if (cancelled || !containerRef.current || mapRef.current) {
+        if (cancelled || !containerRef.current || createdMapRef.current) {
           return;
         }
         const map = new kakao.maps.Map(containerRef.current, {
@@ -272,7 +292,8 @@ export function RecordMapView({
           // 줌 버튼·휠·핀치·setLevel·setBounds 어느 경로든 SDK 안에서 강제된다(실측 확인).
           maxLevel: MAX_ZOOM_OUT_LEVEL,
         });
-        mapRef.current = map;
+        createdMapRef.current = map;
+        setMap(map);
         setSdkStatus('ready');
       })
       .catch(() => {
@@ -286,9 +307,8 @@ export function RecordMapView({
   }, []);
 
   useEffect(() => {
-    const map = mapRef.current;
     const kakao = window.kakao;
-    if (sdkStatus !== 'ready' || !map || !kakao || !data) {
+    if (!map || !kakao || !data) {
       return;
     }
 
@@ -315,17 +335,29 @@ export function RecordMapView({
         yAnchor: RECORD_MARKER_TIP_Y_RATIO,
       });
     });
+  }, [data, map, navigate, onMarkerClick, readInsets]);
 
-    // 최초 응답에만 bounds로 fitBounds 적용. 이후 재검색 결과에는 사용자가 이미 맞춰둔 화면을 유지한다.
-    if (!hasFitInitialBoundsRef.current) {
-      if (data.bounds) {
-        setOffscreenRecordCount(
-          fitMapToRecords(kakao, map, data.bounds, data.items, true, readInsets()),
-        );
-      }
-      hasFitInitialBoundsRef.current = true;
+  /**
+   * 최초 응답에만 bounds로 fitBounds 적용. 이후 재검색 결과에는 사용자가 이미 맞춰둔 화면을 유지한다.
+   * 마커 effect와 한 몸이었으나 별도 effect로 분리했다 — 마커를 그리는 일(외부 시스템 동기화)과
+   * 화면을 맞춘 결과를 배지 상태로 되돌리는 일(setState)은 서로 다른 관심사고, 한 effect 안에서
+   * 섞으면 react-hooks/set-state-in-effect가 걸린다. 실행 순서는 그대로다(선언 순서대로 마커가 먼저).
+   * 근거: Jira S15P11A705-346.
+   */
+  useEffect(() => {
+    const kakao = window.kakao;
+    if (!map || !kakao || !data || hasFitInitialBoundsRef.current) {
+      return;
     }
-  }, [data, sdkStatus, navigate, onMarkerClick, readInsets]);
+    // bounds가 null(저장된 기록 없음)이어도 가드는 세우고 배지는 0으로 둔다 — 분리 전과 같이
+    // "최초 응답 1회"라는 의미를 유지하기 위해서다. 여기서 세우지 않으면 이후 재검색 결과에
+    // bounds가 생기는 순간 사용자가 맞춰둔 화면(과 저장 직후 focusRecordId panTo)을 밀어내고
+    // fitBounds가 다시 걸린다. 0은 마운트 초기값과 같아 이 경우 화면상 변화가 없다.
+    hasFitInitialBoundsRef.current = true;
+    setOffscreenRecordCount(
+      data.bounds ? fitMapToRecords(kakao, map, data.bounds, data.items, true, readInsets()) : 0,
+    );
+  }, [data, map, readInsets]);
 
   /**
    * 새로 저장한 Record로 이동. 최초 진입 fitBounds(hasFitInitialBoundsRef)와 섞이지 않게 별도
@@ -337,9 +369,8 @@ export function RecordMapView({
    * 전에 먼저 이동하면 빈 지도만 보이기 때문이다.
    */
   useEffect(() => {
-    const map = mapRef.current;
     const kakao = window.kakao;
-    if (sdkStatus !== 'ready' || !map || !kakao || focusRecordId === null || !data) {
+    if (!map || !kakao || focusRecordId === null || !data) {
       return;
     }
     const target = data.items.find((item) => item.recordId === focusRecordId);
@@ -351,7 +382,7 @@ export function RecordMapView({
     // (사용자가 지도를 끌고 다닌 뒤에도 그대로인 기존 동작).
     centerOnVisibleArea(kakao, map, target, readInsets(), true);
     onFocusRecordHandled?.();
-  }, [data, sdkStatus, focusRecordId, onFocusRecordHandled, readInsets]);
+  }, [data, map, focusRecordId, onFocusRecordHandled, readInsets]);
 
   // 지도 이동 범위 제한. 카카오 SDK에는 이동 가능 영역을 막는 옵션이 없어(Map.prototype 조사:
   // setMaxLevel/setMinLevel은 있지만 bounds 제한 API는 없다) 직접 되돌린다.
@@ -360,9 +391,8 @@ export function RecordMapView({
   // 조작이 끝난 뒤에 불려서 진행 중인 제스처와 다투지 않는다. panTo가 만드는 이동은 되돌린
   // 지점이 이미 범위 안이라 다시 걸리지 않는다.
   useEffect(() => {
-    const map = mapRef.current;
     const kakao = window.kakao;
-    if (sdkStatus !== 'ready' || !map || !kakao) {
+    if (!map || !kakao) {
       return;
     }
     const clampCenter = () => clampMapCenterIntoKorea(kakao, map, true);
@@ -372,12 +402,11 @@ export function RecordMapView({
       kakao.maps.event.removeListener(map, 'dragend', clampCenter);
       kakao.maps.event.removeListener(map, 'zoom_changed', clampCenter);
     };
-  }, [sdkStatus]);
+  }, [map]);
 
   // 카카오맵 레벨은 숫자가 작을수록 확대된 상태다. SDK 기본 ZoomControl 대신 브랜드 톤 커스텀
   // 버튼 두 개로 map.setLevel()을 직접 호출한다(kakaoMaps.ts에 ZoomControl 타입 없음).
   function handleZoomIn() {
-    const map = mapRef.current;
     if (!map) {
       return;
     }
@@ -385,7 +414,6 @@ export function RecordMapView({
   }
 
   function handleZoomOut() {
-    const map = mapRef.current;
     if (!map) {
       return;
     }
@@ -399,7 +427,6 @@ export function RecordMapView({
   // 전체 bounds 중심이 빈 지역이 될 일이 없고, 상한 레벨 13이 한반도 전체를 덮으므로 이 화면이
   // 실질적인 "전체"다. 그래서 클릭 후에는 배지를 숨긴다.
   function handleShowAllRecords() {
-    const map = mapRef.current;
     const kakao = window.kakao;
     if (!map || !kakao || !data?.bounds) {
       return;
@@ -411,7 +438,6 @@ export function RecordMapView({
   // 권한 거부·조회 실패 시 에러를 던지지 않고 DEFAULT_CENTER 폴백을 유지한 채 조용히 무시한다.
   // 별도 토스트/모달 없이 버튼 텍스트를 잠깐 바꾸는 정도로만 피드백한다.
   function handleLocateMe() {
-    const map = mapRef.current;
     if (!map || !navigator.geolocation) {
       return;
     }
@@ -420,12 +446,10 @@ export function RecordMapView({
       (position) => {
         setLocating(false);
         const kakao = window.kakao;
-        if (!kakao || !mapRef.current) {
+        if (!kakao) {
           return;
         }
-        mapRef.current.setCenter(
-          new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude),
-        );
+        map.setCenter(new kakao.maps.LatLng(position.coords.latitude, position.coords.longitude));
       },
       () => {
         setLocating(false);
