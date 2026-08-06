@@ -83,6 +83,51 @@ export function getContrastRatio(foregroundHex: string, backgroundHex: string): 
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
+/**
+ * 365: 책등 제목 글자 크기(px). **--shelf-scale을 타지 않는 절대값이다** — 폰트 교체(357)로도 전역
+ * 타이포 변경(364)으로도 커지지 않아, 키우려면 이 값을 직접 올려야 한다.
+ *
+ * 크기의 상한을 정하는 것은 책등 폭이다. 세로쓰기에서는 글자가 차지하는 **가로 폭이 곧 글자
+ * 크기**라, 가장 좁은 책등(40px, 축소 구간에서는 더 좁다)에서도 좌우 여백이 남아야 한다.
+ *
+ * 365 2차(피드백 "글씨 너무 커. 90%로"): 14 → 13px. 12.5px과 13px 중 13px을 골랐다 — 정수 px이라
+ * 글리프 전진폭이 반올림되지 않아 세로로 쌓았을 때 글자 간격이 고르게 떨어진다. 12.5px은 요청한
+ * 90%(12.6)에 더 가깝지만, 이 크기대에서는 소수점 한 자리가 만드는 렌더 흐트러짐이 더 눈에 띈다.
+ */
+export const SPINE_FONT_SIZE_PX = 13;
+
+/**
+ * 365: 영문 위주 제목만 한 단계 더 키운다.
+ *
+ * 라틴 글리프는 같은 font-size에서 한글보다 시각적으로 작게 보인다 — 한글이 글자틀을 거의 가득
+ * 채우는 데 비해 라틴은 x-height가 낮고 위아래 여백이 크기 때문이다. 그래서 같은 14px이라도 영문
+ * 제목만 유독 작아 보인다.
+ *
+ * 보정 방식으로 "라틴 구간만 잘라 큰 글씨로 감싸기"도 가능하지만 택하지 않았다 — 한 제목 안에서
+ * 글자 크기가 오르내리면(특히 세로쓰기에서는 글자마다 폭이 달라져) 줄이 울퉁불퉁해 보인다.
+ * **제목 단위로 판정해 한 크기를 쓰는 쪽**이 혼용 제목에서도 깔끔하다.
+ *
+ * 365 2차: 16 → 14.5px. 한글 크기와 함께 90%로 줄이되 "영문이 한 단계 크다"는 관계는 유지한다
+ * (14.5 / 13 ≈ 1.12로, 이전 16 / 14 ≈ 1.14와 거의 같은 비율이다).
+ */
+export const SPINE_FONT_SIZE_LATIN_PX = 14.5;
+
+// 한글 음절·자모 vs 라틴 알파벳 개수를 세어 어느 쪽이 제목의 인상을 지배하는지 본다. 숫자·기호는
+// 어느 쪽도 아니라 세지 않는다("2024 Seoul"은 라틴 위주로 판정된다).
+const HANGUL_PATTERN = /[가-힣ᄀ-ᇿ㄰-㆏]/g;
+const LATIN_PATTERN = /[A-Za-z]/g;
+
+export function isLatinDominantTitle(title: string): boolean {
+  const hangulCount = title.match(HANGUL_PATTERN)?.length ?? 0;
+  const latinCount = title.match(LATIN_PATTERN)?.length ?? 0;
+  return latinCount > hangulCount;
+}
+
+/** 제목에 실제로 적용할 글자 크기. */
+export function getSpineFontSizePx(title: string): number {
+  return isLatinDominantTitle(title) ? SPINE_FONT_SIZE_LATIN_PX : SPINE_FONT_SIZE_PX;
+}
+
 export function getSpineTextColor(collectionId: number): string {
   const spineColor = getSpineColor(collectionId);
   return getContrastRatio(SPINE_TEXT_LIGHT, spineColor) >=
