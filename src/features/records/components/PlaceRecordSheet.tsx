@@ -44,6 +44,18 @@ interface SuggestedPlaceOption {
   evidence: string[];
 }
 
+interface UnresolvedCandidate {
+  candidateId: string;
+  extractedName: string;
+  status: 'NO_RESULTS' | 'FAILED';
+}
+
+function unresolvedCandidateMessage(status: UnresolvedCandidate['status']): string {
+  return status === 'NO_RESULTS'
+    ? '카카오 장소 검색 결과가 없어요.'
+    : '카카오 장소 검색에 실패했어요. 다른 후보를 선택하거나 직접 검색해 주세요.';
+}
+
 function searchErrorMessage(error: Error): string {
   if (error.message === 'KAKAO_REST_KEY_MISSING') {
     return '카카오 REST 키가 설정되지 않았습니다.';
@@ -75,6 +87,16 @@ function toSuggestedOptions(candidates: PlaceSuggestionCandidate[]): SuggestedPl
       },
     })),
   );
+}
+
+function toUnresolvedCandidates(candidates: PlaceSuggestionCandidate[]): UnresolvedCandidate[] {
+  return candidates
+    .filter((candidate) => candidate.kakaoSearch.items.length === 0)
+    .map((candidate) => ({
+      candidateId: candidate.candidateId,
+      extractedName: candidate.extracted.placeName,
+      status: candidate.kakaoSearch.status === 'NO_RESULTS' ? 'NO_RESULTS' : 'FAILED',
+    }));
 }
 
 function placeMeta(place: KakaoPlace): string {
@@ -137,6 +159,8 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
   const [imagePreviewUrl, setImagePreviewUrl] = useState('');
   const [imageFileError, setImageFileError] = useState('');
   const [suggestedOptions, setSuggestedOptions] = useState<SuggestedPlaceOption[]>([]);
+  const [unresolvedCandidates, setUnresolvedCandidates] = useState<UnresolvedCandidate[]>([]);
+  const [suggestionWarnings, setSuggestionWarnings] = useState<string[]>([]);
   const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
   const [analysisPhase, setAnalysisPhase] = useState(0);
   const analysisTimersRef = useRef<number[]>([]);
@@ -199,6 +223,8 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     setImagePreviewUrl('');
     setImageFileError('');
     setSuggestedOptions([]);
+    setUnresolvedCandidates([]);
+    setSuggestionWarnings([]);
     setSelectedSuggestionId(null);
     setIsEditingPlace(false);
     setSelectedCollectionIds([]);
@@ -267,6 +293,8 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     setImagePreviewUrl(URL.createObjectURL(file));
     setImageFileError('');
     setSuggestedOptions([]);
+    setUnresolvedCandidates([]);
+    setSuggestionWarnings([]);
     setSelectedSuggestionId(null);
     setIsEditingPlace(false);
     suggestionMutation.reset();
@@ -293,6 +321,8 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     setImageStage('analysis');
     setAnalysisPhase(0);
     setSuggestedOptions([]);
+    setUnresolvedCandidates([]);
+    setSuggestionWarnings([]);
     setSelectedSuggestionId(null);
     setIsEditingPlace(false);
     sheet.selectPlace(null);
@@ -302,29 +332,33 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
       window.setTimeout(() => setAnalysisPhase(2), ANALYSIS_STEP_DELAY_MS * 2),
     ];
 
-    const finishAnalysis = (options: SuggestedPlaceOption[]) => {
+    const finishAnalysis = (options: SuggestedPlaceOption[], unresolved: UnresolvedCandidate[]) => {
       clearAnalysisTimers();
       setAnalysisPhase(3);
       window.setTimeout(() => {
         setSuggestedOptions(options);
-        setSelectedSuggestionId(options[0].id);
+        setUnresolvedCandidates(unresolved);
+        setSelectedSuggestionId(options[0]?.id ?? null);
         setImageStage('candidates');
       }, ANALYSIS_DONE_HOLD_MS);
     };
 
     if (previewMode) {
-      window.setTimeout(() => finishAnalysis(previewSuggestedOptions), 350);
+      window.setTimeout(() => finishAnalysis(previewSuggestedOptions, []), 350);
       return;
     }
     try {
       const data = await suggestionMutation.mutateAsync(imageFile);
-      const options = toSuggestedOptions(data.candidates);
-      if (options.length === 0) {
+      setSuggestionWarnings(data.warnings.map((warning) => warning.message));
+      // candidates가 비어 있으면 이미지에서 장소 후보 자체를 추출하지 못한 것이라 분석 실패로 본다.
+      // 후보는 있지만 카카오 검색이 전부 NO_RESULTS/FAILED인 경우는 아래 candidates 화면에서
+      // 후보별로 안내한다(전체 실패로 뭉뚱그리지 않는다).
+      if (data.candidates.length === 0) {
         clearAnalysisTimers();
         setImageStage('failure');
         return;
       }
-      finishAnalysis(options);
+      finishAnalysis(toSuggestedOptions(data.candidates), toUnresolvedCandidates(data.candidates));
     } catch {
       clearAnalysisTimers();
       setImageStage('failure');
@@ -348,6 +382,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     clearAnalysisTimers();
     suggestionMutation.reset();
     setAnalysisPhase(0);
+    setSuggestionWarnings([]);
     setImageStage('upload');
   };
 
@@ -665,6 +700,13 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                         {imageErrorMessage(suggestionMutation.error)}
                       </p>
                     )}
+                    {suggestionWarnings.length > 0 && (
+                      <div className="mt-3 w-full rounded-[10px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-6 text-amber-800">
+                        {suggestionWarnings.map((message, index) => (
+                          <p key={index}>{message}</p>
+                        ))}
+                      </div>
+                    )}
                     <div className="mt-auto grid w-full grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -694,6 +736,13 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                         저장할 장소를 선택해 주세요.
                       </p>
                     </div>
+                    {suggestionWarnings.length > 0 && (
+                      <div className="rounded-[10px] border border-amber-300 bg-amber-50 p-3 text-left text-xs leading-6 text-amber-800">
+                        {suggestionWarnings.map((message, index) => (
+                          <p key={index}>{message}</p>
+                        ))}
+                      </div>
+                    )}
                     <div className="grid gap-2">
                       {suggestedOptions.map((option) => (
                         <button
@@ -726,6 +775,23 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                         </button>
                       ))}
                     </div>
+                    {unresolvedCandidates.length > 0 && (
+                      <div className="grid gap-2">
+                        {unresolvedCandidates.map((candidate) => (
+                          <div
+                            key={candidate.candidateId}
+                            className="rounded-[10px] border border-dashed border-pin-navy/15 bg-white/60 px-3 py-3 text-left text-pin-navy"
+                          >
+                            <strong className="block text-[13px] font-extrabold">
+                              {candidate.extractedName}
+                            </strong>
+                            <small className="mt-1 block text-[11px] leading-5 text-ink-gray">
+                              {unresolvedCandidateMessage(candidate.status)}
+                            </small>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
