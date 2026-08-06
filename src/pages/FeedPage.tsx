@@ -27,7 +27,18 @@ export function FeedPage() {
       >
         새로운 장소를 발견해 보세요
       </PageTitle>
-      <div className="min-h-0 flex-1">
+      {/* 328: items-center를 더했다. 이 래퍼는 flex-1이라 타이틀 아래 남는 세로를 전부 차지하는데,
+          그 안의 책장은 그 높이를 다 쓰지 못하는 경우가 많다 — Feed 카드 크기는 세로 예산과 가로
+          가용폭 중 빡빡한 쪽에 맞춰지고(solveFeedScale), 넓은 화면에서는 거의 항상 가로가 이긴다
+          (xl 1920×1080 기준 세로 예산 904px 중 실제 사용 562px). 기본 정렬(stretch → 내용은 위에
+          붙는다)이면 그 차이 342px이 통째로 책장 아래 빈 여백이 돼, 캐비닛이 예산을 꽉 채우는
+          나의 책장과 비교했을 때 "탐색만 아래가 휑하다"로 보였다. 남는 세로를 위아래로 나눠 가지면
+          두 페이지 모두 책장이 화면 중앙에 온다(LibraryPage에도 같은 정렬을 뒀다).
+          정렬을 items-center가 아니라 자식의 auto 마진(FeedList 루트의 m-auto)으로 주는 이유:
+          예산 하한(SHELF_SCROLL_MIN_H_PX)에 걸리는 아주 낮은 뷰포트에서는 책장이 이 래퍼보다 커질
+          수 있는데, items-center는 그때 넘치는 만큼을 위로도 밀어내 책장 윗부분이 타이틀 뒤로
+          잘린다. auto 마진은 공간이 남을 때만 나눠 갖고 모자라면 0이 돼 위로 밀지 않는다. */}
+      <div className="flex min-h-0 flex-1 flex-col">
         <FeedList />
       </div>
     </main>

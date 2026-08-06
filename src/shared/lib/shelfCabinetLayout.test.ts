@@ -5,10 +5,13 @@ import {
   FEED_CARD_REF_HEIGHT,
   FEED_COLUMNS_BY_KEY,
   FEED_MAX_ROWS_BY_KEY,
+  FEED_PLANK_SHADOW_BLEED_PX,
   FEED_ROWS_MIN_CARD_WIDTH_PX,
+  FEED_ROWS_PADDING_X_PX,
   FEED_SIDE_GUTTER_PX,
   getFeedCardDimensions,
   getFeedColumnsKey,
+  getPageContainerWidthPx,
   getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
@@ -54,6 +57,8 @@ interface Viewport {
 
 // 확인 폭은 작업 계획의 검증 목록(1512/1280/1024/834/768/430/375)에 짧은 세로(667)와 극단값을 더한 것.
 const VIEWPORTS: Viewport[] = [
+  // 328의 육안 확인 폭(375·768·1280·1920) 중 1920만 빠져 있었다.
+  { name: 'xl 1920x1080', width: 1920, height: 1080, tier: 'xl', isLandscape: true },
   { name: 'xl 1710x948', width: 1710, height: 948, tier: 'xl', isLandscape: true },
   { name: 'xl 1512x945', width: 1512, height: 945, tier: 'xl', isLandscape: true },
   { name: 'xl 1280x800', width: 1280, height: 800, tier: 'xl', isLandscape: true },
@@ -117,6 +122,7 @@ function layoutFor(viewport: Viewport, measured = { navChromeHeightPx: 0, titleH
     dims,
     contentBudgetPx,
     availableGridWidthPx,
+    pageContainerWidthPx: getPageContainerWidthPx(viewport.width, getSidebarWidthPx(viewport.tier)),
     usedHeightPx: rows * (dims.cardHeight + dims.boardHeight) + dims.rowsGap * (rows - 1),
     usedWidthPx: columns * dims.cardWidth + (columns - 1) * dims.gridGap,
   };
@@ -134,12 +140,29 @@ describe('Feed 책장 배치', () => {
       expect(usedWidthPx).toBeLessThanOrEqual(availableGridWidthPx);
     });
 
-    it('선반 덩어리가 페이지 컨테이너 안에 들어간다', () => {
-      const { columns, dims, availableGridWidthPx } = layoutFor(viewport);
+    it('선반 덩어리가 페이지 컨테이너 안에 들어간다(가로 스크롤바가 생기지 않는다)', () => {
+      const { columns, dims, pageContainerWidthPx } = layoutFor(viewport);
       const shelfWidthPx = getFeedShelfWidthPx(columns, dims.cardWidth, dims.gridGap);
-      // getFeedGridAreaWidthPx는 컨테이너 폭에서 좌우 gutter(버튼 자리)를 이미 뺀 값이라, 그 gutter를
-      // 다시 더해 얹는 선반 폭은 "가용폭 + gutter 2개" 안에 들어와야 한다.
-      expect(shelfWidthPx).toBeLessThanOrEqual(availableGridWidthPx + 2 * FEED_SIDE_GUTTER_PX);
+      // 328: 이전엔 "가용폭 + gutter 2개"와 비교했는데, 그건 getFeedGridAreaWidthPx의 식을 그대로
+      // 되짚는 검증이라 그 식이 무엇을 빼든 항상 참이었다(그림자 여백을 빼먹은 상태에서도 통과했다).
+      // FeedList가 실제로 mx-auto로 얹는 박스는 이 선반 덩어리이고, 그게 넘치면 안 되는 대상은
+      // PAGE_CONTAINER_CLASS가 만드는 컨테이너 폭이다 — 독립적으로 계산된 그 값과 직접 비교한다.
+      expect(shelfWidthPx).toBeLessThanOrEqual(pageContainerWidthPx);
+    });
+
+    // 328: 선반 판 그림자(0 10px 16px)는 판 좌우로 8px씩 번지는데, 행 스크롤 박스의
+    // overflow-y-auto가 가로도 함께 클리핑해 그 8px이 잘려 나갔다. 스크롤 박스 좌우 padding으로
+    // 자리를 확보하되, 그 폭이 카드 예산을 침범하면 컨테이너를 넘어 가로 스크롤바가 생긴다.
+    it('선반 판 좌우 그림자가 스크롤 박스 안에 들어갈 자리를 갖는다', () => {
+      const { columns, dims } = layoutFor(viewport);
+      const shelfWidthPx = getFeedShelfWidthPx(columns, dims.cardWidth, dims.gridGap);
+      // 스크롤 박스 안쪽(= 선반 판) 폭 = 바깥 폭 - 좌우 padding.
+      const plankWidthPx = shelfWidthPx - 2 * FEED_ROWS_PADDING_X_PX;
+      // 판 좌우로 번지는 그림자까지 포함한 폭이 스크롤 박스 바깥 치수 안에 머물러야 잘리지 않는다.
+      expect(plankWidthPx + 2 * FEED_PLANK_SHADOW_BLEED_PX).toBeLessThanOrEqual(shelfWidthPx);
+      // 그리고 판은 여전히 책 줄보다 좌우 gutter만큼 넓어야 한다(시안의 오버행 — 314).
+      const bookRowWidthPx = columns * dims.cardWidth + (columns - 1) * dims.gridGap;
+      expect(plankWidthPx - bookRowWidthPx).toBe(2 * FEED_SIDE_GUTTER_PX);
     });
 
     it('카드가 3:4 비율을 유지한다', () => {
@@ -328,8 +351,11 @@ describe('768 경계에서의 가로 예산', () => {
   it('가로 padding은 사이드바를 뺀 컨텐츠 폭이 아니라 뷰포트 폭 기준이다', () => {
     // 이건 버그가 아니라 CSS와 일치하는 동작이다 — PAGE_CONTAINER_CLASS의 sm:px-6은 window 폭
     // media query라, 컨테이너가 696px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
-    // 768 - 72(레일) = 696, 696 - 2*24(padding) - 2*28(gutter) = 592.
-    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(592);
+    // 768 - 72(레일) = 696, 696 - 2*24(padding) = 648.
+    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(648);
+    // 328: 그 컨테이너에서 좌우 gutter(28)와 선반 판 그림자 자리(8)를 더 뺀 값이 카드 예산이다.
+    // 648 - 2*28 - 2*8 = 576(이전에는 그림자 자리를 빼지 않아 592였다).
+    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(576);
   });
 
   it('레일 덕분에 768에서도 3열 카드가 가독성 하한을 넘는다', () => {
@@ -339,6 +365,39 @@ describe('768 경계에서의 가로 예산', () => {
     const { columns, dims } = layoutFor(viewport!);
     expect(columns).toBe(3);
     expect(dims.cardWidth).toBeGreaterThanOrEqual(FEED_ROWS_MIN_CARD_WIDTH_PX);
+  });
+});
+
+// --- 328: 선반 판 그림자 여백 ↔ 가로 예산 --------------------------------------------------------
+describe('선반 판 그림자 여백', () => {
+  it('스크롤 박스 좌우 padding이 그림자 번짐 폭 이상이다', () => {
+    // 이보다 작으면 확보한 여백을 넘어 그림자가 다시 잘린다. 328 2차에서 그림자가 box-shadow에서
+    // 좌우 페이드 마스크 레이어로 바뀌었지만 번짐 폭은 그대로다 — 그 레이어를 판보다 좌우로 정확히
+    // 이만큼 넓게 잡아 그림자가 판 끝을 조금 넘어가며 사라지게 했다(Shelf.tsx ShelfPlank).
+    expect(FEED_ROWS_PADDING_X_PX).toBeGreaterThanOrEqual(FEED_PLANK_SHADOW_BLEED_PX);
+  });
+
+  it('확보한 여백이 카드 가로 예산에서 차감돼 있다', () => {
+    // 차감을 빠뜨리면 여백이 그대로 카드 폭을 침범해 선반 덩어리가 컨테이너를 넘는다(가로 스크롤바).
+    for (const viewport of VIEWPORTS) {
+      const reservedLeftPx = getSidebarWidthPx(viewport.tier);
+      expect(getFeedGridAreaWidthPx(viewport.width, reservedLeftPx)).toBe(
+        getPageContainerWidthPx(viewport.width, reservedLeftPx) -
+          2 * (FEED_SIDE_GUTTER_PX + FEED_ROWS_PADDING_X_PX),
+      );
+    }
+  });
+
+  it('선반 덩어리 폭에는 같은 여백이 다시 더해진다', () => {
+    // 카드 예산에서 빼기만 하고 바깥 박스에 더하지 않으면 판이 그 폭만큼 좁아진다.
+    const columns = 5;
+    const cardWidthPx = 180;
+    const gridGapPx = 24;
+    expect(getFeedShelfWidthPx(columns, cardWidthPx, gridGapPx)).toBe(
+      columns * cardWidthPx +
+        (columns - 1) * gridGapPx +
+        2 * (FEED_SIDE_GUTTER_PX + FEED_ROWS_PADDING_X_PX),
+    );
   });
 });
 

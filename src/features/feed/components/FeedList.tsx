@@ -9,6 +9,7 @@ import {
   FEED_MAX_ROWS_BY_KEY,
   FEED_ROWS_PADDING_BOTTOM_PX,
   FEED_ROWS_PADDING_TOP_PX,
+  FEED_ROWS_PADDING_X_PX,
   getFeedColumnsKey,
   getFeedCardDimensions,
   getPageContentBudgetPx,
@@ -269,8 +270,12 @@ export function FeedList() {
   // 314: 캐비닛이 사라져 버튼이 앉을 안쪽 여백(px-5)이 없어졌다 — 대신 그리드에 좌우
   // FEED_SIDE_GUTTER_PX만큼 padding을 주고(FEED_GRID_CLASS의 px-7) 버튼을 그 gutter에 놓는다.
   // 선반 판은 gutter까지 덮는 full-bleed로 두어 시안처럼 책보다 넓게 깔린다.
+  // 328: mx-auto → m-auto. 부모(FeedPage의 flex-1 래퍼)가 flex-col이 되면서 세로 auto 마진이
+  // "남는 세로 공간을 위아래로 나눠 갖는다"는 뜻을 갖게 됐다 — 책장이 화면 중앙에 온다. 가로는
+  // 기존 mx-auto와 동일하게 동작하고, flex 컨테이너가 아닌 곳에 놓여도 세로 auto는 0으로 풀려
+  // 기존 동작 그대로다(FeedPage 주석 참고).
   return (
-    <div className="relative mx-auto flex flex-col" style={{ width: shelfWidthPx }}>
+    <div className="relative m-auto flex flex-col" style={{ width: shelfWidthPx }}>
       <FeedArrowButton direction="left" disabled={!canGoPrevious} onClick={handlePrevious} />
       <FeedArrowButton direction="right" disabled={!canGoNext} onClick={handleNext} />
 
@@ -346,7 +351,7 @@ function EmptyShelves({
   overlay?: ReactNode;
 }) {
   return (
-    <div className="relative mx-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
+    <div className="relative m-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
       {/* 314: 데이터가 없는 상태에서도 좌우 버튼은 자리에 있어야 한다 — 책장 가구의 일부라, 로딩·빈
           목록·에러에서 사라졌다가 데이터가 오면 나타나면 레이아웃이 흔들린 것처럼 보인다.
           넘길 페이지가 없는 상태이므로 항상 disabled다. */}
@@ -390,6 +395,9 @@ function EmptyShelves({
 // 314: 그리드 좌우에 FEED_SIDE_GUTTER_PX(28px = px-7)만큼 여백을 준다 — getFeedGridAreaWidthPx가
 // 카드 크기를 역산할 때 빼는 값과 반드시 같아야 한다(JS 상수 ↔ Tailwind 리터럴 수동 동기화).
 // 이 여백이 좌우 페이지 버튼의 자리이자, 캐비닛의 border+px-5가 하던 역할을 대신한다.
+// 328: getFeedGridAreaWidthPx는 이제 여기에 더해 그림자 번짐 폭(FEED_PLANK_SHADOW_BLEED_PX)도
+// 뺀다 — 그쪽은 이 클래스가 아니라 스크롤 박스의 인라인 padding이라, 이 px-7 리터럴 자체는 여전히
+// FEED_SIDE_GUTTER_PX 하나와만 짝이다.
 // 314: overflow-y-auto는 계산이 어긋나는 극단적 경우에 대비한 안전판인데, 그 때문에 맨 윗줄 카드가
 // hover(-translate-y-1.5 = 6px)로 떠오를 때 스크롤 박스 위쪽 경계에 잘렸다. 위쪽에 그 이동량보다
 // 조금 더 큰 padding을 두면 떠오른 카드가 padding 영역 안에 머물러 잘리지 않는다.
@@ -397,6 +405,10 @@ function EmptyShelves({
 // 위아래 padding을 Tailwind 리터럴(pt-2)이 아니라 인라인 style로 준다 — 이 값은 세로 예산에서
 // 차감돼야 하는 값이라(getFeedRowsContentBudgetPx) 클래스 문자열과 JS 상수로 이원화하면 반드시
 // 어긋난다. shelfCabinetLayout.ts를 단일 소스로 두고 여기서는 읽어 쓰기만 한다.
+// 328: 좌우 padding도 같은 이유로 필요하다 — overflow-y-auto는 세로만 스크롤할 뿐 가로도 함께
+// 클리핑해서, 스크롤 박스 폭을 꽉 채우는 선반 판의 좌우 그림자(8px)가 그대로 잘려 나갔다.
+// 이 폭은 getFeedGridAreaWidthPx가 카드 가로 예산에서 이미 빼고 getFeedShelfWidthPx가 다시
+// 더하므로(FEED_PLANK_SHADOW_BLEED_PX 주석), 판 폭도 카드 폭도 이 여백에 침범당하지 않는다.
 const FEED_ROWS_SCROLL_CLASS = 'flex flex-col overflow-y-auto';
 
 function getRowsScrollStyle(rowsGapPx: number, budgetPx: number): CSSProperties {
@@ -405,6 +417,8 @@ function getRowsScrollStyle(rowsGapPx: number, budgetPx: number): CSSProperties 
     maxHeight: budgetPx,
     paddingTop: FEED_ROWS_PADDING_TOP_PX,
     paddingBottom: FEED_ROWS_PADDING_BOTTOM_PX,
+    paddingLeft: FEED_ROWS_PADDING_X_PX,
+    paddingRight: FEED_ROWS_PADDING_X_PX,
   };
 }
 
