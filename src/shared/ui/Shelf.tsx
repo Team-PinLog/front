@@ -1,5 +1,10 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { scalePx, SHELF_BOARD_HEIGHT_PX, SHELF_SCALE_CSS } from '@/shared/lib/shelfCabinetLayout';
+import {
+  FEED_PLANK_SHADOW_BLEED_PX,
+  scalePx,
+  SHELF_BOARD_HEIGHT_PX,
+  SHELF_SCALE_CSS,
+} from '@/shared/lib/shelfCabinetLayout';
 import {
   getSpineColor,
   getSpineHeight,
@@ -103,17 +108,53 @@ const PLANK_GRAIN_SVG = [
 // 800px 주기로 가로 반복한다 — 선반이 그보다 짧으면 반복 자체가 화면에 드러나지 않는다.
 const PLANK_GRAIN_IMAGE = `url("data:image/svg+xml,${encodeURIComponent(PLANK_GRAIN_SVG)}")`;
 
+// 328(2차 디자인 피드백 "여전히 뚝 끊기는 느낌"): 낙하 그림자를 box-shadow에서 별도 레이어로
+// 분리한다. box-shadow는 요소의 사각형을 그대로 복제해 흐리는 것이라, 판 좌우 끝에서 그림자가
+// 세로선처럼 잘려 끝난다 — 스크롤 박스의 가로 클리핑을 없앤 뒤에도 그 단면이 그대로 보였다.
+// 클리핑과 이건 서로 다른 문제였다. 레이어로 빼야 좌우 페이드아웃 마스크를 걸 수 있다.
+// 판 자체(나무 단면)는 그대로 둔다 — "책보다 넓게 깔린 판"이라는 시안의 인상이 판 끝의 분명한
+// 단면에서 나오기 때문이다(사용자 확인).
+//
+// 세로 프로파일은 기존 box-shadow(0 10px 16px)가 만들던 띠를 그대로 재현한다: 판 바로 아래에서
+// 시작해 24px 아래에서 사라지고, 가장 진한 지점이 판에서 조금 떨어져 있다(offset 10px의 효과).
+const PLANK_SHADOW_HEIGHT_PX = 24;
+const PLANK_SHADOW_GRADIENT =
+  'linear-gradient(to bottom, rgba(4,33,66,.10) 0%, rgba(4,33,66,.13) 35%, rgba(4,33,66,0) 100%)';
+
+// 페이드 구간을 px이 아니라 %로 잡는 이유: 판 폭이 구간마다 크게 다르다(sm 약 300px ~ xl 약
+// 1450px). 고정 px이면 좁은 화면에서는 판 전체가 흐려지고 넓은 화면에서는 끝이 여전히 끊겨 보인다.
+// 328 3차 디자인 피드백("그림자가 선반보다 짧아 보인다"): 양 끝 10%씩 → 5%씩. 10%면 진하게 깔리는
+// 구간이 판 폭의 80%뿐이라, 끊기지는 않지만 그림자가 판보다 짧은 것처럼 읽혔다. 5%면 90%가 온전한
+// 그림자이고 페이드는 판 끝 근처에서만 일어난다 — 끊김을 없애는 최소한의 길이다.
+const PLANK_SHADOW_FADE =
+  'linear-gradient(to right, transparent 0%, #000 5%, #000 95%, transparent 100%)';
+
 export function ShelfPlank({ heightPx, className }: { heightPx: number; className?: string }) {
   return (
-    <div
-      aria-hidden="true"
-      style={{ height: heightPx }}
-      className={`relative overflow-hidden rounded-[4px] bg-gradient-to-b from-shelf-wood-light from-25% via-shelf-wood via-70% to-shelf-wood-dark shadow-[inset_0_1px_0_rgba(255,255,255,.9),0_10px_16px_rgba(4,33,66,.13)] ${className ?? ''}`}
-    >
+    <div aria-hidden="true" style={{ height: heightPx }} className={`relative ${className ?? ''}`}>
+      {/* 그림자 레이어. 판보다 좌우로 FEED_PLANK_SHADOW_BLEED_PX만큼 넓다 — box-shadow가 번지던
+          폭과 같은 값이라, 그 자리를 확보해 둔 행 스크롤 박스의 좌우 padding 계약이 그대로
+          유지된다(shelfCabinetLayout.ts). 마스크가 그 끝을 이미 투명하게 만들어 두므로 잘릴 일도
+          없고, 그림자가 판 끝을 조금 넘어가며 사라져 실제 그림자에 더 가깝다. */}
       <div
-        className="absolute inset-0 opacity-60"
-        style={{ backgroundImage: PLANK_GRAIN_IMAGE, backgroundSize: '800px 100%' }}
+        className="pointer-events-none absolute top-full"
+        style={{
+          left: -FEED_PLANK_SHADOW_BLEED_PX,
+          right: -FEED_PLANK_SHADOW_BLEED_PX,
+          height: PLANK_SHADOW_HEIGHT_PX,
+          backgroundImage: PLANK_SHADOW_GRADIENT,
+          WebkitMaskImage: PLANK_SHADOW_FADE,
+          maskImage: PLANK_SHADOW_FADE,
+        }}
       />
+      {/* 판 본체. overflow-hidden은 나뭇결을 판 모서리에 맞춰 자르기 위한 것이라 여기 남는다 —
+          그림자가 이 박스 바깥으로 나갔으므로 더 이상 그 클리핑에 걸리지 않는다. */}
+      <div className="relative h-full overflow-hidden rounded-[4px] bg-gradient-to-b from-shelf-wood-light from-25% via-shelf-wood via-70% to-shelf-wood-dark shadow-[inset_0_1px_0_rgba(255,255,255,.9)]">
+        <div
+          className="absolute inset-0 opacity-60"
+          style={{ backgroundImage: PLANK_GRAIN_IMAGE, backgroundSize: '800px 100%' }}
+        />
+      </div>
     </div>
   );
 }

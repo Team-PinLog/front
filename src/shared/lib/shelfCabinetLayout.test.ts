@@ -371,8 +371,9 @@ describe('768 경계에서의 가로 예산', () => {
 // --- 328: 선반 판 그림자 여백 ↔ 가로 예산 --------------------------------------------------------
 describe('선반 판 그림자 여백', () => {
   it('스크롤 박스 좌우 padding이 그림자 번짐 폭 이상이다', () => {
-    // 이보다 작으면 확보한 여백을 넘어 그림자가 다시 잘린다. 그림자는 `0 10px 16px`이라 x offset이
-    // 0이고 blur의 절반(8px)만큼 좌우로 번진다(Shelf.tsx ShelfPlank).
+    // 이보다 작으면 확보한 여백을 넘어 그림자가 다시 잘린다. 328 2차에서 그림자가 box-shadow에서
+    // 좌우 페이드 마스크 레이어로 바뀌었지만 번짐 폭은 그대로다 — 그 레이어를 판보다 좌우로 정확히
+    // 이만큼 넓게 잡아 그림자가 판 끝을 조금 넘어가며 사라지게 했다(Shelf.tsx ShelfPlank).
     expect(FEED_ROWS_PADDING_X_PX).toBeGreaterThanOrEqual(FEED_PLANK_SHADOW_BLEED_PX);
   });
 
