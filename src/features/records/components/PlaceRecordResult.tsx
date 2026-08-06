@@ -29,6 +29,11 @@ interface PlaceRecordResultProps {
   collectionCreationResults: CollectionCreationOutcome[];
   existingCollectionAddResults: ExistingCollectionAddOutcome[];
   onClose: () => void;
+  /**
+   * 327: 실패했던 컬렉션 생성을 이 화면에서 다시 시도해 성공한 경우. 호출부가 표지 단계를 띄운다 —
+   * 처음에 성공했을 때와 결과가 같아야 하고, 아니면 재시도로 만든 컬렉션만 표지 없이 남는다.
+   */
+  onCollectionCreated?: (collection: { collectionId: number; title: string }) => void;
 }
 
 function summaryMessage(nounPhrase: string, titles: string[]): string {
@@ -111,6 +116,7 @@ export function PlaceRecordResult({
   collectionCreationResults,
   existingCollectionAddResults,
   onClose,
+  onCollectionCreated,
 }: PlaceRecordResultProps) {
   const [creationItems, setCreationItems] = useState<TrackedOutcome[]>(() =>
     collectionCreationResults.map((result, index) => ({
@@ -145,10 +151,11 @@ export function PlaceRecordResult({
     createCollectionMutation.mutate(
       { title: target.title, recordIds: [data.recordId] },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           setCreationItems((prev) =>
             prev.map((item) => (item.id === id ? { ...item, status: 'success' } : item)),
           );
+          onCollectionCreated?.({ collectionId: created.collectionId, title: created.title });
         },
         onError: () => {
           setCreationItems((prev) =>
