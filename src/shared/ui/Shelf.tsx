@@ -3,6 +3,7 @@ import {
   FEED_PLANK_SHADOW_BLEED_PX,
   scalePx,
   SHELF_BOARD_HEIGHT_PX,
+  SHELF_COLUMN_GAP_PX,
   SHELF_SCALE_CSS,
 } from '@/shared/lib/shelfCabinetLayout';
 import {
@@ -46,11 +47,27 @@ import {
 // (getPageContentBudgetPx)를 직접 넘겨 캐비닛 높이를 확정한다 — 퍼센트 체인 대신 확정값이라
 // 안쪽 flex-1들도 늘어날 공간을 정확히 알게 된다. heightPx를 넘기지 않으면(/shelf 단독 화면)
 // 기존 h-full 동작 그대로다.
+// 329(디자인 피드백): 프레임에 Feed 선반과 같은 나뭇결을 깐다 — 선반 판만 나무이고 그 판을 물고 있는
+// 가구는 무지 아이보리라 재질이 따로 놀았다.
+// 결을 자식 레이어가 아니라 이 요소의 background-image로 주는 이유: 자식은 아무리 늘려도 테두리
+// 영역을 덮지 못하고(absolute의 inset-0은 padding box 기준), overflow-hidden이 padding box에서
+// 잘라내 음수 inset도 통하지 않는다. 대신 border-color를 투명으로 두면 기본 background-clip
+// (border-box)이 테두리 자리까지 배경을 칠해, 결이 프레임 전체에 끊김 없이 이어진다. 테두리는
+// 원래도 본문과 같은 shelf-frame 색이었으므로(319) 색이 바뀌는 것은 없고 두께 역할만 남는다.
+// 바탕은 shelf-frame 단색 그대로 둔다 — 판처럼 3단 그라디언트까지 얹으면 캐비닛 톤이 통째로
+// 어두워져 319가 맞춘 아이보리에서 벗어난다.
 export function ShelfCabinet({ children, heightPx }: { children: ReactNode; heightPx?: number }) {
   return (
     <div
-      style={{ '--shelf-scale': SHELF_SCALE_CSS, height: heightPx } as CSSProperties}
-      className={`flex flex-col overflow-hidden rounded-2xl border-[10px] border-shelf-frame bg-shelf-frame shadow-[0_18px_40px_rgba(4,33,66,.10)] ring-1 ring-shelf-frame-edge ${
+      style={
+        {
+          '--shelf-scale': SHELF_SCALE_CSS,
+          height: heightPx,
+          backgroundImage: CABINET_GRAIN_IMAGE,
+          backgroundSize: '800px 600px',
+        } as CSSProperties
+      }
+      className={`flex flex-col overflow-hidden rounded-2xl border-[10px] border-transparent bg-shelf-frame bg-clip-border shadow-[0_18px_40px_rgba(4,33,66,.10)] ring-1 ring-shelf-frame-edge ${
         heightPx === undefined ? 'h-full' : ''
       }`}
     >
@@ -67,10 +84,14 @@ export function ShelfCabinet({ children, heightPx }: { children: ReactNode; heig
 // ShelfColumn(flex flex-col)이 헤더 다음에 남기는 flex-1 스크롤 박스 높이가 같아진다 — 헤더 높이가
 // 다르면 두 스크롤 박스의 남는 세로 공간이 서로 달라져, 내용(tier 수)이 같아도 "최하단 선반~캐비닛
 // 바닥" 여백이 달라 보인다(FollowedShelfCard.tsx 주석 참고).
+// 329: 팔로우한 책장의 별칭도 이 pill을 쓰게 되면서(이전엔 맨 텍스트 h3라 "내 컬렉션"과 톤이
+// 어긋났다) 내용 길이가 가변이 됐다 — 별칭은 최대 20자다. min-w-0으로 좁은 열에서 줄어들 수 있게
+// 하고, 안쪽 span에서 말줄임한다(text-overflow는 블록 컨테이너에만 걸리므로 inline-flex인 이 span에
+// truncate를 직접 주면 동작하지 않는다). "내 컬렉션"처럼 짧은 라벨에는 아무 영향이 없다.
 export function ShelfLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex h-7 w-fit items-center rounded-full border border-line-card bg-snow-white px-3 text-[11px] font-bold text-pin-navy shadow-[0_1px_2px_rgba(4,33,66,.05)]">
-      {children}
+    <span className="inline-flex h-7 w-fit min-w-0 items-center rounded-full border border-line-card bg-snow-white px-3 text-[11px] font-bold text-pin-navy shadow-[0_1px_2px_rgba(4,33,66,.05)]">
+      <span className="truncate">{children}</span>
     </span>
   );
 }
@@ -95,18 +116,33 @@ export function ShelfLabel({ children }: { children: ReactNode }) {
 //      background-image라 한 요소에 합치면 Tailwind 그라디언트가 덮여버린다.
 // 319: FeedList 안에 있던 이 컴포넌트를 여기로 옮겼다 — Library의 ShelfBoard가 쓰던 짙은 나무색
 // 하드코딩(#e0b77d/#b9854f)을 지우면서 두 화면의 선반이 완전히 같은 판이 됐기 때문이다.
-const PLANK_GRAIN_SVG = [
-  '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="60">',
-  '<filter id="g" x="0" y="0" width="100%" height="100%">',
-  '<feTurbulence type="fractalNoise" baseFrequency="0.006 0.13" numOctaves="4" seed="17"/>',
-  '<feColorMatrix type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.32 1 0 0 0 -0.42"/>',
-  '</filter>',
-  '<rect width="800" height="60" filter="url(#g)"/>',
-  '</svg>',
-].join('');
+// 329(디자인 피드백 "책장에 Feed 선반 나무 텍스처를 넣어달라"): 같은 결을 캐비닛 프레임에도 쓰게
+// 되면서 크기·강도만 다른 두 벌이 필요해졌다. 판(얇고 가로로 긴 면)과 프레임(캐비닛만 한 큰 면)은
+// 같은 값을 그대로 쓰면 결이 전혀 다르게 보인다:
+//  - height: 이 SVG는 backgroundSize로 늘려 쓰므로, 60px짜리를 900px 프레임에 깔면 결이 15배로
+//    늘어나 뭉개진 띠가 된다. 프레임용은 애초에 큰 캔버스로 만들어 자연 크기에 가깝게 깐다.
+//  - alphaThreshold: feColorMatrix 알파 행의 상수항은 "이 값 미만의 노이즈는 투명"이라는 문턱이다.
+//    문턱을 올리면 굵은 결만 남고 잔결이 사라진다 — 넓은 면에서는 잔결이 얼룩처럼 도드라져서
+//    프레임 쪽 문턱을 더 높게 잡는다.
+function buildGrainImage(width: number, height: number, alphaThreshold: number): string {
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
+    '<filter id="g" x="0" y="0" width="100%" height="100%">',
+    '<feTurbulence type="fractalNoise" baseFrequency="0.006 0.13" numOctaves="4" seed="17"/>',
+    `<feColorMatrix type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.32 1 0 0 0 -${alphaThreshold}"/>`,
+    '</filter>',
+    `<rect width="${width}" height="${height}" filter="url(#g)"/>`,
+    '</svg>',
+  ].join('');
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
 
 // 800px 주기로 가로 반복한다 — 선반이 그보다 짧으면 반복 자체가 화면에 드러나지 않는다.
-const PLANK_GRAIN_IMAGE = `url("data:image/svg+xml,${encodeURIComponent(PLANK_GRAIN_SVG)}")`;
+const PLANK_GRAIN_IMAGE = buildGrainImage(800, 60, 0.42);
+
+// 캐비닛 프레임용. 세로 600px은 실제 캐비닛 높이(뷰포트 예산에 따라 대략 400~900px)와 같은 자릿수라
+// 늘어나거나 여러 번 반복되는 일이 거의 없다.
+const CABINET_GRAIN_IMAGE = buildGrainImage(800, 600, 0.58);
 
 // 328(2차 디자인 피드백 "여전히 뚝 끊기는 느낌"): 낙하 그림자를 box-shadow에서 별도 레이어로
 // 분리한다. box-shadow는 요소의 사각형을 그대로 복제해 흐리는 것이라, 판 좌우 끝에서 그림자가
@@ -171,8 +207,11 @@ export function ShelfBoard() {
 // 캐비닛의 다른 칸임을 드러낸다.
 // 295: 열 수가 더 이상 항상 3이 아니다(LIBRARY_COLUMNS_BY_TIER — sm=1/mdlg=2/xl=3) — Tailwind는
 // grid-cols-{N}을 동적으로 만들 수 없어(리터럴 클래스만 읽는다, shelfCabinetLayout.ts 상단 주석과
-// 동일한 이유) gridTemplateColumns를 인라인 style로 준다. gap-x-5(20px)는 그대로 리터럴 클래스로
-// 유지한다 — shelfSpine.ts의 책장 폭 계산(287-13 주석)이 이 20px을 전제로 하기 때문이다.
+// 동일한 이유) gridTemplateColumns를 인라인 style로 준다.
+// 329: gap도 리터럴 클래스(gap-x-5)에서 SHELF_COLUMN_GAP_PX로 올렸다 — LibraryPage의 좌우 버튼
+// 오버레이가 "내 책장 | 첫 팔로우 책장" 경계를 찾으려면 이 그리드와 똑같은 템플릿을 재현해야 하는데,
+// 값이 Tailwind 리터럴에만 있으면 그쪽이 20을 다시 복제하게 된다(319가 지운 바로 그 실수다).
+// shelfSpine.ts의 책장 폭 계산(287-13 주석)도 여전히 이 20px을 전제로 한다.
 export function ShelfColumnGrid({ columns, children }: { columns: number; children: ReactNode }) {
   // 287-8: h-full + grid의 기본 align-items:stretch 조합으로 각 칸이 전부 ShelfCabinet 본문 높이를
   // 그대로 채운다 — 칸 안의 스크롤 박스(flex-1)가 남는 세로 공간을 계산할 기준이 이 높이다.
@@ -184,8 +223,11 @@ export function ShelfColumnGrid({ columns, children }: { columns: number; childr
   // 향후 구조가 바뀌어도 깨지지 않게 한다).
   return (
     <div
-      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-      className="grid h-full min-h-0 gap-x-5"
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        columnGap: SHELF_COLUMN_GAP_PX,
+      }}
+      className="grid h-full min-h-0"
     >
       {children}
     </div>
@@ -357,19 +399,33 @@ export function ShelfAddSlot({ onClick, width, height }: ShelfAddSlotProps) {
 
 interface ShelfIconButtonProps {
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
   children: ReactNode;
+  // 329: 별칭 편집이 <form>이 되면서 저장 버튼은 submit이어야 한다(Enter 저장이 이 버튼을 누른 것과
+  // 같은 경로를 타야 하기 때문이다). onClick은 그 경우 필요 없어 optional이 됐다.
+  isSubmit?: boolean;
+  // 329: 저장 중(isPending) 중복 제출을 막는다. 색은 다른 밝은 톤 버튼들(FeedList·LibraryPage의
+  // 페이지 이동 버튼)과 같은 규격을 쓴다.
+  disabled?: boolean;
 }
 
-export function ShelfIconButton({ label, onClick, children }: ShelfIconButtonProps) {
+export function ShelfIconButton({
+  label,
+  onClick,
+  children,
+  isSubmit = false,
+  disabled = false,
+}: ShelfIconButtonProps) {
   return (
     <button
-      type="button"
+      // eslint(react/button-has-type)이 동적 type 표현식을 읽지 못하므로 분기해서 리터럴로 준다.
+      type={isSubmit ? 'submit' : 'button'}
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
       // 319: FeedList(314)의 페이지 이동 버튼과 같은 밝은 톤 원형 버튼 규격으로 맞춘다.
-      className="grid h-7 w-7 flex-none place-items-center rounded-full border border-line-card bg-snow-white text-pin-navy shadow-[0_1px_3px_rgba(4,33,66,.08)] transition hover:border-log-mint hover:bg-log-mint hover:text-white"
+      className="grid h-7 w-7 flex-none place-items-center rounded-full border border-line-card bg-snow-white text-pin-navy shadow-[0_1px_3px_rgba(4,33,66,.08)] transition hover:border-log-mint hover:bg-log-mint hover:text-white disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>

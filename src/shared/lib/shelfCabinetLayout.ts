@@ -116,9 +116,20 @@ export const SHELF_SCROLL_MIN_H_PX = 360;
 //   TIER_GAP: MyShelfList/FollowedShelfCard 스크롤 박스의 gap-1.5(6)
 // 스크롤 박스의 위/아래 여백(SHELF_SCROLL_TOP/BOTTOM_PADDING_PX)은 shelfSpine.ts가 단일 소스라
 // 리터럴이 아니라 그 상수를 그대로 읽어 뺀다.
-const LIBRARY_CABINET_CHROME_PX = 40;
+export const LIBRARY_CABINET_CHROME_PX = 40;
 const LIBRARY_COLUMN_CHROME_PX = 60;
 export const SHELF_TIER_GAP_PX = 6;
+
+// 329: 캐비닛 chrome은 사방이 대칭이다(border-[10px]과 p-2.5가 상하좌우 같은 값) — 위 상수는
+// "양쪽 합"이라 한 변당 값은 그 절반이다. 좌우 버튼 오버레이(LibraryPage)가 캐비닛 본문 영역을
+// 그대로 재현할 때 쓴다. 리터럴을 새로 복제하는 대신 이 상수에서 파생시키는 이유: 상자 모델이
+// 바뀌면 행 수 역산(getLibraryVisibleRowCount)이 먼저 깨지므로, 이 상수는 반드시 함께 갱신된다.
+export const LIBRARY_CABINET_SIDE_CHROME_PX = LIBRARY_CABINET_CHROME_PX / 2;
+
+// 329: ShelfColumnGrid의 열 사이 간격. 원래 Tailwind 리터럴(gap-x-5)이었는데, 좌우 버튼 오버레이가
+// 같은 그리드를 재현해야 해서 JS 단일 소스로 올렸다(Shelf.tsx가 이 값을 인라인 style로 읽어 쓴다).
+// shelfSpine.ts 287-13 주석의 칸 폭 계산도 이 20px을 전제로 한다.
+export const SHELF_COLUMN_GAP_PX = 20;
 
 // Shelf.tsx ShelfBoard의 두께. 행 높이 계산에 들어가는 값이라 여기를 단일 소스로 둔다.
 export const SHELF_BOARD_HEIGHT_PX = 10;
@@ -181,6 +192,102 @@ export const LIBRARY_PINNED_MY_SHELF_MIN_COLUMNS = 3;
 export function libraryPinsMyShelf(columns: number): boolean {
   return columns >= LIBRARY_PINNED_MY_SHELF_MIN_COLUMNS;
 }
+
+/**
+ * 329(디자인 피드백): 좌우 버튼과 페이지 인디케이터가 감싸야 할 "넘어가는 구간"이 시작하는 열 번호
+ * (CSS grid line 기준이라 1부터 센다). 구간의 끝은 언제나 마지막 열이다.
+ *
+ * 내 책장이 고정인 구간(3열 이상)에서는 1열이 넘어가지 않으므로 2열부터가 대상이고, 내 책장도 함께
+ * 넘어가는 1·2열 구간에서는 첫 열부터 전부가 대상이다. 버튼 위치·인디케이터 정렬이 이 값 하나를
+ * 공유해야 서로 어긋나지 않는다 — 버튼은 이 구간의 양 끝 경계에 걸치고, 인디케이터는 같은 구간의
+ * 가운데에 놓인다(캐비닛 전체 가운데가 아니다 — 넘어가지 않는 내 책장까지 포함해 가운데를 잡으면
+ * 인디케이터가 왼쪽으로 치우쳐 보인다).
+ */
+export function getLibraryPagingFirstColumn(columns: number): number {
+  return libraryPinsMyShelf(columns) ? 2 : 1;
+}
+
+export interface LibraryPageSlots<T> {
+  showMyShelf: boolean;
+  follows: T[];
+  // allFollows 안에서 이 페이지의 follows가 시작하는 인덱스 — "다음 페이지에 필요한 만큼 데이터가
+  // 이미 로드됐는지"(needsMoreData) 판단에 쓴다.
+  followStartIndex: number;
+}
+
+/**
+ * 295 반응형 재설계(요구사항 B) 핵심 로직: "내 책장 + 팔로우한 책장"을 열 수에 따라 다르게 자른다.
+ * 3열 이상(pinsMyShelf): 내 책장은 시퀀스 밖에서 항상 고정(showMyShelf=true 불변) — 팔로우만
+ * (columns-1)개씩 넘어간다 (기존 250 동작 그대로).
+ * 1·2열: 사용자 확인("화면 크기에 따라 책장이 1,2열일 때는 나의 책장도 팔로우한 책장들과 한 줄로
+ * 묶여 좌우 버튼으로 넘어가야 한다. 그치만 시작은 항상 나의 책장이 시작이다")에 따라, [내 책장,
+ * 팔로우1, 팔로우2, ...] 하나의 가상 시퀀스를 columns개씩 자른다 — virtualPageIndex 0은 항상 내
+ * 책장으로 시작하고(팔로우 (columns-1)개와 함께), 그 이후 페이지는 팔로우한 책장만으로 채워진다.
+ *
+ * 329: LibraryPage.tsx의 로컬 함수였던 것을 여기로 옮기고 제네릭으로 바꿨다. 페이지 인디케이터가
+ * 생기면서 "전체 페이지 수"(getLibraryPageCount)가 필요해졌는데, 그 둘은 같은 페이징 규칙의 두
+ * 얼굴이라 한쪽만 고치면 인디케이터가 실제 페이지와 어긋난다. 한곳에 두고 테스트로 묶는다 —
+ * 이 프로젝트는 렌더 테스트를 못 하므로(@testing-library 미설치) 순수 함수로 내려야 검증된다.
+ */
+export function getLibraryPageSlots<T>(
+  virtualPageIndex: number,
+  columns: number,
+  allFollows: T[],
+): LibraryPageSlots<T> {
+  if (libraryPinsMyShelf(columns)) {
+    const followsPerPage = columns - 1;
+    const start = virtualPageIndex * followsPerPage;
+    return {
+      showMyShelf: true,
+      follows: allFollows.slice(start, start + followsPerPage),
+      followStartIndex: start,
+    };
+  }
+  if (virtualPageIndex === 0) {
+    const followsNeeded = columns - 1;
+    return { showMyShelf: true, follows: allFollows.slice(0, followsNeeded), followStartIndex: 0 };
+  }
+  const firstPageFollowCount = columns - 1;
+  const start = firstPageFollowCount + (virtualPageIndex - 1) * columns;
+  return {
+    showMyShelf: false,
+    follows: allFollows.slice(start, start + columns),
+    followStartIndex: start,
+  };
+}
+
+/**
+ * 329: 지금까지 로드된 팔로우 수로 만들어지는 가상 페이지 수. 캐비닛 아래 페이지 인디케이터가 쓴다.
+ *
+ * ⚠️ 이 값은 "현재까지 아는 페이지 수"이지 확정된 전체가 아니다 — 팔로우 목록은 무한 쿼리로 필요할
+ * 때만 더 받아오므로(useFollowsQuery), 서버에 더 있으면(hasNext) 사용자가 넘길수록 늘어난다.
+ * 그래서 호출부는 hasNext일 때 "더 있을 수 있음"을 함께 표시한다.
+ *
+ * 위 getLibraryPageSlots와 반드시 같은 규칙이어야 한다(테스트가 두 함수를 교차 검증한다).
+ */
+export function getLibraryPageCount(followCount: number, columns: number): number {
+  if (libraryPinsMyShelf(columns)) {
+    // 내 책장은 시퀀스 밖이라 팔로우만 (columns-1)개씩 나눠 담는다. 팔로우가 0개여도 내 책장만
+    // 있는 1페이지는 존재한다.
+    return Math.max(1, Math.ceil(followCount / (columns - 1)));
+  }
+  // 0페이지가 내 책장 + 팔로우 (columns-1)개를 함께 담고, 그 뒤로는 팔로우만 columns개씩.
+  const remaining = Math.max(0, followCount - (columns - 1));
+  return 1 + Math.ceil(remaining / columns);
+}
+
+// 329: 캐비닛 아래 페이지 인디케이터가 세로에서 차지하는 높이. 캐비닛 높이는 페이지 세로 예산을
+// 그대로 쓰므로(getPageContentBudgetPx), 이만큼 덜어내지 않으면 인디케이터가 화면 밖으로 밀리거나
+// 스크롤바가 생긴다. LibraryPage의 Tailwind 리터럴(mt-3=12px + 점 h-2=8px + 여유 4px)과 쌍이다.
+export const LIBRARY_PAGE_INDICATOR_BLOCK_PX = 24;
+
+export function getLibraryCabinetHeightPx(pageBudgetPx: number): number {
+  return Math.max(SHELF_SCROLL_MIN_H_PX, pageBudgetPx - LIBRARY_PAGE_INDICATOR_BLOCK_PX);
+}
+
+// 329: 점을 이 개수까지만 찍고 그 이상은 "n / m" 텍스트로 바꾼다. 팔로우가 많은 계정에서 점이
+// 수십 개로 늘어나면 캐비닛 폭을 넘고 현재 위치도 오히려 안 읽힌다.
+export const LIBRARY_PAGE_DOTS_MAX = 7;
 
 // --- Feed: breakpoint/orientation별 그리드(열×행) + 카드 치수 --------------------------------------
 // 295 반응형 재설계(요구사항 A). 열 수는 여전히 breakpoint(및 mdlg 구간의 orientation)별 이산 표

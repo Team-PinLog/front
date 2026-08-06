@@ -16,13 +16,22 @@ import {
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
+  getLibraryCabinetHeightPx,
+  getLibraryPageCount,
+  getLibraryPageSlots,
+  getLibraryPagingFirstColumn,
   getLibraryTierHeightPx,
   getLibraryVisibleRowCount,
   getShelfScale,
   libraryPinsMyShelf,
+  LIBRARY_CABINET_CHROME_PX,
+  LIBRARY_CABINET_SIDE_CHROME_PX,
   LIBRARY_COLUMNS_BY_TIER,
   LIBRARY_MAX_ROW_COUNT,
   LIBRARY_MIN_ROW_COUNT,
+  LIBRARY_PAGE_INDICATOR_BLOCK_PX,
+  SHELF_COLUMN_GAP_PX,
+  SHELF_SCROLL_MIN_H_PX,
   SHELF_SCALE_MAX,
   SHELF_SCALE_MAX_VW_PX,
   SHELF_SCALE_MIN,
@@ -308,6 +317,20 @@ describe('Library 세로 배치', () => {
     expect(getLibraryVisibleRowCount(budgetPx - 1, scale)).toBe(2);
   });
 
+  // 329: 좌우 페이지 버튼 오버레이가 캐비닛 본문 영역을 그리드로 재현할 때 이 두 값을 쓴다
+  // (LibraryPage). 어긋나면 "내 책장 | 첫 팔로우 책장" 경계에 놓아야 할 이전 버튼이 엉뚱한 곳에
+  // 선다 — 렌더 테스트가 불가능하므로 상수 관계만이라도 고정한다.
+  it('캐비닛 chrome의 한 변 값은 양쪽 합의 절반이다', () => {
+    expect(LIBRARY_CABINET_SIDE_CHROME_PX * 2).toBe(LIBRARY_CABINET_CHROME_PX);
+    // Shelf.tsx ShelfCabinet의 border-[10px] + 본문 p-2.5(10px) = 한 변 20px.
+    expect(LIBRARY_CABINET_SIDE_CHROME_PX).toBe(20);
+  });
+
+  it('열 사이 gap은 shelfSpine 287-13 계산이 전제하는 20px이다', () => {
+    // 이 값이 바뀌면 칸 트랙 폭이 바뀌어 행 수용량(getRowCapacity) 산식도 함께 손봐야 한다.
+    expect(SHELF_COLUMN_GAP_PX).toBe(20);
+  });
+
   it('getShelfScale은 SHELF_SCALE_CSS와 같은 구간에서 같은 값을 낸다', () => {
     expect(getShelfScale(320)).toBe(SHELF_SCALE_MIN);
     expect(getShelfScale(SHELF_SCALE_MIN_VW_PX)).toBe(SHELF_SCALE_MIN);
@@ -422,6 +445,126 @@ describe('세로 예산과 네비게이션 배치', () => {
       'sm',
     );
     expect(withMeasuredZeroPx - withFallbackPx).toBe(BOTTOM_NAV_HEIGHT_PX_FALLBACK);
+  });
+});
+
+// --- 329: 페이징 규칙 ↔ 페이지 인디케이터 --------------------------------------------------------
+// getLibraryPageSlots(어떤 책장을 보여줄지)와 getLibraryPageCount(전체 몇 장인지)는 같은 규칙의 두
+// 얼굴이다. 한쪽만 고치면 캐비닛 아래 점 개수가 실제 페이지와 어긋난다 — 렌더 테스트가 불가능하므로
+// 두 함수를 서로 맞물려 검증한다.
+describe('Library 페이징', () => {
+  const follows = (count: number) => Array.from({ length: count }, (_, index) => index);
+
+  describe('getLibraryPageCount', () => {
+    it('3열(내 책장 고정)은 팔로우만 2개씩 나눠 담는다', () => {
+      expect(getLibraryPageCount(0, 3)).toBe(1); // 팔로우가 없어도 내 책장 1페이지는 있다
+      expect(getLibraryPageCount(1, 3)).toBe(1);
+      expect(getLibraryPageCount(2, 3)).toBe(1);
+      expect(getLibraryPageCount(3, 3)).toBe(2);
+      expect(getLibraryPageCount(4, 3)).toBe(2);
+      expect(getLibraryPageCount(5, 3)).toBe(3);
+    });
+
+    it('2열은 0페이지가 내 책장+팔로우 1개, 그 뒤로 2개씩이다', () => {
+      expect(getLibraryPageCount(0, 2)).toBe(1);
+      expect(getLibraryPageCount(1, 2)).toBe(1);
+      expect(getLibraryPageCount(2, 2)).toBe(2);
+      expect(getLibraryPageCount(3, 2)).toBe(2);
+      expect(getLibraryPageCount(4, 2)).toBe(3);
+    });
+
+    it('1열은 내 책장 1장 + 팔로우 1장씩이다', () => {
+      expect(getLibraryPageCount(0, 1)).toBe(1);
+      expect(getLibraryPageCount(1, 1)).toBe(2);
+      expect(getLibraryPageCount(3, 1)).toBe(4);
+    });
+  });
+
+  // 두 함수를 맞물리는 핵심 불변식. 어느 한쪽만 고치면 여기서 깨진다.
+  describe('getLibraryPageSlots와 페이지 수가 일치한다', () => {
+    const CASES = [1, 2, 3];
+
+    it.each(CASES)(
+      '%i열 — 마지막 페이지는 비어 있지 않고, 그 다음 페이지는 비어 있다',
+      (columns) => {
+        for (let followCount = 0; followCount <= 12; followCount += 1) {
+          const all = follows(followCount);
+          const pageCount = getLibraryPageCount(followCount, columns);
+          const lastPage = getLibraryPageSlots(pageCount - 1, columns, all);
+          const overflowPage = getLibraryPageSlots(pageCount, columns, all);
+
+          // 마지막 페이지에는 보여줄 것이 있어야 한다(내 책장이든 팔로우든).
+          expect(lastPage.follows.length > 0 || lastPage.showMyShelf).toBe(true);
+          // 세어 둔 페이지 수를 넘어가면 더 보여줄 팔로우가 없어야 한다 — 있으면 점을 덜 찍은 것이다.
+          expect(overflowPage.follows).toHaveLength(0);
+        }
+      },
+    );
+
+    it.each(CASES)('%i열 — 모든 팔로우가 정확히 한 번씩 등장한다', (columns) => {
+      const followCount = 9;
+      const all = follows(followCount);
+      const pageCount = getLibraryPageCount(followCount, columns);
+      const seen = Array.from(
+        { length: pageCount },
+        (_, page) => getLibraryPageSlots(page, columns, all).follows,
+      ).flat();
+
+      expect(seen).toHaveLength(followCount);
+      expect(new Set(seen).size).toBe(followCount);
+    });
+  });
+
+  // 329(디자인 피드백): 좌우 버튼이 감싸는 범위와 인디케이터가 가운데를 잡는 범위가 이 값 하나로
+  // 정해진다. 페이징 규칙과 어긋나면 "넘어가지 않는 내 책장"까지 감싸거나 점이 치우쳐 보인다.
+  describe('getLibraryPagingFirstColumn', () => {
+    it('내 책장이 고정인 구간에서는 2열부터가 넘어가는 구간이다', () => {
+      expect(getLibraryPagingFirstColumn(3)).toBe(2);
+    });
+
+    it('내 책장도 함께 넘어가는 구간에서는 첫 열부터 전부가 대상이다', () => {
+      expect(getLibraryPagingFirstColumn(1)).toBe(1);
+      expect(getLibraryPagingFirstColumn(2)).toBe(1);
+    });
+
+    it('고정 여부(libraryPinsMyShelf)와 항상 같은 판단을 쓴다', () => {
+      for (const columns of [1, 2, 3, 4, 5]) {
+        const expected = libraryPinsMyShelf(columns) ? 2 : 1;
+        expect(getLibraryPagingFirstColumn(columns)).toBe(expected);
+        // 넘어가는 구간은 언제나 열 하나 이상이어야 한다 — 비면 버튼을 걸 자리가 없다.
+        expect(columns - getLibraryPagingFirstColumn(columns) + 1).toBeGreaterThanOrEqual(1);
+      }
+    });
+  });
+
+  it('내 책장은 3열 이상에서만 모든 페이지에 고정된다', () => {
+    // 고정 구간: 어느 페이지를 펴도 내 책장이 있다.
+    expect(getLibraryPageSlots(0, 3, follows(9)).showMyShelf).toBe(true);
+    expect(getLibraryPageSlots(3, 3, follows(9)).showMyShelf).toBe(true);
+    // 비고정 구간: 0페이지에만 있고 그 뒤에는 없다("시작은 항상 나의 책장").
+    expect(getLibraryPageSlots(0, 2, follows(9)).showMyShelf).toBe(true);
+    expect(getLibraryPageSlots(1, 2, follows(9)).showMyShelf).toBe(false);
+  });
+});
+
+// 329: 인디케이터가 세로를 차지하는 만큼 캐비닛이 줄어야 화면 밖으로 밀리지 않는다.
+describe('getLibraryCabinetHeightPx', () => {
+  it('페이지 예산에서 인디케이터 높이를 뺀다', () => {
+    expect(getLibraryCabinetHeightPx(900)).toBe(900 - LIBRARY_PAGE_INDICATOR_BLOCK_PX);
+  });
+
+  it('아주 낮은 뷰포트에서도 스크롤 영역 하한 아래로 내려가지 않는다', () => {
+    expect(getLibraryCabinetHeightPx(100)).toBe(SHELF_SCROLL_MIN_H_PX);
+  });
+
+  it('캐비닛+인디케이터 합이 페이지 예산을 넘지 않는다', () => {
+    for (const budgetPx of [400, 600, 800, 1000, 1400]) {
+      const usedPx = getLibraryCabinetHeightPx(budgetPx) + LIBRARY_PAGE_INDICATOR_BLOCK_PX;
+      // 하한(SHELF_SCROLL_MIN_H_PX)에 걸린 극단적으로 낮은 뷰포트가 아니라면 예산 안에 들어간다.
+      if (budgetPx - LIBRARY_PAGE_INDICATOR_BLOCK_PX > SHELF_SCROLL_MIN_H_PX) {
+        expect(usedPx).toBeLessThanOrEqual(budgetPx);
+      }
+    }
   });
 });
 
