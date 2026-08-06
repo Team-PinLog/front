@@ -82,6 +82,84 @@ export function countPointsOutsideViewport(
   return points.reduce((count, point) => (isInsideBox(point, viewport) ? count : count + 1), 0);
 }
 
+/**
+ * 지도 컨테이너 위에 다른 레이어가 얹혀 상단 일부가 보이지 않는 상황을 나타낸다.
+ * 홈은 히어로 오버레이가 배경 지도의 위쪽을 완전히 덮는다(HomePage). 오버레이가 없는 화면은
+ * topObstructionPx를 0으로 둬 기존 동작을 그대로 유지한다.
+ */
+export interface MapViewInsets {
+  /** 컨테이너 상단에서 다른 레이어에 가려 보이지 않는 높이(px). */
+  topObstructionPx: number;
+  /** 지도 컨테이너 전체 높이(px). 픽셀 오프셋을 위도로 환산할 때 기준이 된다. */
+  containerHeightPx: number;
+}
+
+/** 계산에 쓸 수 있는 가림 높이. 컨테이너를 벗어나거나 음수인 값은 무시한다. */
+function usableObstructionPx(insets: MapViewInsets): number {
+  const { topObstructionPx, containerHeightPx } = insets;
+  if (!(topObstructionPx > 0) || !(containerHeightPx > 0)) {
+    return 0;
+  }
+  return Math.min(topObstructionPx, containerHeightPx);
+}
+
+/** setBounds에 넘길 사방 여유(px). */
+export interface MapFitPadding {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * fitBounds 여유. 상단만 가려진 높이만큼 키워, 담긴 마커가 오버레이 뒤로 숨지 않게 한다.
+ * 나머지 세 방향은 기존 값 그대로다.
+ */
+export function getFitPadding(basePaddingPx: number, insets: MapViewInsets): MapFitPadding {
+  return {
+    top: basePaddingPx + usableObstructionPx(insets),
+    right: basePaddingPx,
+    bottom: basePaddingPx,
+    left: basePaddingPx,
+  };
+}
+
+/**
+ * 뷰포트에서 가려진 상단을 잘라낸, 사용자가 실제로 보는 영역.
+ * "화면 밖 장소 N개" 배지가 세는 대상이 눈에 보이는 것과 일치하려면 이 영역을 기준으로 세야 한다.
+ *
+ * 픽셀→위도 환산은 뷰포트 전체의 평균 비율(위도폭/높이)을 쓰는 선형 근사다. 웹 메르카토르에서
+ * 위도는 픽셀에 완전히 비례하지는 않지만, 오차는 위도폭이 가장 넓은 최대 축소(레벨 13, 약 8°)
+ * 에서도 수 km 수준이고 실사용 배율에서는 무시할 수 있다. 정확한 역투영(Projection)을 쓰지 않는
+ * 이유는 SDK 객체 없이 테스트할 수 있는 순수 함수로 두기 위해서다.
+ */
+export function shrinkViewportFromTop(viewport: LatLngBox, insets: MapViewInsets): LatLngBox {
+  const obstruction = usableObstructionPx(insets);
+  if (obstruction === 0) {
+    return viewport;
+  }
+  const latPerPx = (viewport.neLat - viewport.swLat) / insets.containerHeightPx;
+  return { ...viewport, neLat: viewport.neLat - latPerPx * obstruction };
+}
+
+/**
+ * 어떤 지점을 "가려지지 않은 영역의 세로 한가운데"에 놓으려면 지도 중심을 그 지점보다 얼마나
+ * 북쪽에 둬야 하는지(도 단위).
+ *
+ * 가시 영역은 y = obstruction ~ H이므로 그 중심은 화면상 (H + obstruction) / 2다. 지도 중심은
+ * 항상 H / 2에 그려지니 목표 지점은 지도 중심보다 obstruction / 2 만큼 아래(= 남쪽)에 있어야
+ * 하고, 뒤집으면 지도 중심이 목표 지점보다 그만큼 북쪽이어야 한다. 이 보정을 빼면 핀이 컨테이너
+ * 중앙에 놓여 오버레이 높이의 절반만큼 위로 밀려 보인다.
+ */
+export function getVisibleCenterLatOffset(viewport: LatLngBox, insets: MapViewInsets): number {
+  const obstruction = usableObstructionPx(insets);
+  if (obstruction === 0) {
+    return 0;
+  }
+  const latPerPx = (viewport.neLat - viewport.swLat) / insets.containerHeightPx;
+  return (latPerPx * obstruction) / 2;
+}
+
 function medianOf(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);

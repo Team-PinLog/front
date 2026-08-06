@@ -28,6 +28,12 @@ type ImageStage = 'upload' | 'analysis' | 'candidates' | 'details' | 'failure';
 
 interface PlaceRecordSheetProps {
   previewMode?: boolean;
+  /**
+   * Record 저장에 성공한 직후 호출된다. 컬렉션 담기 결과를 기다리지 않고 바로 알린다 — 홈은 이
+   * 값으로 지도를 새 핀 위치로 옮기고, 그 이동이 컬렉션 처리에 묶일 이유가 없다.
+   * 근거: Jira S15P11A705-325.
+   */
+  onRecordSaved?: (recordId: number) => void;
 }
 
 interface SuggestedPlaceOption {
@@ -116,7 +122,7 @@ const previewSuggestedOptions: SuggestedPlaceOption[] = [
  * mockup/place-record-popup.html의 단계형 팝업 흐름을 실제 Record 저장 기능에 연결한 장소 추가 화면.
  * 최종 저장은 기존 POST /records와 컬렉션 추가 흐름을 그대로 사용한다.
  */
-export function PlaceRecordSheet({ previewMode = false }: PlaceRecordSheetProps) {
+export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRecordSheetProps) {
   const sheet = usePlaceRecordSheet();
   const searchMutation = useKakaoPlaceSearch();
   const suggestionMutation = usePlaceSuggestionMutation();
@@ -387,6 +393,8 @@ export function PlaceRecordSheet({ previewMode = false }: PlaceRecordSheetProps)
     } catch {
       return;
     }
+
+    onRecordSaved?.(created.recordId);
 
     const stagedTitles = sheet.stagedCollectionTitles;
 

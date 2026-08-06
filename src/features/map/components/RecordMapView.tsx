@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
   loadKakaoMaps,
@@ -15,10 +15,15 @@ import {
 import {
   clampPointToBox,
   countPointsOutsideViewport,
+  getFitPadding,
   getMedianPoint,
+  getVisibleCenterLatOffset,
   KOREA_PAN_BOUNDS,
   MAX_ZOOM_OUT_LEVEL,
+  shrinkViewportFromTop,
   type LatLngBox,
+  type MapPoint,
+  type MapViewInsets,
 } from '../lib/recordMapViewportLimits';
 import type { RecordMapBbox, RecordMapItem } from '../api/getRecordMapMarkers';
 import { useRecordMapMarkersQuery } from '../hooks/useRecordMapMarkersQuery';
@@ -64,6 +69,8 @@ const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 // 최초 진입 fitBounds 여유(px). 근거: docs/reference/08_API_명세.md 4.2
 // "fitBounds(bounds, padding)으로 모든 마커가 한눈에 보이는 최소 화면(여유 포함)을 만든다."
 // 경계에 걸친 마커 아이콘이 뷰포트 가장자리에서 잘리지 않도록 사방에 동일하게 적용한다.
+// 상단만은 topObstructionPx만큼 더 키운다(getFitPadding) — 그 구간은 오버레이에 가려 있어
+// 여유를 줘도 마커가 보이지 않는다. 근거: Jira S15P11A705-325.
 const FIT_BOUNDS_PADDING = 48;
 
 // 지도 생성 직후(fitBounds 적용 전)와 bounds가 null(저장된 기록 없음)일 때 유지되는 고정 줌 레벨.
@@ -78,6 +85,31 @@ function readViewport(map: KakaoMap): LatLngBox {
   const sw = view.getSouthWest();
   const ne = view.getNorthEast();
   return { swLat: sw.getLat(), swLng: sw.getLng(), neLat: ne.getLat(), neLng: ne.getLng() };
+}
+
+/** 컨테이너 중 오버레이에 가리지 않아 사용자가 실제로 보는 영역. */
+function readVisibleViewport(map: KakaoMap, insets: MapViewInsets): LatLngBox {
+  return shrinkViewportFromTop(readViewport(map), insets);
+}
+
+/**
+ * 지점을 가시 영역의 세로 한가운데에 놓는다. 지도 중심에 그대로 두면 오버레이 높이의 절반만큼
+ * 위로 밀려 보이므로, 중심을 그만큼 북쪽으로 올려 목표 지점을 아래로 내린다.
+ */
+function centerOnVisibleArea(
+  kakao: KakaoNamespace,
+  map: KakaoMap,
+  point: MapPoint,
+  insets: MapViewInsets,
+  animate: boolean,
+): void {
+  const latOffset = getVisibleCenterLatOffset(readViewport(map), insets);
+  const target = new kakao.maps.LatLng(point.lat + latOffset, point.lng);
+  if (animate) {
+    map.panTo(target);
+  } else {
+    map.setCenter(target);
+  }
 }
 
 /**
@@ -124,28 +156,30 @@ function fitMapToRecords(
   bounds: RecordMapBbox,
   items: readonly RecordMapItem[],
   recenterOnMedian: boolean,
+  insets: MapViewInsets,
 ): number {
   const sw = new kakao.maps.LatLng(bounds.swLat, bounds.swLng);
   const ne = new kakao.maps.LatLng(bounds.neLat, bounds.neLng);
+  const padding = getFitPadding(FIT_BOUNDS_PADDING, insets);
   map.setBounds(
     new kakao.maps.LatLngBounds(sw, ne),
-    FIT_BOUNDS_PADDING,
-    FIT_BOUNDS_PADDING,
-    FIT_BOUNDS_PADDING,
-    FIT_BOUNDS_PADDING,
+    padding.top,
+    padding.right,
+    padding.bottom,
+    padding.left,
   );
   clampMapCenterIntoKorea(kakao, map, false);
 
-  if (countPointsOutsideViewport(items, readViewport(map)) === 0) {
+  if (countPointsOutsideViewport(items, readVisibleViewport(map, insets)) === 0) {
     return 0;
   }
   if (recenterOnMedian) {
     const center = getMedianPoint(items);
     if (center) {
-      map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+      centerOnVisibleArea(kakao, map, center, insets, false);
     }
   }
-  return countPointsOutsideViewport(items, readViewport(map));
+  return countPointsOutsideViewport(items, readVisibleViewport(map, insets));
 }
 
 type SdkStatus = 'loading' | 'ready' | 'error';
@@ -164,15 +198,45 @@ interface RecordMapViewProps {
    * HomePage(166)는 이 prop으로 RecordDetailOverlay를 여는 동작을 주입한다.
    */
   onMarkerClick?: (recordId: number) => void;
+  /**
+   * 컨테이너 상단이 다른 레이어에 가려지는 높이(px). 홈은 히어로 오버레이가 배경 지도의 위쪽을
+   * 덮으므로 그 높이를 넘긴다(HomePage). 기본값 0이면 컨테이너 전체가 보이는 것으로 계산해
+   * 오버레이가 없는 화면은 기존 동작 그대로다. 근거: Jira S15P11A705-325.
+   */
+  topObstructionPx?: number;
+  /**
+   * 마커 목록이 이 Record를 담게 되는 즉시 해당 좌표로 지도를 옮긴다. Record를 새로 저장한 직후
+   * 방금 만든 핀을 사용자가 직접 찾지 않아도 되게 하는 용도다. 이동을 마치면
+   * onFocusRecordHandled로 알려, 호출부가 값을 비워 같은 요청이 반복되지 않게 한다.
+   */
+  focusRecordId?: number | null;
+  onFocusRecordHandled?: () => void;
 }
 
 /** 내 Record를 지도 마커로 조회하는 화면. 근거: docs/reference/08_API_명세.md 4.2. */
-export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
+export function RecordMapView({
+  onMarkerClick,
+  topObstructionPx = 0,
+  focusRecordId = null,
+  onFocusRecordHandled,
+}: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
   const markersRef = useRef<KakaoCustomOverlay[]>([]);
   const hasFitInitialBoundsRef = useRef(false);
+
+  /**
+   * 계산 시점의 컨테이너 크기를 함께 읽는다. 높이는 렌더 후에야 정해지고 창 크기에 따라 변해서
+   * state로 들고 있기보다 쓰는 순간 실측하는 편이 어긋날 여지가 없다.
+   */
+  const readInsets = useCallback(
+    (): MapViewInsets => ({
+      topObstructionPx,
+      containerHeightPx: containerRef.current?.clientHeight ?? 0,
+    }),
+    [topObstructionPx],
+  );
 
   const [sdkStatus, setSdkStatus] = useState<SdkStatus>(() =>
     isKakaoMapsSdkReady() ? 'ready' : 'loading',
@@ -255,11 +319,39 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
     // 최초 응답에만 bounds로 fitBounds 적용. 이후 재검색 결과에는 사용자가 이미 맞춰둔 화면을 유지한다.
     if (!hasFitInitialBoundsRef.current) {
       if (data.bounds) {
-        setOffscreenRecordCount(fitMapToRecords(kakao, map, data.bounds, data.items, true));
+        setOffscreenRecordCount(
+          fitMapToRecords(kakao, map, data.bounds, data.items, true, readInsets()),
+        );
       }
       hasFitInitialBoundsRef.current = true;
     }
-  }, [data, sdkStatus, navigate, onMarkerClick]);
+  }, [data, sdkStatus, navigate, onMarkerClick, readInsets]);
+
+  /**
+   * 새로 저장한 Record로 이동. 최초 진입 fitBounds(hasFitInitialBoundsRef)와 섞이지 않게 별도
+   * effect로 둔다 — 저장은 이미 지도를 한 번 맞춘 뒤에 일어나고, 그 가드를 건드리면 이후 재검색
+   * 결과에서 사용자가 맞춰둔 화면이 초기화된다.
+   *
+   * 마커 목록에 아직 그 Record가 없으면(캐시 무효화 후 재조회 전) 아무것도 하지 않고 다음 data를
+   * 기다린다. 저장 직후에는 좌표를 이미 알고 있지만 굳이 함께 넘기지 않는 이유는, 마커가 그려지기
+   * 전에 먼저 이동하면 빈 지도만 보이기 때문이다.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    const kakao = window.kakao;
+    if (sdkStatus !== 'ready' || !map || !kakao || focusRecordId === null || !data) {
+      return;
+    }
+    const target = data.items.find((item) => item.recordId === focusRecordId);
+    if (!target) {
+      return;
+    }
+    // 배지(offscreenRecordCount)는 건드리지 않는다. panTo는 애니메이션이라 직후에 뷰포트를 읽으면
+    // 이동 전 값이 나오고, 애초에 이 배지는 최초 fitBounds와 "전체 보기"에서만 갱신하는 값이다
+    // (사용자가 지도를 끌고 다닌 뒤에도 그대로인 기존 동작).
+    centerOnVisibleArea(kakao, map, target, readInsets(), true);
+    onFocusRecordHandled?.();
+  }, [data, sdkStatus, focusRecordId, onFocusRecordHandled, readInsets]);
 
   // 지도 이동 범위 제한. 카카오 SDK에는 이동 가능 영역을 막는 옵션이 없어(Map.prototype 조사:
   // setMaxLevel/setMinLevel은 있지만 bounds 제한 API는 없다) 직접 되돌린다.
@@ -312,7 +404,7 @@ export function RecordMapView({ onMarkerClick }: RecordMapViewProps = {}) {
     if (!map || !kakao || !data?.bounds) {
       return;
     }
-    fitMapToRecords(kakao, map, data.bounds, data.items, false);
+    fitMapToRecords(kakao, map, data.bounds, data.items, false, readInsets());
     setOffscreenRecordCount(0);
   }
 

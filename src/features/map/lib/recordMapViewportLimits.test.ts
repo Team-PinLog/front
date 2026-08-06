@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   clampPointToBox,
   countPointsOutsideViewport,
+  getFitPadding,
   getMedianPoint,
+  getVisibleCenterLatOffset,
   KOREA_PAN_BOUNDS,
+  shrinkViewportFromTop,
   type LatLngBox,
+  type MapViewInsets,
 } from './recordMapViewportLimits';
 
 describe('clampPointToBox', () => {
@@ -115,5 +119,79 @@ describe('getMedianPoint', () => {
 
   it('점이 없으면 null이다', () => {
     expect(getMedianPoint([])).toBeNull();
+  });
+});
+
+// 홈 히어로 오버레이가 배경 지도 위쪽을 덮는 상황(Jira S15P11A705-325).
+// 컨테이너 800px 중 위 200px이 가려진 경우를 기준 케이스로 쓴다.
+const COVERED: MapViewInsets = { topObstructionPx: 200, containerHeightPx: 800 };
+const UNCOVERED: MapViewInsets = { topObstructionPx: 0, containerHeightPx: 800 };
+// 위도폭 8도가 800px에 걸쳐 있어 1px = 0.01도. 계산 결과를 눈으로 확인하기 쉬운 값이다.
+const VIEWPORT: LatLngBox = { swLat: 33, swLng: 124, neLat: 41, neLng: 132 };
+
+describe('getFitPadding', () => {
+  it('가려진 높이만큼 위쪽 여유만 키우고 나머지 세 방향은 그대로 둔다', () => {
+    expect(getFitPadding(48, COVERED)).toEqual({ top: 248, right: 48, bottom: 48, left: 48 });
+  });
+
+  it('가림이 없으면 사방이 기존과 같다', () => {
+    expect(getFitPadding(48, UNCOVERED)).toEqual({ top: 48, right: 48, bottom: 48, left: 48 });
+  });
+
+  it('컨테이너 높이를 아직 모르면(0) 보정하지 않는다', () => {
+    const notMeasured: MapViewInsets = { topObstructionPx: 200, containerHeightPx: 0 };
+    expect(getFitPadding(48, notMeasured).top).toBe(48);
+  });
+
+  it('가림 높이가 컨테이너보다 크면 컨테이너 높이까지만 반영한다', () => {
+    const absurd: MapViewInsets = { topObstructionPx: 5000, containerHeightPx: 800 };
+    expect(getFitPadding(48, absurd).top).toBe(848);
+  });
+});
+
+describe('shrinkViewportFromTop', () => {
+  it('가려진 높이만큼 북쪽 경계를 남쪽으로 내린다', () => {
+    // 200px * 0.01도/px = 2도.
+    expect(shrinkViewportFromTop(VIEWPORT, COVERED)).toEqual({ ...VIEWPORT, neLat: 39 });
+  });
+
+  it('경도 경계와 남쪽 경계는 건드리지 않는다', () => {
+    const shrunk = shrinkViewportFromTop(VIEWPORT, COVERED);
+    expect(shrunk.swLat).toBe(VIEWPORT.swLat);
+    expect(shrunk.swLng).toBe(VIEWPORT.swLng);
+    expect(shrunk.neLng).toBe(VIEWPORT.neLng);
+  });
+
+  it('가림이 없으면 원본을 그대로 돌려준다', () => {
+    expect(shrinkViewportFromTop(VIEWPORT, UNCOVERED)).toEqual(VIEWPORT);
+  });
+
+  it('가려진 구간에 있는 점은 화면 밖으로 센다', () => {
+    // 위도 40N은 원래 뷰포트 안(33~41)이지만 오버레이에 가린 구간(39~41)에 들어간다.
+    const points = [{ lat: 40, lng: 127 }];
+    expect(countPointsOutsideViewport(points, VIEWPORT)).toBe(0);
+    expect(countPointsOutsideViewport(points, shrinkViewportFromTop(VIEWPORT, COVERED))).toBe(1);
+  });
+});
+
+describe('getVisibleCenterLatOffset', () => {
+  it('가려진 높이의 절반만큼 지도 중심을 북쪽으로 올린다', () => {
+    // 200px의 절반인 100px * 0.01도/px = 1도.
+    expect(getVisibleCenterLatOffset(VIEWPORT, COVERED)).toBe(1);
+  });
+
+  it('보정한 중심에 두면 목표 지점이 가시 영역의 세로 한가운데에 온다', () => {
+    // 가시 영역은 위도 33~39이므로 세로 중앙은 36N이다. 목표를 36N에 놓으려면 지도 중심이 37N,
+    // 즉 목표보다 1도 북쪽이어야 한다.
+    const visible = shrinkViewportFromTop(VIEWPORT, COVERED);
+    const visibleCenterLat = (visible.swLat + visible.neLat) / 2;
+    const mapCenterLat = visibleCenterLat + getVisibleCenterLatOffset(VIEWPORT, COVERED);
+    expect(visibleCenterLat).toBe(36);
+    // 지도 중심은 뷰포트 전체의 한가운데(33~41의 중앙 = 37)와 일치해야 한다.
+    expect(mapCenterLat).toBe((VIEWPORT.swLat + VIEWPORT.neLat) / 2);
+  });
+
+  it('가림이 없으면 보정하지 않는다', () => {
+    expect(getVisibleCenterLatOffset(VIEWPORT, UNCOVERED)).toBe(0);
   });
 });
