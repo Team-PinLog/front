@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { COLLECTION_FOCUS_RING_CLASS } from './collectionActionStyles';
 
 /**
  * Collection 상세를 내부 진입(Feed·내 책장·팔로우한 책장)으로 열었을 때, 원래 보던 화면을 **흐리게**
@@ -19,7 +20,11 @@ import type { ReactNode } from 'react';
  */
 export function CollectionOverlayShell({ children }: { children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-pin-navy/20 backdrop-blur-md">
+    // 356: 이 셸이 화면 전체를 덮는 스크롤 상자라 크롬에서 키보드 포커스 대상이 된다 — 그대로 두면
+    // 뷰포트 전체를 두르는 기본 파란 사각형이 뜬다.
+    <div
+      className={`fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-pin-navy/20 backdrop-blur-md ${COLLECTION_FOCUS_RING_CLASS}`}
+    >
       {/* ⚠️ items-center(세로 중앙)로 두면 안 된다 — 안쪽 높이가 조금만 달라져도 콘텐츠 전체가
           위아래로 움직여 "번쩍임"으로 보인다(332 피드백). 실제로 목차 장과 record 장은 하단 표시 줄·
           모바일 페이지 높이가 서로 달랐고, 그 차이가 중앙 정렬 때문에 화면 전체의 흔들림으로
@@ -44,7 +49,7 @@ export function CollectionOverlayCloseButton({ onClose }: CollectionOverlayClose
       type="button"
       onClick={onClose}
       aria-label="닫기"
-      className="absolute -right-3 -top-3 z-30 flex h-9 w-9 items-center justify-center rounded-full border border-line-card bg-snow-white text-lg text-ink-gray shadow-md transition-colors hover:text-pin-navy"
+      className={`absolute -right-3 -top-3 z-30 flex h-9 w-9 items-center justify-center rounded-full border border-line-card bg-snow-white text-lg text-ink-gray shadow-md transition-colors hover:text-pin-navy ${COLLECTION_FOCUS_RING_CLASS}`}
     >
       ×
     </button>

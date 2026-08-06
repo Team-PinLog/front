@@ -1,3 +1,4 @@
+import { COLLECTION_FOCUS_RING_CLASS } from './collectionActionStyles';
 import type { CollectionRecordItem } from './CollectionDetailView';
 
 interface CollectionIndexRailProps {
@@ -11,16 +12,26 @@ interface CollectionIndexRailProps {
   onSelectToc: () => void;
 }
 
-// 탭 공통 모양. 활성/비활성만 다르고 나머지는 같다.
+// 356: 키보드로 탭을 옮길 때 브라우저 기본 포커스 사각형이 그려져 책 디자인과 겉돌았다. 표시를
+// 없애는 게 아니라(그건 키보드 사용자가 자기 위치를 잃는 접근성 후퇴다) 브랜드 톤 아웃라인으로
+// 바꾼다. 프로젝트에 이미 있는 패턴(LoginPage·TermsPage·PrivacyPage)과 같은 형태다.
+//  - `outline-none`을 쓰지 않는다. 우리 outline을 지정하면 기본 사각형은 자연히 대체되고, 강제
+//    색상 모드(Windows 고대비)에서도 box-shadow 기반 ring과 달리 표시가 살아남는다.
+//  - 마우스 클릭에는 뜨지 않아야 하므로 :focus가 아니라 :focus-visible이다.
+//  - offset이 **음수**인 이유: 레일이 overflow-y-auto라 바깥으로 내민 아웃라인은 좌우가 잘린다.
+//    탭 안쪽으로 그리면 잘리지 않고, 책 옆면에 물린 탭 모양과도 잘 맞는다.
 const TAB_BASE_CLASS =
-  'flex flex-none items-center rounded-r-lg border-y border-r py-2 pl-5 pr-2 text-left shadow-[3px_3px_8px_-3px_rgba(4,33,66,0.22)] transition-colors disabled:opacity-40';
-const TAB_ACTIVE_CLASS = 'border-log-mint bg-log-mint text-paper-white';
+  'flex flex-none items-center rounded-r-lg border-y border-r py-2 pl-5 pr-2 text-left shadow-[3px_3px_8px_-3px_rgba(4,33,66,0.22)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:opacity-40';
+// 아웃라인 색은 탭 바탕색과 대비되는 쪽으로 각자 고른다 — 민트 탭에 민트 아웃라인은 보이지 않는다.
+const TAB_ACTIVE_CLASS =
+  'border-log-mint bg-log-mint text-paper-white focus-visible:outline-paper-white';
 const TAB_IDLE_CLASS =
-  'border-line-card bg-snow-white text-ink-gray hover:border-log-mint/40 hover:text-log-mint';
+  'border-line-card bg-snow-white text-ink-gray hover:border-log-mint/40 hover:text-log-mint focus-visible:outline-log-mint';
 // 332 디자인 피드백 2번: "목차" 탭은 선택되지 않은 상태에서도 record 탭들과 구분돼야 한다 —
 // 같은 회색이면 장소명 하나로 오인된다. 옅은 알파 면은 충분히 눈에 띄지 않아(2차 피드백) 브랜드
 // 남색 단색으로 칠한다. 활성 색(민트)과는 색상 자체가 달라 "지금 이 장"이라는 신호는 그대로 남는다.
-const TOC_TAB_IDLE_CLASS = 'border-pin-navy bg-pin-navy text-paper-white hover:bg-pin-navy/85';
+const TOC_TAB_IDLE_CLASS =
+  'border-pin-navy bg-pin-navy text-paper-white hover:bg-pin-navy/85 focus-visible:outline-paper-white';
 
 /**
  * Collection 상세(플립북) 우측에 붙는 세로 인덱스 탭 레일. 근거: Jira S15P11A705-246,
@@ -50,7 +61,11 @@ export function CollectionIndexRail({
   onSelectToc,
 }: CollectionIndexRailProps) {
   return (
-    <div className="hidden w-20 flex-none flex-col gap-1 overflow-y-auto pt-12 md:flex md:max-h-[600px] xl:max-h-[720px]">
+    // 356: 스크롤 상자 자체도 크롬에서는 키보드 포커스를 받는다(키보드 스크롤 지원) — 그때 뜨는
+    // 기본 사각형도 같은 아웃라인으로 바꾼다.
+    <div
+      className={`hidden w-20 flex-none flex-col gap-1 overflow-y-auto pt-12 md:flex md:max-h-[600px] xl:max-h-[720px] ${COLLECTION_FOCUS_RING_CLASS}`}
+    >
       <button
         type="button"
         onClick={onSelectToc}
