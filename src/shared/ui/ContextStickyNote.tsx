@@ -12,19 +12,19 @@ interface ContextStickyNoteProps {
   stackIndex?: number;
 }
 
-// 목업(Team-PinLog/mockup index.html) book-context-postit / openBook.contextNotes 팔레트를 그대로 가져온다.
-// contextNoteColors·contextNoteRotations(라인 2984-2985)와 동일한 값이며, 인덱스는 위치가 아니라
-// contextId 기반 해시로 고른다 — 리스트 순서가 바뀌거나 항목이 추가/삭제돼도 같은 Context는 항상 같은
-// 색·회전각을 유지한다(리렌더 시 값 유지).
+// 목업(Team-PinLog/mockup index.html) book-context-postit / openBook.contextNotes 팔레트(contextNoteColors,
+// 라인 2984)를 그대로 가져온다. 인덱스는 위치가 아니라 contextId 기반 해시로 고른다 — 리스트 순서가
+// 바뀌거나 항목이 추가/삭제돼도 같은 Context는 항상 같은 색·회전각을 유지한다(리렌더 시 값 유지).
 const NOTE_COLORS = ['#fff2a6', '#dcecff', '#efedeb'] as const;
-const NOTE_ROTATIONS = ['-0.8deg', '0.8deg', '-0.4deg'] as const;
-// 접힌 종이 띠 색: 옐로는 목업 .draft-postit:before(rgba(230,194,59,.35), 라인 113)를 그대로 쓴다.
-// 블루·그레이는 목업에 다색 버전이 없어 같은 방식(배경보다 톤 다운된 같은 계열)으로 새로 만들었다.
-const NOTE_FOLD_COLORS = [
-  'rgba(230,194,59,.35)',
-  'rgba(91,157,225,.35)',
-  'rgba(163,152,145,.35)',
-] as const;
+// 332 시안: 포스트잇이 "붙어 있다"는 인상을 만들기 위해 기울임을 기존(±0.4~0.8deg)보다 키웠다.
+// 각도는 여전히 contextId 해시로 고르는 순수 함수라 같은 Context는 항상 같은 각도를 유지한다.
+const NOTE_ROTATIONS = ['-1.6deg', '1.4deg', '-0.8deg'] as const;
+// 332 시안: 위쪽 가장자리를 덮던 "접힌 종이 띠"를 폭이 좁고 비스듬한 마스킹 테이프로 바꿨다.
+// 테이프는 종이 색과 무관한 반투명 크라프트 톤 하나로 통일한다 — 시안에서 노트 색이 달라도
+// 테이프 색은 같고, 색까지 3종으로 나누면 "같은 테이프로 붙였다"는 인상이 깨진다.
+const NOTE_TAPE_COLOR = 'rgba(214,196,150,0.62)';
+// 테이프 기울기도 노트 각도처럼 contextId로 고정한다(리렌더돼도 같은 Context는 같은 모양).
+const NOTE_TAPE_ROTATIONS = ['-8deg', '6deg', '-4deg'] as const;
 
 // 겹침을 "카드 높이의 N%"로 계산한다(고정 -22px는 짧은 카드에서 과도해 보이는 문제가 있었다).
 // 목업 .book-context-postit:nth-child(n+4){margin-top:-22px}는 고정 height:166px 기준 약 13.25%였다
@@ -78,7 +78,7 @@ function useStackOverlapPx(active: boolean) {
 }
 
 /**
- * Context 하나를 파스텔 포스트잇 카드로 표시한다. 회전각·배경·접힌 종이 띠 색은 contextId로 결정되는
+ * Context 하나를 파스텔 포스트잇 카드로 표시한다. 배경색·회전각·테이프 기울기는 contextId로 결정되는
  * 순수 함수라 리렌더돼도 같은 Context는 항상 같은 모양을 유지한다. 편집 UI는 갖지 않는다 — 편집 가능
  * 여부(editable)에 따라 연필·× 버튼만 노출하고, 실제 편집 진입/삭제는 onEdit·onDelete로 위임한다.
  */
@@ -94,7 +94,7 @@ export function ContextStickyNote({
   const noteIndex = pickNoteIndex(contextId);
   const bg = NOTE_COLORS[noteIndex];
   const rotate = NOTE_ROTATIONS[noteIndex];
-  const fold = NOTE_FOLD_COLORS[noteIndex];
+  const tapeRotate = NOTE_TAPE_ROTATIONS[noteIndex];
 
   const { ref, overlapPx } = useStackOverlapPx(stackIndex > 0);
 
@@ -105,14 +105,21 @@ export function ContextStickyNote({
   };
 
   return (
-    <div
-      ref={ref}
-      className="context-sticky-note relative rounded-sm pb-4 pl-4 pr-4 pt-8"
-      style={style}
-    >
+    <div ref={ref} className="context-sticky-note relative rounded-sm px-5 pb-6 pt-7" style={style}>
+      {/* 위쪽 가장자리에 걸친 마스킹 테이프. 노트 바깥으로 살짝 튀어나오게 두는 게 "붙였다"는
+          인상의 핵심이라 -top-3으로 넘긴다(부모에 overflow-hidden이 없어 잘리지 않는다). */}
       <div
-        className="absolute inset-x-0 top-0 h-3.5 rounded-t-sm"
-        style={{ backgroundColor: fold }}
+        className="absolute -top-3 left-5 h-6 w-20 rounded-[2px]"
+        style={{ backgroundColor: NOTE_TAPE_COLOR, transform: `rotate(${tapeRotate})` }}
+        aria-hidden="true"
+      />
+
+      {/* 오른쪽 아래 접힌 모서리. 배경 위에 겹치는 삼각형 그림자로만 표현해 노트 색과 무관하게 동작한다. */}
+      <div
+        className="absolute bottom-0 right-0 h-6 w-6 rounded-br-sm"
+        style={{
+          background: 'linear-gradient(135deg, transparent 50%, rgba(4,33,66,0.10) 50%)',
+        }}
         aria-hidden="true"
       />
 
@@ -139,7 +146,9 @@ export function ContextStickyNote({
         </div>
       )}
 
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-gray">{body}</p>
+      {/* font-hand(Nanum Pen Script)는 같은 px에서 Pretendard보다 훨씬 작게 보여 text-xl로 올린다.
+          폰트가 도착하기 전에는 Pretendard로 그려지므로 그때만 평소보다 크게 보인다(FOUT 허용). */}
+      <p className="whitespace-pre-wrap font-hand text-xl leading-6 text-pin-navy">{body}</p>
     </div>
   );
 }

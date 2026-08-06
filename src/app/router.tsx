@@ -174,5 +174,11 @@ declare module '@tanstack/react-router' {
 declare module '@tanstack/history' {
   interface HistoryState {
     collectionOverlay?: true;
+    // 332: Collection 상세 오른쪽 "이 작성자의 다른 컬렉션" 책장(ShelfExploreSection)을 세울지 여부.
+    // Feed 경유 진입은 feedRequestId search param으로 판별하지만, 그 책장에서 다른 Collection을 열면
+    // 그 값이 따라가지 않아(Feed 이벤트 값을 물려주면 requestId/position이 엉뚱한 슬롯에 귀속된다)
+    // 책장이 사라졌다. 책장 클릭에만 이 마커를 심어 "책장을 넘나드는 중"이라는 맥락을 잇는다.
+    // history state라 뒤로가기·새로고침에도 그 진입점의 맥락이 그대로 남는다.
+    shelfContext?: true;
   }
 }

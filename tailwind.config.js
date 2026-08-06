@@ -43,6 +43,11 @@ export default {
       },
       fontFamily: {
         sans: ['Pretendard Variable', 'Pretendard', 'sans-serif'],
+        // 332: Collection 펼친 화면 시안의 포스트잇 손글씨. 본문 폰트(Pretendard)와 대비되는
+        // "직접 적어 붙인 메모"라는 인상이 시안에서 Context를 다른 정보(장소·주소·키워드)와
+        // 구분하는 유일한 장치라 도입한다. ⚠️ 포스트잇(ContextStickyNote) 밖에서 쓰지 않는다.
+        // 웹폰트 로드는 index.html의 Google Fonts <link>가 담당한다.
+        hand: ['Nanum Pen Script', 'Pretendard Variable', 'cursive'],
       },
     },
   },
