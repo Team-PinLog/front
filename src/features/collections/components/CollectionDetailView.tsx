@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { useEditCollectionTitle } from '@/contexts/useEditCollectionTitle';
 import { useCollectionDeleteConfirm } from '@/contexts/useCollectionDeleteConfirm';
 import { useCollectionSpread } from '@/contexts/useCollectionSpread';
@@ -53,6 +53,13 @@ const SHELF_HEIGHT_CLASS = 'lg:h-[600px] xl:h-[720px]';
 // 페이지를 넘길 때 잡는 자리인 **바깥 모서리**에 세로 전체 높이의 넘김 영역을 둔다 — 지도 크기를
 // 그대로 두면서 클릭 대상이 항상 같은 자리에 있게 하는 방법이다. 평소에는 보이지 않다가 호버하면
 // 옅은 음영과 화살표가 떠 눌러도 되는 자리임을 알린다.
+// 353: 이 영역은 페이지 내용 위(z-30)에 얹히므로 **페이지의 바깥 여백보다 넓으면 안 된다.** 처음엔
+// 양쪽 모두 w-14(56px)였는데, 오른쪽 페이지의 바깥 여백은 md:pr-10(40px)·왼쪽은 md:pl-8(32px)이라
+// 나머지 16px·24px이 본문 위를 덮고 있었다 — '저장하기' 버튼과 목차 항목의 오른쪽 끝, 지도의 왼쪽
+// 끝이 그 띠 아래에 깔려 눌러도 넘김만 실행됐다. 폭은 각 페이지의 여백 클래스와 짝을 이루므로
+// 한쪽을 바꾸면 다른 쪽도 함께 바꾼다(md:pr-10 ↔ w-10, md:pl-8 ↔ w-8).
+const PAGE_TURN_ZONE_WIDTH_CLASS = { left: 'w-8', right: 'w-10' } as const;
+
 function PageTurnZone({
   side,
   label,
@@ -68,9 +75,9 @@ function PageTurnZone({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`group absolute inset-y-0 z-30 hidden w-14 items-center justify-center md:flex ${
-        isLeft ? 'left-0' : 'right-0'
-      }`}
+      className={`group absolute inset-y-0 z-30 hidden items-center justify-center md:flex ${
+        PAGE_TURN_ZONE_WIDTH_CLASS[side]
+      } ${isLeft ? 'left-0' : 'right-0'}`}
     >
       <span
         aria-hidden="true"
@@ -88,6 +95,27 @@ function PageTurnZone({
       </span>
     </button>
   );
+}
+
+// 353: 페이지 면 전체가 넘김 클릭 영역이라(아래 좌·우 페이지 div의 onClick), 그 위에 놓인 컨트롤을
+// 눌러도 클릭이 페이지까지 버블링해 장이 함께 넘어갔다 — '저장하기'는 저장되면서 다음 장으로,
+// 목차 항목은 해당 스프레드 대신 다음 장으로 갔다. 컨트롤마다 stopPropagation을 흩뿌리면 컨트롤이
+// 하나 늘 때마다 같은 버그가 되살아나므로, "무엇이 넘김이 아닌가"를 이 한 곳에서 정의한다.
+//  - 인터랙티브 요소(그 안쪽 텍스트·아이콘에서 시작한 클릭 포함)
+//  - 넘김을 원치 않는다고 명시한 영역(data-page-turn="ignore") — 지도·포스트잇 스택처럼 요소 자체는
+//    버튼이 아니지만 조작 대상인 곳에 붙인다.
+// 그 밖의 페이지 여백·본문 클릭은 그대로 다음/이전 장이다(332가 만든 "책장을 넘기듯" 조작 유지).
+const PAGE_TURN_IGNORE_SELECTOR =
+  'a, button, input, select, textarea, label, [role="button"], [contenteditable="true"], [data-page-turn="ignore"]';
+
+function isPageTurnClick(event: MouseEvent<HTMLElement>) {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return true;
+  }
+  const ignored = target.closest(PAGE_TURN_IGNORE_SELECTOR);
+  // closest는 currentTarget 위쪽 조상까지 올라갈 수 있다 — 페이지 바깥에서 걸린 요소는 무시한다.
+  return ignored === null || !event.currentTarget.contains(ignored);
 }
 
 // 시안의 주소 앞 초록 핀. 기존 `📍` 이모지는 OS마다 모양·색이 달라 초록 톤을 맞출 수 없어 SVG로 바꾼다.
@@ -585,11 +613,16 @@ export function CollectionDetailView({
                   <PageTurnZone side="right" label="다음 장" onClick={handleNext} />
                 )}
 
-                {/* 왼쪽 페이지 = 이전 장. 여백(페이지 마진)을 누르면 넘어가고, 지도 위 클릭은
-                    지도 조작이라 전파를 끊는다 — 지도를 끌어 옮기려다 페이지가 넘어가면 안 된다. */}
+                {/* 왼쪽 페이지 = 이전 장. 여백(페이지 마진)이나 본문을 누르면 넘어가고, 지도·컨트롤
+                    위 클릭은 넘김으로 치지 않는다(isPageTurnClick) — 지도를 끌어 옮기려다 페이지가
+                    넘어가면 안 된다. */}
                 <div
                   role="presentation"
-                  onClick={handlePrevious}
+                  onClick={(event) => {
+                    if (isPageTurnClick(event)) {
+                      handlePrevious();
+                    }
+                  }}
                   className={`flex flex-none flex-col p-5 md:h-auto md:flex-1 md:py-8 md:pl-8 md:pr-6 ${
                     isTocOpen ? 'h-[380px] items-center gap-3 text-center' : 'h-[380px]'
                   }`}
@@ -615,8 +648,7 @@ export function CollectionDetailView({
                   {/* 지도는 목차/record 장에서 같은 트리 위치를 유지한다 — 분기 안으로 옮기면 장을
                       넘길 때마다 Kakao Map 인스턴스가 재생성된다. 바뀌는 건 감싸는 상자뿐이다. */}
                   <div
-                    role="presentation"
-                    onClick={(event) => event.stopPropagation()}
+                    data-page-turn="ignore"
                     className={`cursor-default ${
                       isTocOpen
                         ? // 피드백 1번: 액자가 작아 페이지가 비어 보였다. 남는 세로 공간을 전부
@@ -638,11 +670,15 @@ export function CollectionDetailView({
                   </div>
                 </div>
 
-                {/* 오른쪽 페이지 = 다음 장. 아래 인터랙티브 영역(레코드 버튼·포스트잇·목차 목록)은
-                각자 전파를 끊는다 — 포스트잇을 수정하려다 페이지가 넘어가면 안 된다. */}
+                {/* 오른쪽 페이지 = 다음 장. 아래 인터랙티브 영역(레코드 버튼·포스트잇·목차 목록)의
+                클릭은 isPageTurnClick이 걸러낸다 — 포스트잇을 수정하려다 페이지가 넘어가면 안 된다. */}
                 <div
                   role="presentation"
-                  onClick={handleNext}
+                  onClick={(event) => {
+                    if (isPageTurnClick(event)) {
+                      handleNext();
+                    }
+                  }}
                   className={`flex flex-1 flex-col gap-4 overflow-y-auto p-6 md:py-10 md:pl-12 md:pr-10 ${
                     isTocOpen || canGoNext ? 'cursor-e-resize' : ''
                   }`}
@@ -701,7 +737,9 @@ export function CollectionDetailView({
                         {/* contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다(privacy-rules.md 1장) — null이면
                         이 영역 자체를 렌더하지 않는다(런타임 접근도 하지 않는다). */}
                         {ownedByMe && currentRecord.contexts && (
-                          <div className="flex flex-col pt-2">
+                          // 353: 포스트잇 면은 버튼이 아니지만 조작 대상(연필·× 버튼이 그 위에 있고,
+                          // 겹쳐 쌓여 빗맞기 쉽다)이라 통째로 넘김에서 제외한다.
+                          <div data-page-turn="ignore" className="flex flex-col pt-2">
                             {currentRecord.contexts.length === 0 ? (
                               <p className="text-xs text-ink-gray-light">
                                 아직 기록된 맥락이 없어요.
