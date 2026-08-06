@@ -1,6 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { handleShelfScrollFetchNext } from '@/shared/lib/handleShelfScrollFetchNext';
 import {
   chunkIntoShelfRows,
@@ -269,7 +268,6 @@ export function FollowedShelfCard({
           visibleRowCount={visibleRowCount}
           collectionsQuery={collectionsQuery}
           onSelectCollection={(collectionId) => {
-            markCollectionOverlayIntent();
             void navigate({
               to: '/collections/$collectionId',
               params: { collectionId },
