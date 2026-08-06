@@ -16,19 +16,20 @@ interface CollectionOverlayShellProps {
 export function CollectionOverlayShell({ onClose, children }: CollectionOverlayShellProps) {
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-pin-navy/40 p-6"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-pin-navy/25 p-6"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="relative max-h-[calc(100dvh-48px)] w-[min(960px,calc(100vw-48px))] overflow-y-auto rounded-2xl bg-paper-white shadow-xl"
+        className="relative max-h-[calc(100dvh-48px)] w-[min(960px,calc(100vw-48px))] overflow-y-auto rounded-3xl bg-paper-white shadow-[0_40px_90px_-30px_rgba(4,33,66,0.45)]"
         onClick={(event) => event.stopPropagation()}
       >
+        {/* 332 시안: 닫기 버튼도 헤더 버튼과 같은 "흰 면 + 라이트 아웃라인" 톤으로 맞춘다. */}
         <button
           type="button"
           onClick={onClose}
           aria-label="닫기"
-          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-pin-navy/10 text-pin-navy"
+          className="absolute right-5 top-5 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-line-card bg-snow-white text-lg text-ink-gray shadow-sm transition-colors hover:text-pin-navy"
         >
           ×
         </button>
@@ -54,7 +55,7 @@ export function CollectionFullscreenCloseButton({ onClose }: CollectionFullscree
       type="button"
       onClick={onClose}
       aria-label="닫기"
-      className="fixed right-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-full bg-pin-navy/10 text-pin-navy shadow-md"
+      className="fixed right-5 top-5 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-line-card bg-snow-white text-lg text-ink-gray shadow-md transition-colors hover:text-pin-navy"
     >
       ×
     </button>
