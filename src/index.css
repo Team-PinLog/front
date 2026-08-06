@@ -158,6 +158,16 @@
     /* 셸이 뷰포트 높이에 딱 맞으면 오버스크롤 반동 때 문서 배경이 그대로 드러난다. 기본 흰색이
        아니라 앱 배경과 같은 색이어야 이음매가 보이지 않는다. */
     background-color: theme('colors.paper-white');
+
+    /* 364: 자간을 조금 넓힌다(0 → 0.02em, Tailwind의 tracking-normal과 tracking-wide 사이).
+       잘난고딕은 글자 폭이 넓고 획이 굵어 기본 자간에서 글자끼리 붙어 보인다.
+
+       fontSize 토큰에 letterSpacing을 끼워 넣지 않고 body에 거는 이유 — 토큰에 넣으면
+       `text-[11px]`처럼 임의 값으로 쓴 자리(52곳)가 자간 보정을 못 받는다. body에서 상속시키면
+       크기를 어떻게 지정했든 전부 적용된다.
+       letter-spacing은 상속되므로 이 한 줄이 앱 전체에 닿고, 개별 조정이 필요한 곳은 tracking-*
+       유틸리티가 덮는다(클래스라 명시도가 높다) — 표지 제목의 TITLE_TRACKING_CLASS가 그 예다. */
+    letter-spacing: 0.02em;
   }
 
   /* 359 — 브랜드 스크롤바.

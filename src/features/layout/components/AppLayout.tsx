@@ -309,7 +309,7 @@ function AppShell() {
             md~lg는 아이콘만 있는 72px 레일이고, **호버(또는 내부 포커스) 시 240px로 펼쳐진다**
             (디자인 피드백 — "평소엔 접혀 있다가 호버하면 펼쳐진 것처럼"). xl은 처음부터 펼친 상태다.
 
-            ⚠️ 펼침은 레이아웃을 밀지 않고 컨텐츠 위에 겹친다. <main>의 md:pl-[4.5rem]과
+            ⚠️ 펼침은 레이아웃을 밀지 않고 컨텐츠 위에 겹친다. <main>의 좌측 padding(md 72px)과
             getSidebarWidthPx(mdlg)=72는 접힌 폭 그대로 유지된다 — 펼칠 때 실제 폭을 밀면 Feed 카드
             크기·행 수 계산이 호버할 때마다 다시 돌아 화면이 출렁인다. 예약 폭은 고정하고 시각적으로만
             덮는 것이 맞다.
@@ -333,7 +333,7 @@ function AppShell() {
             열림 상태가 여러 곳에 흩어지지 않는다.
             - 고정하지 않으면 md~lg에서 호버가 풀릴 때 사이드바가 72px로 접혀 패널(left-60)과의 사이에
               168px 구멍이 생긴다. 마우스가 패널로 넘어간 순간 그 일이 벌어지므로 반드시 필요하다.
-            - 폭을 240으로 키워도 <main>의 md:pl-[4.5rem]은 그대로다 — 원래부터 펼침은 레이아웃을 밀지
+            - 폭을 240으로 키워도 <main>의 좌측 padding은 그대로다 — 원래부터 펼침은 레이아웃을 밀지
               않고 덮는 구조라(위 주석) Feed 가로 예산 재계산이 일어나지 않는다.
             - 아이콘은 고정폭 슬롯(SIDEBAR_ICON_SLOT_CLASS) 안에 있어 1px도 움직이지 않는다. 방금 누른
               기어가 제자리에 남고 라벨만 드러난다. */}
@@ -409,7 +409,7 @@ function AppShell() {
 
         {/* 330: sm은 떠 있는 탭바가 차지하는 높이(알약 + 위아래 여백 = 5rem)만큼 아래를 비운다 —
             이전의 pt-14가 뒤집힌 것이다. safe-area 인셋만큼 더 내려가므로 그만큼도 함께 뺀다. md 이상은 탭바가 없어
-            pb가 필요 없고(md:pb-0), 대신 좌측 사이드바 폭만큼 민다(md:pl-[4.5rem] xl:pl-60 —
+            pb가 필요 없고, 대신 좌측 사이드바 폭만큼 민다(md 72px / xl 240px —
             appChrome.ts의 getSidebarWidthPx와 동일 값). FeedPage/LibraryPage/HomePage의
             PAGE_MIN_HEIGHT_CLASS도 이 값과 짝을 맞춘다.
             (이슈 1.1: pb/pl 값 자체는 여전히 레이아웃 시프트 방지용 Tailwind 리터럴이고, sm의 실제
@@ -425,7 +425,23 @@ function AppShell() {
             PAGE_MIN_HEIGHT_CLASS(shelfCabinetLayout.ts)와 정확히 짝이 맞는다: 이 영역의 content
             box 높이는 sm에서 100dvh - 5rem - 인셋, md 이상에서 100dvh이고 그게 곧 그 상수의 값이다.
             따라서 기존 페이지들은 "딱 맞아 스크롤 없음"이 되고, 넘치는 화면만 여기서 스크롤된다. */}
-        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 md:pl-[4.5rem] xl:pl-60">
+        {/* 364: md 이상에서 사방 여백을 준다("요소가 화면 끝까지 퍼져 있다"는 피드백).
+            shelfCabinetLayout.ts의 SHELL_INSET_PX_BY_TIER와 **반드시 같은 값**이다 — 그쪽이 카드
+            폭·세로 예산을 이 값 기준으로 계산한다. 한쪽만 고치면 선반이 가로로 넘치거나 상시
+            스크롤바가 생긴다.
+
+            ⚠️ p-4 같은 shorthand를 쓰지 않고 네 방향을 따로 쓴다. 이 자리의 왼쪽 padding은 여백이
+            아니라 **고정 사이드바가 먹는 자리 예약**(md 72px / xl 240px)이고 아래쪽은 sm에서 떠 있는
+            탭바 자리라, shorthand를 얹으면 그 둘을 덮어쓰거나 Tailwind의 출력 순서에 따라 조용히
+            어느 한쪽이 이긴다.
+
+            왼쪽 값은 "사이드바 폭 + 셸 여백"을 **미리 더한 리터럴**이다:
+              md  = 72px(사이드바) + 16px(여백) = 88px  = 5.5rem
+              xl  = 240px(사이드바) + 24px(여백) = 264px = 16.5rem
+            calc로 쓰지 않은 이유 — Tailwind 추출기가 arbitrary value 안의 `+`를 잡지 못해 클래스가
+            **아무 CSS도 만들지 않고 조용히 사라진다**(빌드 산출 CSS로 확인). conventions 2장이 말하는
+            "Tailwind는 원시 텍스트 스캔이라 양방향으로 조용히 틀린다"의 실례다. */}
+        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-4 md:pl-[5.5rem] md:pr-4 md:pt-4 xl:pb-6 xl:pl-[16.5rem] xl:pr-6 xl:pt-6">
           <LayoutMetricsContext.Provider
             value={{ navChromeHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
           >

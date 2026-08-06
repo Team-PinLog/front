@@ -41,6 +41,29 @@ export default {
         'cover-gold': '#B68235', // 괘선·표제 라벨 (시안 rgba(182,130,53))
         'cover-gold-soft': '#DCC7A0', // 옅은 프레임 (시안 --color-accent-200)
       },
+      // 364: 본문 타이포를 한 단계 키운다. 357에서 본문 서체가 Pretendard → 잘난고딕으로 바뀌면서
+      // 같은 px에서도 글자가 작아 보인다는 피드백이 나왔다(서체마다 대문자 높이·글자 폭이 달라
+      // 시각 크기가 다르다). 페이지마다 클래스를 고치면 다른 레인 파일을 전부 건드려야 하므로
+      // **스케일 자체를 재정의**해 한 번에 보정한다 — 기존 text-sm/base/... 사용처는 그대로 두고
+      // 값만 커진다.
+      //
+      // 폭은 5~10%다. 그 이상 키우면 Feed 카드·책장 칸처럼 세로 예산이 빡빡한 화면에서 줄바꿈이
+      // 늘어난다. 1px 단위(0.0625rem)로 떨어지게 잡아 반올림으로 흐려지지 않게 했다.
+      // line-height도 함께 올린다 — 글자만 키우면 줄 간격이 상대적으로 좁아져 답답해진다.
+      //
+      // ⚠️ `text-[11px]`처럼 임의 px 값으로 쓴 자리(현재 52곳)는 이 표를 타지 않아 크기가 그대로다.
+      // 반대로 표지 제목은 `text-[1em]`이라 부모 크기를 따라 함께 커진다. 책등(Shelf.tsx)은
+      // `text-[10px]` 절대값이라 영향이 없다 — 책등 크기는 365에서 따로 다룬다.
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.125rem' }], // 12 → 13px
+        sm: ['0.9375rem', { lineHeight: '1.375rem' }], // 14 → 15px
+        base: ['1.0625rem', { lineHeight: '1.625rem' }], // 16 → 17px
+        lg: ['1.1875rem', { lineHeight: '1.8125rem' }], // 18 → 19px
+        xl: ['1.375rem', { lineHeight: '1.875rem' }], // 20 → 22px
+        '2xl': ['1.625rem', { lineHeight: '2.125rem' }], // 24 → 26px
+        '3xl': ['2rem', { lineHeight: '2.375rem' }], // 30 → 32px
+        '4xl': ['2.375rem', { lineHeight: '2.625rem' }], // 36 → 38px
+      },
       // 357: 세 서체 모두 public/fonts/의 로컬 서브셋 WOFF2다. @font-face는 src/index.css에
       // 있고, 외부 CDN(jsDelivr Pretendard·Google Fonts) 링크는 제거했다.
       // 폰트를 바꾸려면 여기와 index.css의 @font-face를 함께 고친다.
