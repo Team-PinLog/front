@@ -1,17 +1,91 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  loadKakaoMaps,
-  type KakaoCustomOverlay,
-  type KakaoMap,
-  type KakaoMarker,
-} from '@/shared/lib/kakaoMaps';
+  getRecordMarkerAsset,
+  RECORD_MARKER_ASSET_HEIGHT,
+  RECORD_MARKER_ASSET_WIDTH,
+  RECORD_MARKER_TIP_Y_RATIO,
+} from '@/shared/lib/getRecordMarkerAsset';
+import { loadKakaoMaps, type KakaoCustomOverlay, type KakaoMap } from '@/shared/lib/kakaoMaps';
+
+// 332 디자인 피드백: 카카오 기본 마커(빨간 핀) 대신 홈 지도와 같은 핀 SVG를 쓴다.
+// 색은 이 Collection의 배정색 하나로 통일한다 — 이 지도에 찍히는 핀은 전부 같은 Collection의
+// 기록이라 색으로 나눌 것이 없고, 오히려 "이 책의 장소들"이라는 한 덩어리로 읽혀야 한다.
+// 지금 보고 있는 record만 크기·불투명도로 앞세우고, 나머지는 같은 색을 옅게 깔아 배경으로 물린다
+// (사용자 지시: "메인 record는 조금 더 포인트 있는 색, 나머지는 덜 포인트 있는 동일한 색").
+const ACTIVE_MARKER_WIDTH = RECORD_MARKER_ASSET_WIDTH / 2;
+const ACTIVE_MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
+// 비활성 핀은 "배경으로 물러나 있되 또렷하게 읽히는" 정도다 — 처음 값(0.75 / 0.45)은 너무 흐려
+// 핀이 지워진 것처럼 보였고, 두 번의 피드백을 거쳐 여기까지 올렸다. 활성과의 대비는 크기로도
+// 주고 있어서 불투명도를 이 이상 올려도 구분은 유지된다.
+const IDLE_MARKER_SCALE = 0.9;
+const IDLE_MARKER_OPACITY = '0.85';
+
+/**
+ * CustomOverlay에 올릴 핀 엘리먼트. RecordMapView.createRecordMarkerElement와 같은 이유로 인라인
+ * SVG가 아니라 <img src>로 불러온다 — asset 20개가 모두 같은 `<filter id="shadow">`를 쓰기 때문에
+ * 인라인으로 심으면 문서 전체에서 id가 충돌해 마커 전부가 첫 번째 필터를 공유한다.
+ * (그 함수는 features/map 내부 전용이라 export되어 있지 않아 여기서 같은 방식으로 다시 만든다.)
+ */
+function createSpreadMarkerElement(
+  assetUrl: string,
+  title: string,
+  isActive: boolean,
+  onSelect: (() => void) | null,
+) {
+  const scale = isActive ? 1 : IDLE_MARKER_SCALE;
+  const width = Math.round(ACTIVE_MARKER_WIDTH * scale);
+  const height = Math.round(ACTIVE_MARKER_HEIGHT * scale);
+
+  const image = document.createElement('img');
+  image.src = assetUrl;
+  // 마커 이름은 title로 노출되므로 alt는 비워 중복을 피한다.
+  image.alt = '';
+  image.title = title;
+  image.width = width;
+  image.height = height;
+  image.draggable = false;
+  image.style.display = 'block';
+  // ⚠️ width/height 속성만으로는 그려지지 않는다. Tailwind preflight의 `img { max-width: 100%;
+  // height: auto }`가 살아 있는데 CustomOverlay가 content를 감싸는 래퍼 div는 폭이 0이라
+  // max-width:100%가 0으로 계산돼 마커가 0x0으로 찌그러진다(핀이 아예 안 보인다). max-width를 풀고
+  // 크기를 인라인 스타일로 못박아야 한다 — RecordMapView.createRecordMarkerElement가 같은 이유로
+  // 같은 처리를 하고 있고, 그 주석을 옮겨오지 않아 이 화면에서 한 번 더 재현됐다.
+  image.style.maxWidth = 'none';
+  image.style.width = `${width}px`;
+  image.style.height = `${height}px`;
+  const baseOpacity = isActive ? '1' : IDLE_MARKER_OPACITY;
+  image.style.opacity = baseOpacity;
+
+  if (onSelect) {
+    // 핀을 눌러 그 record 장으로 넘어간다. 호버하면 불투명도를 100%로 올려 "누를 수 있는 핀"임을
+    // 알린다 — 비활성 핀은 평소 옅게 깔려 있어 그대로면 클릭 대상으로 읽히지 않는다.
+    // CustomOverlay content는 React 트리 밖의 DOM이라 이벤트를 직접 붙인다(RecordMapView와 동일).
+    image.style.cursor = 'pointer';
+    image.style.transition = 'opacity 0.15s ease-out';
+    image.addEventListener('mouseenter', () => {
+      image.style.opacity = '1';
+    });
+    image.addEventListener('mouseleave', () => {
+      image.style.opacity = baseOpacity;
+    });
+    image.addEventListener('click', onSelect);
+  }
+
+  return image;
+}
 
 // 마커가 없을 때(최초 SDK 로드 등) 지도 기본 중심(서울시청). KakaoPlaceMap.tsx와 동일 기본값.
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
-// 스프레드 전환마다 확대 레벨을 바꾸지 않고 고정한다 — 강조 마커로 이동(setCenter)만 하고, 레벨은
-// Collection 전체를 둘러보기 좋은 고정값으로 유지한다(구현 단순성 우선. 근거: Jira S15P11A705-171 논의).
-// 목차(fitAllBounds=true) 페이지에서는 이 고정 레벨 대신 전체 좌표 fitBounds를 우선 적용한다(245).
-const FIXED_LEVEL = 6;
+// 지도 최초 생성 시의 레벨. 마커가 아직 없을 때(SDK 로드 직후) 잠깐 보이는 값이라, 그 뒤에는 아래
+// 두 규칙 중 하나가 항상 덮어쓴다.
+const INITIAL_LEVEL = 6;
+// record 장의 확대 레벨. 근거: Jira S15P11A705-332 디자인 피드백 — 원래는 "Collection 전체를 둘러보기
+// 좋은 고정 레벨(6, 축척 500m)"을 유지한 채 setCenter만 했는데(171 논의), 그 레벨에서는 장소가
+// 동네 단위로만 보여 "이 장소의 기록"이라는 페이지 성격과 맞지 않았다. 이제 record 장에서는 훨씬
+// 가깝게 당긴다(3 = 축척 50m, 거리 수준). Collection 전체 조망은 목차 장의 fitBounds가 전담한다(245)
+// — 두 역할을 한 레벨로 겸하던 것을 장(page)별로 나눈 것이다.
+const ACTIVE_RECORD_LEVEL = 3;
+// 목차(fitAllBounds=true) 장에서는 위 레벨 대신 전체 좌표 fitBounds를 적용한다(245).
 // 목차 페이지 fitBounds 여유(px). RecordMapView.tsx의 FIT_BOUNDS_PADDING과 동일한 근거
 // (docs/reference/08_API_명세.md 4.2) — 다른 화면이지만 "여백 포함 fitBounds" 의미가 같아 같은 값을 쓴다.
 const FIT_BOUNDS_PADDING = 48;
@@ -26,6 +100,8 @@ export interface CollectionSpreadMapPlace {
 }
 
 interface CollectionSpreadMapProps {
+  // 핀 색을 고르는 데 쓴다 — 이 Collection에 배정된 색 하나로 모든 핀을 칠한다(getRecordMarkerAsset).
+  collectionId: number;
   places: CollectionSpreadMapPlace[];
   activeRecordId: number | null;
   // 호출부(CollectionDetailView)가 Collection의 모든 record를 자동으로 전부 로드하는 동안 true다.
@@ -35,6 +111,8 @@ interface CollectionSpreadMapProps {
   // true면 활성 record 중심의 고정 레벨 대신 places 전체 좌표를 감싸는 fitBounds를 적용한다.
   // 목차(CollectionToc) 페이지 전용 모드다. 근거: Jira S15P11A705-245.
   fitAllBounds: boolean;
+  // 핀 클릭 시 그 record 장으로 넘긴다. 넘기지 않으면 핀은 클릭·호버 반응이 없는 표시 전용이 된다.
+  onSelectPlace?: (recordId: number) => void;
 }
 
 /**
@@ -46,16 +124,25 @@ interface CollectionSpreadMapProps {
  * RecordMapView.tsx의 setBounds+padding 패턴을 그대로 적용한다.
  */
 export function CollectionSpreadMap({
+  collectionId,
   places,
   activeRecordId,
   isLoadingAll,
   fitAllBounds,
+  onSelectPlace,
 }: CollectionSpreadMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
-  const markersRef = useRef<KakaoMarker[]>([]);
-  const activeOverlayRef = useRef<KakaoCustomOverlay | null>(null);
+  // 332: 활성/비활성이 모두 같은 종류(CustomOverlay + 핀 <img>)가 되면서 목록 하나로 합쳤다 —
+  // 예전에는 비활성만 kakao.maps.Marker, 활성만 CustomOverlay라 ref를 둘로 나눠 관리했다.
+  const markersRef = useRef<KakaoCustomOverlay[]>([]);
   const [status, setStatus] = useState<SdkStatus>('loading');
+  // 핀은 React 트리 밖 DOM에 이벤트를 직접 붙이므로, 콜백을 effect 의존성에 넣으면 부모가 매 렌더
+  // 새 함수를 넘길 때마다 마커 전체가 다시 생성된다. 최신 콜백만 ref로 들고 클릭 시점에 읽는다.
+  const onSelectPlaceRef = useRef(onSelectPlace);
+  useEffect(() => {
+    onSelectPlaceRef.current = onSelectPlace;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +153,7 @@ export function CollectionSpreadMap({
         }
         mapRef.current = new kakao.maps.Map(containerRef.current, {
           center: new kakao.maps.LatLng(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng),
-          level: FIXED_LEVEL,
+          level: INITIAL_LEVEL,
         });
         setStatus('ready');
       })
@@ -88,36 +175,30 @@ export function CollectionSpreadMap({
     }
 
     markersRef.current.forEach((marker) => marker.setMap(null));
-    // 강조 마커(CustomOverlay)와 겹치지 않도록 활성 record는 일반 마커 목록에서 제외한다.
-    markersRef.current = places
-      .filter((place) => place.recordId !== activeRecordId)
-      .map(
-        (place) =>
-          new kakao.maps.Marker({
-            map,
-            position: new kakao.maps.LatLng(place.lat, place.lng),
-            title: place.name,
-          }),
-      );
-
-    activeOverlayRef.current?.setMap(null);
-    activeOverlayRef.current = null;
+    const markerAsset = getRecordMarkerAsset(collectionId);
+    // 활성 핀을 마지막에 만들어 같은 자리에서 다른 핀 위에 오도록 한다(CustomOverlay는 생성 순서대로 쌓인다).
+    const orderedPlaces = [
+      ...places.filter((place) => place.recordId !== activeRecordId),
+      ...places.filter((place) => place.recordId === activeRecordId),
+    ];
+    markersRef.current = orderedPlaces.map((place) => {
+      // 목차 장(fitAllBounds)은 "이 책의 모든 장소"를 한눈에 보여주는 지도라 주인공이 따로 없다 —
+      // 전부 활성 모양으로 똑같이 그린다. record 장에서만 지금 보고 있는 한 곳을 앞세운다.
+      const isActive = fitAllBounds || place.recordId === activeRecordId;
+      return new kakao.maps.CustomOverlay({
+        map,
+        position: new kakao.maps.LatLng(place.lat, place.lng),
+        content: createSpreadMarkerElement(markerAsset, place.name, isActive, () =>
+          onSelectPlaceRef.current?.(place.recordId),
+        ),
+        // yAnchor가 1(엘리먼트 맨 아래)이 아닌 이유는 asset 아래쪽 여백이 내장 그림자 자리이기
+        // 때문이다 — 핀의 실제 뾰족한 끝 비율에 맞춰야 좌표와 어긋나지 않는다(홈 지도와 동일).
+        xAnchor: 0.5,
+        yAnchor: RECORD_MARKER_TIP_Y_RATIO,
+      });
+    });
 
     const activePlace = places.find((place) => place.recordId === activeRecordId) ?? null;
-    if (activePlace) {
-      const position = new kakao.maps.LatLng(activePlace.lat, activePlace.lng);
-      const pin = document.createElement('div');
-      pin.className =
-        'flex h-8 w-8 items-center justify-center rounded-full border-2 border-paper-white bg-log-mint text-sm font-bold text-pin-navy shadow-md';
-      pin.textContent = '●';
-      activeOverlayRef.current = new kakao.maps.CustomOverlay({
-        map,
-        position,
-        content: pin,
-        xAnchor: 0.5,
-        yAnchor: 0.5,
-      });
-    }
 
     // 목차 페이지: 활성 record 중심이 아니라 places 전체를 감싸는 최소 사각형으로 fitBounds한다.
     // 1개면 sw=ne인 점 사각형이 되는데, 이는 08_API_명세.md 4.2가 문서화한 "1개면 점 사각형" 규칙과
@@ -135,10 +216,13 @@ export function CollectionSpreadMap({
         FIT_BOUNDS_PADDING,
       );
     } else if (activePlace) {
+      // 레벨을 매번 명시적으로 되돌린다 — 목차 장의 fitBounds가 레벨을 바꿔 놓기 때문에, setCenter만
+      // 하면 목차를 한 번 거친 뒤부터는 전체 bounds 레벨 그대로 남는다.
+      map.setLevel(ACTIVE_RECORD_LEVEL);
       map.setCenter(new kakao.maps.LatLng(activePlace.lat, activePlace.lng));
     }
     map.relayout();
-  }, [places, activeRecordId, status, fitAllBounds]);
+  }, [places, activeRecordId, status, fitAllBounds, collectionId]);
 
   const overlayMessage =
     status === 'error'

@@ -22,8 +22,5 @@ export const COLLECTION_DANGER_ACTION_CLASS = `h-10 px-4 border border-red-300 t
 /** 강조 액션(저장하기). 민트 아웃라인. */
 export const COLLECTION_ACCENT_ACTION_CLASS = `h-10 px-4 border border-log-mint/50 text-log-mint hover:border-log-mint ${ACTION_BASE}`;
 
-/** 스프레드 하단 네비(이전·다음). 시안에서 헤더 버튼보다 한 단계 크다. */
-export const COLLECTION_NAV_CLASS = `h-11 px-5 border border-line-card text-pin-navy hover:border-pin-navy/25 ${ACTION_BASE}`;
-
-/** 스프레드 하단 네비의 강조 버튼(목차). */
-export const COLLECTION_NAV_ACCENT_CLASS = `h-11 px-5 border border-log-mint/50 text-log-mint hover:border-log-mint ${ACTION_BASE}`;
+// 332 디자인 피드백으로 하단 네비(이전/다음/목차) 자체가 사라져 그 전용 클래스도 함께 지웠다 —
+// 페이지 이동은 이제 좌·우 페이지 클릭과 방향키가 전담한다(CollectionDetailView).

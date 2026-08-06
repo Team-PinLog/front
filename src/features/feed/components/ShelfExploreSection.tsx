@@ -1,35 +1,93 @@
 import { useNavigate } from '@tanstack/react-router';
 import { getIsLoggedIn } from '@/features/auth/lib/getIsLoggedIn';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
-import { formatDate } from '@/shared/lib/formatDate';
 import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
+import { handleShelfScrollFetchNext } from '@/shared/lib/handleShelfScrollFetchNext';
+import {
+  chunkIntoShelfRows,
+  getEmptyTierPadding,
+  SHELF_DEFAULT_VISIBLE_ROW_COUNT,
+  SHELF_SCROLL_BOTTOM_PADDING_PX,
+  SHELF_SCROLL_SIDE_PADDING_PX,
+  SHELF_SCROLL_TOP_PADDING_PX,
+} from '@/shared/lib/shelfSpine';
+import {
+  ShelfBookSpine,
+  ShelfCabinet,
+  ShelfColumn,
+  ShelfColumnGrid,
+  ShelfLabel,
+  ShelfTier,
+} from '@/shared/ui/Shelf';
 import { useShelfExploreQuery } from '../hooks/useShelfExploreQuery';
 import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
 import { useUnfollowMutation } from '@/features/follows/hooks/useUnfollowMutation';
 
+// 332: 행별 권수(getRowCapacity) seed의 화면 구분용 salt. MyShelfList(900_000)·FollowedShelfCard
+// (100_000 + slot × 400_000 → 100_000/500_000)와 절대 겹치지 않는 범위를 쓴다 — 기존 규약 그대로다.
+const SHELF_EXPLORE_SEED_SALT = 1_300_000;
+
 interface ShelfExploreSectionProps {
   collectionId: number;
+  /** 좁은 화면의 서랍에서 책을 고르면 서랍을 닫기 위해 호출부가 넘긴다. */
+  onSelectCollection?: () => void;
 }
 
 /**
  * 공개 Collection 상세에서 작성자의 다른 공개 Collection을 탐색하고 책장을 Follow/Unfollow하는 섹션.
  * 근거: Jira S15P11A705-143, docs/reference/08_API_명세.md 8장.
- * ownedByMe: false일 때만 노출해야 하며, 그 판단은 호출부(CollectionDetailView)가 한다.
+ * 노출 조건은 호출부(CollectionDetailView)가 정한다.
  * 클릭 시 이동은 142에서 쓴 것과 동일한 /collections/$collectionId 경로를 재사용한다 — Feed 이벤트 대상이
  * 아니므로 feedRequestId/feedPosition search param은 붙이지 않는다(FeedList.tsx와 달리 MyShelfList.tsx와 동일 패턴).
+ *
+ * 332 디자인 피드백: 화면 **아래** 카드 목록에서 화면 **오른쪽** 책장(Library의 1열 캐비닛과 동일한
+ * 디자인)으로 바뀌었다. 데이터 경로(useShelfExploreQuery)·Follow 로직·이동 경로는 그대로고 표현만
+ * 바꿨다 — 이 경로가 collectionId를 진입점으로 쓰는 것이 privacy-rules.md의 "member.id 미사용"을
+ * 만족시키는 근거라, 새 데이터 경로를 만들지 않는다. 표시하는 값(title·recordCount)도 그대로다.
+ * 캐비닛은 shared/ui/Shelf의 프리미티브를 import해 Library와 완전히 같은 디자인을 쓴다(복제 아님).
+ * ⚠️ ShelfTier/ShelfBookSpine은 scalePx()가 참조하는 --shelf-scale에 의존하고 그 변수는 ShelfCabinet이
+ * 선언한다 — 이 둘은 반드시 ShelfCabinet 안에서만 쓴다(LibraryPage와 동일한 중첩 구조를 따른 이유).
  */
-export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) {
+export function ShelfExploreSection({
+  collectionId,
+  onSelectCollection,
+}: ShelfExploreSectionProps) {
   const navigate = useNavigate();
   const shelfExploreQuery = useShelfExploreQuery(collectionId);
   const followMutation = useFollowMutation();
   const unfollowMutation = useUnfollowMutation();
 
-  if (shelfExploreQuery.isPending) {
-    return <p className="text-sm text-ink-gray">불러오는 중…</p>;
-  }
-
-  if (shelfExploreQuery.isError) {
-    return <p className="text-sm text-red-600">책장을 불러오지 못했어요.</p>;
+  // 332 피드백 2번: 다른 Collection으로 넘어가면 이 책장도 쿼리 키가 바뀌어 pending이 된다. 그때
+  // 한 줄짜리 텍스트만 반환하면 캐비닛이 사라졌다 다시 나타나 화면이 번쩍인다 — 캐비닛 골격(라벨 +
+  // 빈 선반)은 그대로 두고 책만 비운다. 선반이 이미 깔려 있으니 "책이 꽂히는 중"으로 읽힌다.
+  if (shelfExploreQuery.isPending || shelfExploreQuery.isError) {
+    const message = shelfExploreQuery.isError ? '책장을 불러오지 못했어요.' : '불러오는 중…';
+    return (
+      <section className="flex h-full min-h-0 flex-col gap-3">
+        <div className="flex h-10 flex-none items-center px-1">
+          <h2 className="text-sm font-bold text-pin-navy">이 작성자의 다른 컬렉션</h2>
+        </div>
+        <div className="min-h-0 flex-1">
+          <ShelfCabinet>
+            <ShelfColumnGrid columns={1}>
+              <ShelfColumn>
+                <ShelfLabel>다른 컬렉션</ShelfLabel>
+                <p
+                  className={`text-xs ${shelfExploreQuery.isError ? 'text-red-600' : 'text-ink-gray'}`}
+                >
+                  {message}
+                </p>
+                <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+                  {Array.from({ length: SHELF_DEFAULT_VISIBLE_ROW_COUNT }, (_, emptyIndex) => (
+                    <ShelfTier key={`skeleton-${emptyIndex}`}>{null}</ShelfTier>
+                  ))}
+                </div>
+              </ShelfColumn>
+            </ShelfColumnGrid>
+          </ShelfCabinet>
+        </div>
+      </section>
+    );
   }
 
   const pages = shelfExploreQuery.data.pages;
@@ -62,9 +120,19 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
 
   const followError = followMutation.error ?? unfollowMutation.error;
 
+  // 행 구성이 새로고침해도 흔들리지 않도록 첫 컬렉션 id를 seed로 쓴다(MyShelfColumn과 같은 방식).
+  const seedId = SHELF_EXPLORE_SEED_SALT + (otherCollections[0]?.collectionId ?? 0);
+  const collectionRows = chunkIntoShelfRows(otherCollections, seedId);
+  const emptyTierCount = getEmptyTierPadding(
+    collectionRows.length,
+    SHELF_DEFAULT_VISIBLE_ROW_COUNT,
+  );
+
   return (
-    <section className="flex flex-col gap-4 border-t border-line-card pt-6">
-      <div className="flex items-center justify-between gap-4">
+    <section className="flex h-full min-h-0 flex-col gap-3">
+      {/* 팔로우 진입점은 캐비닛 위에 둔다(332 확정) — 캐비닛 안은 책이 꽂히는 자리이고, 팔로우는
+          "이 책장 전체"를 대상으로 하는 동작이라 책장 바깥에 있어야 대상이 분명하다. */}
+      <div className="flex flex-none items-center justify-between gap-3 px-1">
         <h2 className="text-sm font-bold text-pin-navy">이 작성자의 다른 컬렉션</h2>
         {isLoggedIn ? (
           <button
@@ -73,8 +141,8 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
             disabled={isFollowPending}
             className={
               follow.followed
-                ? 'h-9 flex-none rounded-lg border border-pin-navy/15 px-3 text-xs font-bold text-pin-navy disabled:opacity-40'
-                : 'h-9 flex-none rounded-lg bg-log-mint px-3 text-xs font-bold text-pin-navy disabled:opacity-40'
+                ? 'h-10 flex-none rounded-xl border border-line-card bg-snow-white px-4 text-sm font-bold text-pin-navy shadow-sm disabled:opacity-40'
+                : 'h-10 flex-none rounded-xl bg-log-mint px-4 text-sm font-bold text-pin-navy shadow-sm disabled:opacity-40'
             }
           >
             {isFollowPending ? '처리 중…' : follow.followed ? '팔로우 해제' : '팔로우'}
@@ -84,75 +152,92 @@ export function ShelfExploreSection({ collectionId }: ShelfExploreSectionProps) 
           <button
             type="button"
             onClick={handleLoginRedirect}
-            className="h-9 flex-none rounded-lg bg-log-mint px-3 text-xs font-bold text-pin-navy"
+            className="h-10 flex-none rounded-xl bg-log-mint px-4 text-sm font-bold text-pin-navy shadow-sm"
           >
-            로그인하고 팔로우하기
+            로그인하고 팔로우
           </button>
         )}
       </div>
 
-      {followError && <p className="text-xs text-red-600">{followError.message}</p>}
+      {followError && <p className="flex-none px-1 text-xs text-red-600">{followError.message}</p>}
 
-      {otherCollections.length === 0 ? (
-        <p className="text-sm text-ink-gray">다른 컬렉션이 없습니다</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {otherCollections.map((collection) => (
-            <button
-              key={collection.collectionId}
-              type="button"
-              onClick={() => {
-                markCollectionOverlayIntent();
-                void navigate({
-                  to: '/collections/$collectionId',
-                  params: { collectionId: collection.collectionId },
-                  state: { collectionOverlay: true },
-                });
-              }}
-              className="flex h-[116px] flex-col gap-2 rounded-lg border border-line-card bg-white p-4 text-left"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <p className="min-w-0 flex-1 truncate text-base font-bold text-pin-navy">
-                  {collection.title}
-                </p>
-                <p className="flex-none text-xs font-semibold text-log-mint">
-                  {collection.recordCount}개
-                </p>
-              </div>
+      <div className="min-h-0 flex-1">
+        <ShelfCabinet>
+          <ShelfColumnGrid columns={1}>
+            <ShelfColumn>
+              <ShelfLabel>다른 컬렉션</ShelfLabel>
 
-              {/* keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 비워도 이 영역의
-                  높이(h-7)는 그대로 유지해 카드 전체 높이가 키워드 유무와 무관하게 고정되도록 한다. */}
-              <div className="flex h-7 items-center gap-2 overflow-x-auto">
-                {collection.keywords.length > 0 ? (
-                  collection.keywords.map((keyword) => (
-                    <span
-                      key={keyword}
-                      className="flex-none rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
-                    >
-                      {keyword}
-                    </span>
-                  ))
-                ) : (
-                  <p className="truncate text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
+              {otherCollections.length === 0 && (
+                <p className="text-xs text-ink-gray">다른 컬렉션이 없습니다</p>
+              )}
+
+              {/* 스크롤 여백(top/side/bottom)은 MyShelfColumn과 같은 상수를 쓴다 — 맨 윗줄 책의 호버
+                  translateY(-10px)와 기울어진 책등이 overflow 경계에 잘리지 않게 하는 여유다.
+                  기존 "더 보기" 버튼은 스크롤 자동 로드로 바꿨다(287-18과 같은 판단) — 책장 안에서
+                  버튼이 놓일 자리가 선반 위밖에 없어 책과 뒤섞이기 때문이다. */}
+              <div
+                style={{
+                  paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
+                  paddingBottom: SHELF_SCROLL_BOTTOM_PADDING_PX,
+                  paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,
+                  paddingRight: SHELF_SCROLL_SIDE_PADDING_PX,
+                }}
+                onScroll={(event) =>
+                  handleShelfScrollFetchNext(event, {
+                    hasNext,
+                    isFetchingNextPage: shelfExploreQuery.isFetchingNextPage,
+                    fetchNextPage: () => void shelfExploreQuery.fetchNextPage(),
+                  })
+                }
+                className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto"
+              >
+                {collectionRows.map((row, rowIndex) => (
+                  <ShelfTier key={rowIndex}>
+                    {row.items.map((collection, indexInRow) => (
+                      <ShelfBookSpine
+                        key={collection.collectionId}
+                        index={row.startIndex + indexInRow}
+                        collectionId={collection.collectionId}
+                        title={collection.title}
+                        recordCount={collection.recordCount}
+                        onClick={() => {
+                          onSelectCollection?.();
+                          markCollectionOverlayIntent();
+                          void navigate({
+                            to: '/collections/$collectionId',
+                            params: { collectionId: collection.collectionId },
+                            // shelfContext: 책장에서 책장으로 넘어가는 동안 오른쪽 책장이 유지되게
+                            // 하는 마커(router.tsx HistoryState 주석 참고). Feed 이벤트 값
+                            // (feedRequestId/feedPosition)은 절대 물려주지 않는다 — 그 값은 Feed
+                            // 응답에 귀속된 것이라 재사용하면 SAVE 이벤트가 엉뚱한 슬롯에 붙는다.
+                            state: { collectionOverlay: true, shelfContext: true },
+                            // replace: 책장에서 책을 갈아 끼우는 동작은 "새 화면으로 들어가기"가
+                            // 아니라 "지금 펼친 책을 바꾸기"다. push하면 책을 볼수록 히스토리가
+                            // 쌓여, 닫기(history.back)가 Feed가 아니라 직전에 보던 책으로 되돌아가
+                            // 책이 안 닫힌 것처럼 보인다(332 피드백). replace면 항상 책을 열기 직전
+                            // 화면(Feed·책장)으로 한 번에 닫힌다.
+                            replace: true,
+                          });
+                        }}
+                      />
+                    ))}
+                  </ShelfTier>
+                ))}
+
+                {/* 실제 행이 기본 표시 행 수보다 적으면 빈 선반으로 채운다 — 선반 판이 항상 같은
+                    위치에 깔려 캐비닛이 반쯤 빈 상자로 보이지 않게 한다(MyShelfColumn과 동일). */}
+                {Array.from({ length: emptyTierCount }, (_, emptyIndex) => (
+                  <ShelfTier key={`empty-${emptyIndex}`}>{null}</ShelfTier>
+                ))}
+
+                {shelfExploreQuery.isFetchingNextPage && (
+                  <p className="flex-none py-1 text-center text-xs text-ink-gray">불러오는 중…</p>
                 )}
               </div>
-
-              <p className="text-xs text-ink-gray">{formatDate(collection.createdAt)}</p>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {hasNext && (
-        <button
-          type="button"
-          onClick={() => void shelfExploreQuery.fetchNextPage()}
-          disabled={shelfExploreQuery.isFetchingNextPage}
-          className="h-11 rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy disabled:opacity-40"
-        >
-          {shelfExploreQuery.isFetchingNextPage ? '불러오는 중…' : '더 보기'}
-        </button>
-      )}
+            </ShelfColumn>
+          </ShelfColumnGrid>
+        </ShelfCabinet>
+      </div>
     </section>
   );
 }
