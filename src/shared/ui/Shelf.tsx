@@ -3,6 +3,7 @@ import {
   FEED_PLANK_SHADOW_BLEED_PX,
   scalePx,
   SHELF_BOARD_HEIGHT_PX,
+  SHELF_COLUMN_GAP_PX,
   SHELF_SCALE_CSS,
 } from '@/shared/lib/shelfCabinetLayout';
 import {
@@ -175,8 +176,11 @@ export function ShelfBoard() {
 // 캐비닛의 다른 칸임을 드러낸다.
 // 295: 열 수가 더 이상 항상 3이 아니다(LIBRARY_COLUMNS_BY_TIER — sm=1/mdlg=2/xl=3) — Tailwind는
 // grid-cols-{N}을 동적으로 만들 수 없어(리터럴 클래스만 읽는다, shelfCabinetLayout.ts 상단 주석과
-// 동일한 이유) gridTemplateColumns를 인라인 style로 준다. gap-x-5(20px)는 그대로 리터럴 클래스로
-// 유지한다 — shelfSpine.ts의 책장 폭 계산(287-13 주석)이 이 20px을 전제로 하기 때문이다.
+// 동일한 이유) gridTemplateColumns를 인라인 style로 준다.
+// 329: gap도 리터럴 클래스(gap-x-5)에서 SHELF_COLUMN_GAP_PX로 올렸다 — LibraryPage의 좌우 버튼
+// 오버레이가 "내 책장 | 첫 팔로우 책장" 경계를 찾으려면 이 그리드와 똑같은 템플릿을 재현해야 하는데,
+// 값이 Tailwind 리터럴에만 있으면 그쪽이 20을 다시 복제하게 된다(319가 지운 바로 그 실수다).
+// shelfSpine.ts의 책장 폭 계산(287-13 주석)도 여전히 이 20px을 전제로 한다.
 export function ShelfColumnGrid({ columns, children }: { columns: number; children: ReactNode }) {
   // 287-8: h-full + grid의 기본 align-items:stretch 조합으로 각 칸이 전부 ShelfCabinet 본문 높이를
   // 그대로 채운다 — 칸 안의 스크롤 박스(flex-1)가 남는 세로 공간을 계산할 기준이 이 높이다.
@@ -188,8 +192,11 @@ export function ShelfColumnGrid({ columns, children }: { columns: number; childr
   // 향후 구조가 바뀌어도 깨지지 않게 한다).
   return (
     <div
-      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-      className="grid h-full min-h-0 gap-x-5"
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        columnGap: SHELF_COLUMN_GAP_PX,
+      }}
+      className="grid h-full min-h-0"
     >
       {children}
     </div>

@@ -2,13 +2,19 @@ import { useEffect, useState } from 'react';
 import { MyShelfColumn } from '@/features/collections/components/MyShelfList';
 import { FollowedShelfCard } from '@/features/follows/components/FollowedShelfCard';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
-import type { FollowListItem } from '@/features/follows/api/getFollows';
 import {
+  getLibraryCabinetHeightPx,
+  getLibraryPageCount,
+  getLibraryPageSlots,
   getLibraryVisibleRowCount,
+  getLibraryPagingFirstColumn,
   getPageContentBudgetPx,
   getShelfScale,
   libraryPinsMyShelf,
+  LIBRARY_CABINET_SIDE_CHROME_PX,
   LIBRARY_COLUMNS_BY_TIER,
+  LIBRARY_PAGE_DOTS_MAX,
+  SHELF_COLUMN_GAP_PX,
   PAGE_CONTAINER_CLASS,
   PAGE_MIN_HEIGHT_CLASS,
   PAGE_TITLE_GAP_CLASS,
@@ -18,49 +24,6 @@ import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 import { useShelfWidthTier, useViewportSize } from '@/shared/lib/useShelfBreakpoint';
 import { PageTitle } from '@/shared/ui/PageTitle';
 import { ShelfCabinet, ShelfColumn, ShelfColumnGrid } from '@/shared/ui/Shelf';
-
-interface LibraryPageSlots {
-  showMyShelf: boolean;
-  follows: FollowListItem[];
-  // allFollows 안에서 이 페이지의 follows가 시작하는 인덱스 — "다음 페이지에 필요한 만큼 데이터가
-  // 이미 로드됐는지"(needsMoreData) 판단에 쓴다.
-  followStartIndex: number;
-}
-
-// 295 반응형 재설계(요구사항 B) 핵심 로직: "내 책장 + 팔로우한 책장"을 열 수에 따라 다르게 자른다.
-// 3열 이상(pinsMyShelf): 내 책장은 시퀀스 밖에서 항상 고정(showMyShelf=true 불변) — 팔로우만
-// (columns-1)개씩 넘어간다 (기존 250 동작 그대로).
-// 1·2열: 사용자 확인("화면 크기에 따라 책장이 1,2열일 때는 나의 책장도 팔로우한 책장들과 한 줄로
-// 묶여 좌우 버튼으로 넘어가야 한다. 그치만 시작은 항상 나의 책장이 시작이다")에 따라, [내 책장,
-// 팔로우1, 팔로우2, ...] 하나의 가상 시퀀스를 columns개씩 자른다 — virtualPageIndex 0은 항상 내
-// 책장으로 시작하고(팔로우 (columns-1)개와 함께), 그 이후 페이지는 팔로우한 책장만으로 채워진다.
-function getLibraryPageSlots(
-  virtualPageIndex: number,
-  columns: number,
-  pinsMyShelf: boolean,
-  allFollows: FollowListItem[],
-): LibraryPageSlots {
-  if (pinsMyShelf) {
-    const followsPerPage = columns - 1;
-    const start = virtualPageIndex * followsPerPage;
-    return {
-      showMyShelf: true,
-      follows: allFollows.slice(start, start + followsPerPage),
-      followStartIndex: start,
-    };
-  }
-  if (virtualPageIndex === 0) {
-    const followsNeeded = columns - 1;
-    return { showMyShelf: true, follows: allFollows.slice(0, followsNeeded), followStartIndex: 0 };
-  }
-  const firstPageFollowCount = columns - 1;
-  const start = firstPageFollowCount + (virtualPageIndex - 1) * columns;
-  return {
-    showMyShelf: false,
-    follows: allFollows.slice(start, start + columns),
-    followStartIndex: start,
-  };
-}
 
 /**
  * Library: "내 책장"(141)과 "팔로우한 책장"(144)을 한 화면에서 조회한다.
@@ -96,6 +59,9 @@ export function LibraryPage() {
   const columns = LIBRARY_COLUMNS_BY_TIER[tier];
   // 330: 판단 기준이 tier가 아니라 열 수다 — libraryPinsMyShelf 주석 참고.
   const pinsMyShelf = libraryPinsMyShelf(columns);
+  // 329: 좌우 버튼과 페이지 인디케이터가 공유하는 "넘어가는 구간"의 시작 열. 둘이 같은 값을 써야
+  // 버튼이 감싸는 범위와 인디케이터가 가운데를 잡는 범위가 어긋나지 않는다.
+  const pagingFirstColumn = getLibraryPagingFirstColumn(columns);
 
   // 319 디자인 피드백: 캐비닛 높이를 Feed(314)와 같은 실측 기반 동적 예산으로 정한다 — 이전엔
   // h-full 퍼센트 체인 + 스크롤 박스 max-h-[590px] 조합이라, 높은 화면에서 캐비닛이 래퍼를 다
@@ -103,10 +69,10 @@ export function LibraryPage() {
   // 화면을 채우고 (b) 좌우 버튼 오버레이(캐비닛과 같은 박스)의 세로 중앙이 곧 캐비닛 중앙이 된다.
   const { width: viewportWidth, height: viewportHeight } = useViewportSize();
   const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
-  const cabinetHeightPx = getPageContentBudgetPx(
-    viewportHeight,
-    { navChromeHeightPx, titleHeightPx },
-    tier,
+  // 329: 캐비닛 아래에 페이지 인디케이터가 생겼다 — 세로 예산에서 그 높이를 덜어낸 나머지가 캐비닛
+  // 높이다. 덜지 않으면 인디케이터만큼 화면 밖으로 밀린다(328에서 맞춘 예산 계약).
+  const cabinetHeightPx = getLibraryCabinetHeightPx(
+    getPageContentBudgetPx(viewportHeight, { navChromeHeightPx, titleHeightPx }, tier),
   );
   // 행 수는 그 높이에 실제로 몇 행이 들어가는지로 정한다(고정 3행 폐기) — 책이 커진 만큼
   // (SPINE_MAX_HEIGHT 168→190) 짧은 화면에서는 2행, 높은 화면에서는 4행까지 간다.
@@ -128,7 +94,7 @@ export function LibraryPage() {
   const allFollows = pages.flatMap((page) => page.items);
   const hasMoreFromServer = pages.length > 0 ? pages[pages.length - 1].hasNext : true;
 
-  const pageSlots = getLibraryPageSlots(virtualPageIndex, columns, pinsMyShelf, allFollows);
+  const pageSlots = getLibraryPageSlots(virtualPageIndex, columns, allFollows);
   const expectedFollowCount = pinsMyShelf
     ? columns - 1
     : virtualPageIndex === 0
@@ -143,6 +109,10 @@ export function LibraryPage() {
       void followsQuery.fetchNextPage();
     }
   }, [needsMoreData, hasMoreFromServer, followsQuery]);
+
+  // 329: 인디케이터용. getLibraryPageSlots와 같은 페이징 규칙에서 나온 값이라 둘이 어긋날 수 없다
+  // (shelfCabinetLayout.test.ts가 교차 검증한다).
+  const pageCount = getLibraryPageCount(allFollows.length, columns);
 
   const canGoPrevious = virtualPageIndex > 0;
   // 이번 페이지를 채우고도 남는 팔로우가 있거나, 서버에 더 있을 수 있으면(아직 확인 전 포함) 다음이
@@ -166,11 +136,20 @@ export function LibraryPage() {
 
   // 로딩/에러/빈 목록 안내 문구 — 이 페이지에 팔로우한 책장이 하나도 없을 때만(내 책장 유무와 무관)
   // 첫 빈 칸에 보여준다.
+  //
+  // 329: 빈 목록 조건이 `!needsMoreData`였는데, 그러면 **팔로우가 0개일 때 이 문구가 영영 뜨지
+  // 않았다** — needsMoreData는 "이 페이지를 채우려면 팔로우가 더 필요하다"는 뜻이라 0개면 항상
+  // 참이기 때문이다(3열 기준 0 + 2 > 0). 팔로우가 하나도 없는 계정에서 2·3열이 아무 설명 없이
+  // 텅 빈 채로 보이던 원인이다.
+  // 실제로 문구를 미뤄야 하는 상황은 "모자라다"가 아니라 "모자라는데 서버에서 더 받아올 수 있다"이고,
+  // 그건 바로 아래 useEffect가 fetchNextPage를 부르는 조건과 같다 — 그 조건을 그대로 쓴다.
+  // 더 받아올 게 없으면(hasMoreFromServer=false) 지금 비어 있는 것이 확정이므로 문구를 보여준다.
+  const willFetchMoreFollows = needsMoreData && hasMoreFromServer;
   const followStatusMessage = followsQuery.isPending
     ? '불러오는 중…'
     : followsQuery.isError
       ? '팔로우 목록을 불러오지 못했어요.'
-      : pageSlots.follows.length === 0 && !needsMoreData
+      : pageSlots.follows.length === 0 && !willFetchMoreFollows
         ? '아직 팔로우한 책장이 없어요'
         : null;
 
@@ -237,37 +216,163 @@ export function LibraryPage() {
           테두리와 정확히 일치한다. 그래서 중앙 정렬은 바깥 래퍼가 맡는다 — 정렬을 items-center가
           아니라 자식의 my-auto로 주는 이유는 FeedPage 주석 참고(낮은 뷰포트에서 위로 밀지 않는다). */}
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="relative my-auto w-full flex-none">
-          <ShelfCabinet heightPx={cabinetHeightPx}>
-            <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
-          </ShelfCabinet>
+        {/* 329: 인디케이터가 캐비닛 아래에 붙으면서 한 겹이 더 생겼다 — 좌우 버튼 오버레이의
+            기준 박스(inset-0)는 반드시 "캐비닛 그 자체"여야 하므로(319), 인디케이터는 그 relative
+            박스 바깥, 이 my-auto 블록 안에 둔다. */}
+        <div className="my-auto w-full flex-none">
+          <div className="relative">
+            <ShelfCabinet heightPx={cabinetHeightPx}>
+              <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
+            </ShelfCabinet>
 
-          {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
+            {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
               버튼만 바깥에 뒀고(내 책장이 고정이라 이전/다음이 2·3열에만 걸린다는 뜻이었다),
               mdlg·sm은 둘 다 바깥에 뒀다. 두 벌 모두 캐비닛 안쪽 여백(px-[28px])에 버튼을 맞추느라
               테두리+본문 padding 합을 리터럴로 복제하고 있어서, 캐비닛 상자 모델이 바뀌면 조용히
-              어긋나는 값이었다. 시안은 구간과 무관하게 좌우 버튼이 캐비닛 "바깥" 가장자리에 걸쳐
-              있으므로, 오버레이를 하나로 합치고 위치 기준도 캐비닛 바깥 테두리(inset-0)로 옮겼다 —
-              이제 안쪽 여백 리터럴에 의존하지 않는다. 페이지 이동 로직(canGoPrevious/canGoNext,
-              getLibraryPageSlots)은 그대로다. aria-label만 구간에 따라 다르게 유지한다 — xl에서
-              넘어가는 대상은 팔로우한 책장뿐이고, mdlg·sm은 내 책장까지 포함한 시퀀스이기 때문이다. */}
-          <div className="pointer-events-none absolute inset-0">
-            <ShelfPageButton
-              direction="left"
-              onClick={handlePrevious}
-              disabled={!canGoPrevious}
-              label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
-            />
-            <ShelfPageButton
-              direction="right"
-              onClick={handleNext}
-              disabled={!canGoNext}
-              label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
-            />
+              어긋나는 값이었다. 그래서 오버레이를 하나로 합치고 위치 기준도 캐비닛 바깥
+              테두리(inset-0)로 옮겼다.
+              329: 그 통합이 리터럴 문제는 없앴지만 **버튼 위치와 페이징 의미의 대응을 끊었다**.
+              pinsMyShelf(3열 이상) 구간에서 내 책장은 고정이고 넘어가는 것은 2열부터인데, 이전
+              버튼이 그 내 책장 왼쪽 바깥에 걸려 "이걸 누르면 내 책장이 넘어간다"고 말하고 있었다.
+              이제 좌우 버튼은 구간과 무관하게 **넘어가는 구간의 양 끝 경계**에 걸친다 —
+              고정 구간에서는 2열~마지막 열, 내 책장도 함께 넘어가는 1·2열 구간에서는 첫 열~마지막
+              열이다(getLibraryPagingFirstColumn 하나가 그 시작을 정한다).
+              단, 319가 지운 리터럴 복제로 돌아가지는 않는다 — 경계 좌표를 직접 계산하는 대신
+              캐비닛 본문과 **같은 그리드**를 깔고 버튼을 트랙 경계에 붙인다. 열 수(columns)나
+              gap이 바뀌어도 위치가 저절로 따라오고, 캐비닛 chrome도 행 수 역산이 이미 의존하는
+              상수(LIBRARY_CABINET_SIDE_CHROME_PX)에서 파생시킨다.
+              버튼이 책을 가리지 않는다: 칸 안쪽으로 걸치는 폭은 버튼 반지름(16px)인데, 칸
+              padding(10px)과 스크롤 박스 padding(12px)만 해도 22px이라 책이 놓이는 영역 바깥이다.
+              페이지 이동 로직(canGoPrevious/canGoNext, getLibraryPageSlots)은 그대로다. */}
+            <div
+              style={{
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                columnGap: SHELF_COLUMN_GAP_PX,
+                padding: LIBRARY_CABINET_SIDE_CHROME_PX,
+              }}
+              className="pointer-events-none absolute inset-0 grid"
+            >
+              {/* 넘어가는 구간의 양 끝 트랙 위에 빈 칸을 얹고, 버튼을 그 바깥 경계에 절반씩 걸친다.
+                  세로 중앙도 이 칸 기준이라 캐비닛 중앙과 같다(본문 padding이 상하 대칭이기
+                  때문이다). 1열 구간에서는 두 칸이 같은 트랙에 겹치는데, 각 버튼이 그 칸의 left-0 /
+                  right-0에 붙으므로 서로 부딪히지 않는다. */}
+              <div className="relative" style={{ gridColumnStart: pagingFirstColumn }}>
+                <ShelfPageButton
+                  direction="left"
+                  onClick={handlePrevious}
+                  disabled={!canGoPrevious}
+                  label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
+                />
+              </div>
+              <div className="relative" style={{ gridColumnStart: columns }}>
+                <ShelfPageButton
+                  direction="right"
+                  onClick={handleNext}
+                  disabled={!canGoNext}
+                  label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
+                />
+              </div>
+            </div>
           </div>
+
+          <LibraryPageIndicator
+            currentPageIndex={virtualPageIndex}
+            pageCount={pageCount}
+            hasMoreFromServer={hasMoreFromServer}
+            columns={columns}
+            pagingFirstColumn={pagingFirstColumn}
+          />
         </div>
       </div>
     </main>
+  );
+}
+
+interface LibraryPageIndicatorProps {
+  currentPageIndex: number;
+  pageCount: number;
+  hasMoreFromServer: boolean;
+  columns: number;
+  pagingFirstColumn: number;
+}
+
+/**
+ * 329(디자인 피드백): 캐비닛 아래 현재 페이지 표시. 좌우 버튼만으로는 "지금 몇 번째인지, 더 있는지"를
+ * 알 수 없었다.
+ *
+ * pageCount는 "지금까지 로드된 팔로우로 만들어지는 페이지 수"라 확정값이 아니다 — 팔로우 목록은
+ * 필요할 때만 더 받아오므로(useFollowsQuery), 서버에 더 있으면 넘길수록 늘어난다. 그래서 그 경우
+ * 끝에 "…"를 붙여 "여기가 끝이 아닐 수 있다"를 드러낸다(점 개수를 확정처럼 보여주면 거짓말이 된다).
+ *
+ * 높이는 LIBRARY_PAGE_INDICATOR_BLOCK_PX로 세로 예산에서 이미 차감돼 있다 — 여기 클래스(mt-3, h-2)를
+ * 바꾸면 그 상수도 함께 바꿔야 한다(이 파일의 다른 Tailwind ↔ JS 쌍둥이와 같은 규칙).
+ *
+ * 329(디자인 피드백 "인디케이터가 사라졌어"): 처음에는 "페이지가 하나뿐이고 더 받을 것도 없으면"
+ * 점을 아예 그리지 않았는데, 그게 팔로우 0개인 계정에서 인디케이터를 통째로 없애 버렸다(팔로우가
+ * 없어도 내 책장 1페이지는 존재하므로 정확히 그 조건에 걸린다). 조건을 없애고 항상 그린다 —
+ * 페이지가 하나면 점 하나가 켜진 채로 보이고, 팔로우가 늘어 페이지가 생겨도 자리가 흔들리지 않는다.
+ *
+ * 329(디자인 피드백): 가운데 기준이 캐비닛 전체가 아니라 **넘어가는 구간**이다. 내 책장이 고정인
+ * 구간에서 캐비닛 전체 가운데에 놓으면, 넘어가지도 않는 1열까지 포함해 중심을 잡는 셈이라 점이
+ * 왼쪽으로 치우쳐 보인다. 그래서 좌우 버튼과 똑같은 그리드를 다시 깔고(같은 padding·gap·열 수)
+ * pagingFirstColumn부터 마지막 열까지를 한 칸으로 묶어 그 안에서 가운데 정렬한다 — 버튼이 감싸는
+ * 범위와 정확히 같은 구간이다.
+ */
+function LibraryPageIndicator({
+  currentPageIndex,
+  pageCount,
+  hasMoreFromServer,
+  columns,
+  pagingFirstColumn,
+}: LibraryPageIndicatorProps) {
+  // canGoNext는 "서버에 더 있을 수 있으면"까지 포함해 낙관적으로 켜진다 — 넘겼는데 실제로는 더 없는
+  // 경우 현재 인덱스가 세어 둔 페이지 수를 넘어설 수 있다. 그때 점이 하나도 안 켜진 채로 보이면
+  // 고장처럼 읽히므로, 지금 서 있는 자리까지는 최소한 페이지가 있는 것으로 센다.
+  const visiblePageCount = Math.max(pageCount, currentPageIndex + 1);
+  const label = `${currentPageIndex + 1} / ${visiblePageCount}${hasMoreFromServer ? '+' : ''} 페이지`;
+
+  return (
+    <div
+      style={{
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        columnGap: SHELF_COLUMN_GAP_PX,
+        paddingLeft: LIBRARY_CABINET_SIDE_CHROME_PX,
+        paddingRight: LIBRARY_CABINET_SIDE_CHROME_PX,
+      }}
+      className="mt-3 grid h-2"
+      aria-live="polite"
+    >
+      <div
+        style={{ gridColumn: `${pagingFirstColumn} / -1` }}
+        className="flex items-center justify-center gap-1.5"
+      >
+        <span className="sr-only">{label}</span>
+        {visiblePageCount > LIBRARY_PAGE_DOTS_MAX ? (
+          // 점이 너무 많아지면 현재 위치가 오히려 안 읽힌다 — 숫자로 바꾼다.
+          <span aria-hidden="true" className="text-[10px] tabular-nums leading-none text-ink-gray">
+            {currentPageIndex + 1} / {visiblePageCount}
+            {hasMoreFromServer ? '+' : ''}
+          </span>
+        ) : (
+          <>
+            {Array.from({ length: visiblePageCount }, (_, index) => (
+              <span
+                key={index}
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 flex-none rounded-full transition ${
+                  index === currentPageIndex ? 'bg-pin-navy' : 'bg-line-card'
+                }`}
+              />
+            ))}
+            {hasMoreFromServer && (
+              <span aria-hidden="true" className="text-[10px] leading-none text-ink-gray-light">
+                …
+              </span>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -281,7 +386,16 @@ interface ShelfPageButtonProps {
 // 319: 이전엔 완전히 동일한 클래스 문자열을 가진 버튼이 네 벌(xl 2 + mdlg·sm 2) 있었다. 톤을 밝게
 // 바꾸면서 네 곳을 각각 고치는 대신 하나로 합친다. 색은 FeedList(314)의 페이지 이동 버튼과 같은
 // 규격이다 — 두 화면의 좌우 이동 버튼이 같은 부품으로 보여야 한다.
-// 캐비닛 바깥 가장자리에 절반만 걸치게(translate-x-±1/2) 둬 시안처럼 가구 밖으로 튀어나오게 한다.
+//
+// 329(디자인 피드백): 트랙 경계에 절반씩 걸친다(-translate-x-1/2 / translate-x-1/2). 한 번
+// 빼봤다가 되돌린 값이라 근거를 숫자로 남긴다 — 걸치지 않고 칸 안에 온전히 넣으면 버튼(32px)이
+// 책 위를 10px 덮는다. 칸에서 책이 놓이지 않는 여백은 칸 padding 10 + 스크롤 박스 padding 12 =
+// 22px뿐이기 때문이다. 절반만 걸치면 안쪽으로 들어오는 폭이 16px이라 그 22px 안에 들어가 **책을
+// 전혀 가리지 않는다**.
+// 바깥쪽으로도 튀어나가지 않는다: 마지막 열의 오른쪽 경계는 캐비닛 바깥 테두리에서 20px(테두리
+// 10 + 본문 padding 10) 안쪽이므로, 절반(16px)이 나가도 테두리 안에 4px이 남는다. 결과적으로
+// 버튼이 프레임 위에 걸쳐 앉되 가구 밖으로는 나가지 않는다.
+// 세로 중앙 정렬(-translate-y-1/2)과 함께 쓰이므로 두 축의 translate가 합성된다.
 function ShelfPageButton({ direction, label, disabled, onClick }: ShelfPageButtonProps) {
   return (
     <button
