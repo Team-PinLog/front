@@ -12,7 +12,7 @@ import {
   HERO_OVERLAY_HEIGHT_CLASS,
   HERO_OVERLAY_OPAQUE_PX,
 } from '@/features/home/lib/heroMapOverlay';
-import { PAGE_CONTAINER_CLASS } from '@/shared/lib/shelfCabinetLayout';
+import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
 
 /**
  * 홈 화면: 스마트 검색(149)과 지도(150)를 한 화면에서 함께 보여준다.
@@ -50,7 +50,7 @@ export function HomePage() {
 
   return (
     <PlaceRecordSheetProvider>
-      <main className="relative min-h-[calc(100dvh-3.5rem)] xl:min-h-[100dvh]">
+      <main className={`relative ${PAGE_MIN_HEIGHT_CLASS}`}>
         {/* 배경 레이어: 사이드바를 제외한 남은 영역 전체를 풀블리드로 채우는 지도. CSS 페인트 순서상
             position:absolute 요소(z-index:auto)는 아래 일반 흐름 컨텐츠보다 항상 위에 그려지므로,
             이 레이어를 배경으로 두려면 컨텐츠 레이어 쪽에 별도로 relative+z-10을 줘 쌓임 순서를
