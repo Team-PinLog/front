@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type DragEvent,
-  type MouseEvent,
-} from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { useKakaoPlaceSearch } from '@/features/places/hooks/useKakaoPlaceSearch';
 import { usePlaceSuggestionMutation } from '@/features/places/hooks/usePlaceSuggestionMutation';
@@ -44,10 +36,6 @@ interface SuggestedPlaceOption {
   extractedName: string;
   contextSuggestion: string;
   evidence: string[];
-}
-
-function stopClick(event: MouseEvent) {
-  event.stopPropagation();
 }
 
 function searchErrorMessage(error: Error): string {
@@ -456,14 +444,13 @@ export function PlaceRecordSheet({ previewMode = false }: PlaceRecordSheetProps)
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4 backdrop-blur-sm"
-        onClick={handleClose}
-        role="presentation"
-      >
+      {/*
+        백드롭은 시각 레이어 전용이다. 클릭으로 닫으면 작성 중이던 Context 본문이
+        통째로 사라진다(S15P11A705-324). 닫기 진입점은 헤더 X 버튼 하나로 통일한다.
+      */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4 backdrop-blur-sm">
         <section
           className="flex h-[min(560px,calc(100dvh-32px))] w-[min(500px,calc(100vw-32px))] flex-col overflow-hidden rounded-[18px] border border-line-card bg-paper-white bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_51px,rgba(109,102,99,0.08)_52px)] shadow-[0_-18px_55px_rgba(4,33,66,0.30)]"
-          onClick={stopClick}
           role="dialog"
           aria-modal="true"
           aria-labelledby="place-record-title"
