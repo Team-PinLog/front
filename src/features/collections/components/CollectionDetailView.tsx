@@ -14,6 +14,7 @@ import {
   COLLECTION_ACCENT_ACTION_CLASS,
   COLLECTION_ACTION_CLASS,
   COLLECTION_DANGER_ACTION_CLASS,
+  COLLECTION_FOCUS_RING_CLASS,
 } from './collectionActionStyles';
 import { CollectionIndexRail } from './CollectionIndexRail';
 import { CollectionOverlayCloseButton } from './CollectionOverlayShell';
@@ -75,7 +76,10 @@ function PageTurnZone({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`group absolute inset-y-0 z-30 hidden items-center justify-center md:flex ${
+      // 356: 이 영역도 button이라 Tab 대상이다 — 호버/포커스 시 뜨는 음영·화살표만으로는 브라우저
+      // 기본 사각형을 대체하지 못해 함께 그려졌다. 같은 브랜드 아웃라인을 쓴다(음영·화살표는 그대로
+      // 남아 "넘길 수 있는 자리"라는 의미를 계속 전한다).
+      className={`group absolute inset-y-0 z-30 hidden items-center justify-center md:flex ${COLLECTION_FOCUS_RING_CLASS} ${
         PAGE_TURN_ZONE_WIDTH_CLASS[side]
       } ${isLeft ? 'left-0' : 'right-0'}`}
     >
@@ -172,17 +176,17 @@ function CollectionToc({ records, activeIndex, onSelect }: CollectionTocProps) {
         <p className="text-xs font-bold uppercase tracking-widest text-log-mint">Contents</p>
         <p className="text-2xl font-bold text-pin-navy">목차</p>
       </div>
-      <div className="flex flex-1 flex-col overflow-y-auto">
+      {/* 356: 크롬은 스크롤 가능한 영역 자체를 키보드 포커스 대상으로 삼는다(키보드로 스크롤할 수
+          있어야 하므로) — 그때도 기본 사각형이 뜨므로 같은 아웃라인을 준다. 아래 오른쪽 페이지·
+          인덱스 레일의 스크롤 상자도 같은 이유로 함께 처리했다. */}
+      <div className={`flex flex-1 flex-col overflow-y-auto ${COLLECTION_FOCUS_RING_CLASS}`}>
         {records.map((record, index) => (
           <button
             key={record.recordId}
             type="button"
             onClick={() => onSelect(index)}
             aria-current={index === activeIndex}
-            // 356: 인덱스 레일 탭과 같은 이유·같은 방식의 포커스 표시다(CollectionIndexRail 주석
-            // 참고). 이 목록도 overflow-y-auto 안이라 아웃라인을 안쪽으로 그린다. 항목 바탕이
-            // 흰 지면이거나 옅은 민트라 아웃라인 색은 민트 하나로 충분하다.
-            className={`flex items-center gap-3 border-b border-line-card px-1 py-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-log-mint ${
+            className={`flex items-center gap-3 border-b border-line-card px-1 py-3 text-left transition-colors ${COLLECTION_FOCUS_RING_CLASS} ${
               index === activeIndex ? 'bg-log-mint/10' : 'hover:bg-line-subtle'
             }`}
           >
@@ -553,8 +557,13 @@ export function CollectionDetailView({
               인덱스 레일은 이 책 z-10 아래로 왼쪽 끝이 물려 들어간다(CollectionIndexRail 주석). */}
           {/* 하단 이전/다음 버튼을 없앤 대신(332 피드백) 좌우 방향키로도 넘길 수 있게 한다 —
               페이지 클릭만 남기면 키보드 사용자가 스프레드를 이동할 방법이 사라진다. */}
+          {/* 356 피드백: 이 래퍼가 tabIndex={0}이라 Tab 한 번에 포커스를 받는데, 책과 인덱스 레일을
+              함께 감싸는 가장 큰 상자라 브라우저 기본 파란 사각형이 화면 절반을 두르고 나타났다
+              (스크린샷의 "책/우측 영역 둘레 파란 테두리"의 정체다). 포커스 가능 자체는 유지해야
+              한다 — 방향키 페이지 넘김이 여기 걸려 있어 이 요소가 키보드 사용자의 진입점이다.
+              표시만 브랜드 아웃라인으로 바꾸고, 큰 상자인 만큼 모서리를 굴려 책 모양과 맞춘다. */}
           <div
-            className="flex items-start"
+            className={`flex items-start rounded-[22px] ${COLLECTION_FOCUS_RING_CLASS}`}
             tabIndex={0}
             role="group"
             aria-label="펼친 책. 왼쪽·오른쪽 방향키로 페이지를 넘길 수 있어요."
@@ -682,7 +691,7 @@ export function CollectionDetailView({
                       handleNext();
                     }
                   }}
-                  className={`flex flex-1 flex-col gap-4 overflow-y-auto p-6 md:py-10 md:pl-12 md:pr-10 ${
+                  className={`flex flex-1 flex-col gap-4 overflow-y-auto p-6 md:py-10 md:pl-12 md:pr-10 ${COLLECTION_FOCUS_RING_CLASS} ${
                     isTocOpen || canGoNext ? 'cursor-e-resize' : ''
                   }`}
                 >

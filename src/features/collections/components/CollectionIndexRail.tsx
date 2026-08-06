@@ -1,3 +1,4 @@
+import { COLLECTION_FOCUS_RING_CLASS } from './collectionActionStyles';
 import type { CollectionRecordItem } from './CollectionDetailView';
 
 interface CollectionIndexRailProps {
@@ -60,7 +61,11 @@ export function CollectionIndexRail({
   onSelectToc,
 }: CollectionIndexRailProps) {
   return (
-    <div className="hidden w-20 flex-none flex-col gap-1 overflow-y-auto pt-12 md:flex md:max-h-[600px] xl:max-h-[720px]">
+    // 356: 스크롤 상자 자체도 크롬에서는 키보드 포커스를 받는다(키보드 스크롤 지원) — 그때 뜨는
+    // 기본 사각형도 같은 아웃라인으로 바꾼다.
+    <div
+      className={`hidden w-20 flex-none flex-col gap-1 overflow-y-auto pt-12 md:flex md:max-h-[600px] xl:max-h-[720px] ${COLLECTION_FOCUS_RING_CLASS}`}
+    >
       <button
         type="button"
         onClick={onSelectToc}
