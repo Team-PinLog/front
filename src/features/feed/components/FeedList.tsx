@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
 // 319: 선반 판은 Library 캐비닛(ShelfBoard)과 완전히 같은 판이라 shared/ui/Shelf.tsx로 옮겨 공유한다.
@@ -71,6 +71,23 @@ function toShelfRows(
   return rows;
 }
 
+// 354: 책을 펼치면 FeedPage가 언마운트되므로(오버레이처럼 보이지만 실제로는 라우트 이동) 아래
+// cursorHistory/pageIndex도 함께 사라진다 — 닫고 돌아오면 캐시가 남아 있어도 언제나 1페이지였다.
+// "지금 몇 번째 페이지를 보고 있었는가"만 모듈 스코프에 남겨두면 되돌아왔을 때 그 cursor의 캐시가
+// 곧장 그려진다.
+// ⚠️ sessionStorage가 아니라 모듈 변수인 것이 핵심이다. cursor는 특정 Feed Session에 묶인 opaque
+// 값이라(08_API_명세 10.1) 쿼리 캐시와 정확히 같은 수명(탭의 JS 수명)을 가져야 한다 — 새로고침하면
+// 캐시와 함께 사라져 새 세션의 1페이지에서 시작하는 게 맞고, 저장소에 남겨두면 죽은 세션의 cursor로
+// 요청하게 된다. pageSize가 다르면(리사이즈로 그리드 구성이 바뀐 경우) 복원하지 않는다 — 같은
+// cursor라도 페이지가 담는 항목 수가 달라 "보던 위치"가 아니게 된다(아래 pageSize 리셋과 같은 이유).
+interface FeedPagePosition {
+  cursorHistory: (string | undefined)[];
+  pageIndex: number;
+  pageSize: number;
+}
+
+let lastFeedPagePosition: FeedPagePosition | null = null;
+
 /**
  * Feed(발행된 Collection 추천 목록) 목록. 근거: Jira S15P11A705-142, docs/reference/08_API_명세.md 10.1.
  * IMPRESSION은 서버가 목록 응답 생성 시 자동 기록한다 — 프론트는 CLICK만 큐잉한다.
@@ -101,8 +118,6 @@ function toShelfRows(
 export function FeedList() {
   const navigate = useNavigate();
   const feedEventQueue = useFeedEventQueue();
-  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([undefined]);
-  const [pageIndex, setPageIndex] = useState(0);
 
   const tier = useShelfWidthTier();
   const isLandscape = useIsLandscapeOrientation();
@@ -163,6 +178,14 @@ export function FeedList() {
   // 오염은 없지만, 사용자가 보던 페이지 번호 자체가 새 그리드에서는 다른 항목 수를 의미하게 된다).
   // "prop이 바뀌면 state를 리셋"하는 리액트 표준 패턴(렌더 중 setState) — useEffect+setState는
   // 커밋 후 리렌더를 한 번 더 유발해(react-hooks/set-state-in-effect) 화면이 잠깐 깜빡일 수 있다.
+  // 354: 초기값은 직전에 보던 페이지다(lastFeedPagePosition). 이 두 state를 pageSize 계산 아래로
+  // 내린 이유도 그것이다 — 복원 여부를 판단하려면 이번 렌더의 pageSize를 먼저 알아야 한다.
+  const restored = lastFeedPagePosition?.pageSize === pageSize ? lastFeedPagePosition : null;
+  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>(
+    () => restored?.cursorHistory ?? [undefined],
+  );
+  const [pageIndex, setPageIndex] = useState(() => restored?.pageIndex ?? 0);
+
   const [prevPageSize, setPrevPageSize] = useState(pageSize);
   if (pageSize !== prevPageSize) {
     setPrevPageSize(pageSize);
@@ -172,6 +195,12 @@ export function FeedList() {
 
   const cursor = cursorHistory[pageIndex];
   const feedQuery = useFeedCollectionsQuery(cursor, pageSize);
+
+  // 다음 마운트가 이어받을 위치를 기록한다. 렌더 중이 아니라 커밋 후에 쓴다 — 위 pageSize 리셋처럼
+  // 렌더 중 state가 바뀌는 경로가 있어서, 렌더 중에 쓰면 버려질 값을 기록할 수 있다.
+  useEffect(() => {
+    lastFeedPagePosition = { cursorHistory, pageIndex, pageSize };
+  }, [cursorHistory, pageIndex, pageSize]);
 
   const emptyShelfLayout: EmptyShelfLayout = {
     columns,
@@ -290,8 +319,13 @@ export function FeedList() {
                   // 315: 카드 JSX는 CollectionBookCard로 분리했다 — 정보가 표지 안으로 들어가면서
                   // 카드 내부 조판이 길어졌고, 316에서 이 자리를 표지 레이아웃 6종이 대체한다.
                   // 클릭 핸들러·이벤트 큐잉·페이지네이션은 그대로 이 컴포넌트가 갖는다.
+                  // 354: key에서 requestId를 뺐다. 이 목록이 어떤 이유로든 다시 받아지면(명시적
+                  // invalidate 등) requestId가 바뀌는데, 그게 key에 섞여 있으면 같은 자리에 같은
+                  // 책이 있어도 카드가 전부 재마운트돼 표지 <img>까지 다시 그려진다 — 사용자
+                  // 눈에는 "책장이 처음부터 다시 로딩되는" 장면이다. 한 페이지 안에서 슬롯을
+                  // 식별하는 값은 collectionId + position이면 충분하다(position은 응답 값 그대로).
                   <CollectionBookCard
-                    key={`${page.requestId}-${item.collectionId}-${item.position}`}
+                    key={`${item.collectionId}-${item.position}`}
                     item={item}
                     widthPx={dims.cardWidth}
                     heightPx={dims.cardHeight}
