@@ -270,8 +270,12 @@ export function FeedList() {
   // 314: 캐비닛이 사라져 버튼이 앉을 안쪽 여백(px-5)이 없어졌다 — 대신 그리드에 좌우
   // FEED_SIDE_GUTTER_PX만큼 padding을 주고(FEED_GRID_CLASS의 px-7) 버튼을 그 gutter에 놓는다.
   // 선반 판은 gutter까지 덮는 full-bleed로 두어 시안처럼 책보다 넓게 깔린다.
+  // 328: mx-auto → m-auto. 부모(FeedPage의 flex-1 래퍼)가 flex-col이 되면서 세로 auto 마진이
+  // "남는 세로 공간을 위아래로 나눠 갖는다"는 뜻을 갖게 됐다 — 책장이 화면 중앙에 온다. 가로는
+  // 기존 mx-auto와 동일하게 동작하고, flex 컨테이너가 아닌 곳에 놓여도 세로 auto는 0으로 풀려
+  // 기존 동작 그대로다(FeedPage 주석 참고).
   return (
-    <div className="relative mx-auto flex flex-col" style={{ width: shelfWidthPx }}>
+    <div className="relative m-auto flex flex-col" style={{ width: shelfWidthPx }}>
       <FeedArrowButton direction="left" disabled={!canGoPrevious} onClick={handlePrevious} />
       <FeedArrowButton direction="right" disabled={!canGoNext} onClick={handleNext} />
 
@@ -347,7 +351,7 @@ function EmptyShelves({
   overlay?: ReactNode;
 }) {
   return (
-    <div className="relative mx-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
+    <div className="relative m-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
       {/* 314: 데이터가 없는 상태에서도 좌우 버튼은 자리에 있어야 한다 — 책장 가구의 일부라, 로딩·빈
           목록·에러에서 사라졌다가 데이터가 오면 나타나면 레이아웃이 흔들린 것처럼 보인다.
           넘길 페이지가 없는 상태이므로 항상 disabled다. */}

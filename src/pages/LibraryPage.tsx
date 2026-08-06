@@ -226,37 +226,45 @@ export function LibraryPage() {
         나의 책장
       </PageTitle>
 
-      {/* 319 디자인 피드백: flex-1(남는 공간 전부)에서 flex-none으로 바꿨다. 래퍼가 캐비닛보다
-          크면 그 차이가 전부 캐비닛 아래 빈 여백이 되고, inset-0인 버튼 오버레이도 캐비닛이 아니라
-          그 빈 공간까지 포함한 박스의 중앙에 놓인다(피드백의 "버튼 위치가 별로다"). 이제 래퍼
-          높이는 캐비닛 높이 그 자체다 — 오버레이 inset-0 = 캐비닛 테두리와 정확히 일치한다. */}
-      <div className="relative min-h-0 flex-none">
-        <ShelfCabinet heightPx={cabinetHeightPx}>
-          <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
-        </ShelfCabinet>
+      {/* 328: 바깥에 flex-1 + items-center 래퍼를 한 겹 더 뒀다 — 남는 세로 공간에서 책장이 중앙에
+          오도록 FeedPage와 정렬 규칙을 통일한다. 여기서 남는 양은 대개 안전 여백(8px) 정도라 육안
+          변화는 거의 없지만, 두 페이지가 같은 규칙을 쓰는 것 자체가 목적이다(예산 상수가 바뀌어
+          한쪽만 남는 공간이 생겨도 어긋나지 않는다).
+          319 디자인 피드백: 안쪽 박스는 flex-1이 아니라 flex-none을 그대로 유지한다. 래퍼가
+          캐비닛보다 크면 그 차이가 전부 캐비닛 아래 빈 여백이 되고, inset-0인 버튼 오버레이도
+          캐비닛이 아니라 그 빈 공간까지 포함한 박스의 중앙에 놓인다(피드백의 "버튼 위치가
+          별로다"). 이 박스의 높이는 캐비닛 높이 그 자체여야 한다 — 오버레이 inset-0 = 캐비닛
+          테두리와 정확히 일치한다. 그래서 중앙 정렬은 바깥 래퍼가 맡는다 — 정렬을 items-center가
+          아니라 자식의 my-auto로 주는 이유는 FeedPage 주석 참고(낮은 뷰포트에서 위로 밀지 않는다). */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="relative my-auto w-full flex-none">
+          <ShelfCabinet heightPx={cabinetHeightPx}>
+            <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
+          </ShelfCabinet>
 
-        {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
-            버튼만 바깥에 뒀고(내 책장이 고정이라 이전/다음이 2·3열에만 걸린다는 뜻이었다),
-            mdlg·sm은 둘 다 바깥에 뒀다. 두 벌 모두 캐비닛 안쪽 여백(px-[28px])에 버튼을 맞추느라
-            테두리+본문 padding 합을 리터럴로 복제하고 있어서, 캐비닛 상자 모델이 바뀌면 조용히
-            어긋나는 값이었다. 시안은 구간과 무관하게 좌우 버튼이 캐비닛 "바깥" 가장자리에 걸쳐
-            있으므로, 오버레이를 하나로 합치고 위치 기준도 캐비닛 바깥 테두리(inset-0)로 옮겼다 —
-            이제 안쪽 여백 리터럴에 의존하지 않는다. 페이지 이동 로직(canGoPrevious/canGoNext,
-            getLibraryPageSlots)은 그대로다. aria-label만 구간에 따라 다르게 유지한다 — xl에서
-            넘어가는 대상은 팔로우한 책장뿐이고, mdlg·sm은 내 책장까지 포함한 시퀀스이기 때문이다. */}
-        <div className="pointer-events-none absolute inset-0">
-          <ShelfPageButton
-            direction="left"
-            onClick={handlePrevious}
-            disabled={!canGoPrevious}
-            label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
-          />
-          <ShelfPageButton
-            direction="right"
-            onClick={handleNext}
-            disabled={!canGoNext}
-            label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
-          />
+          {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
+              버튼만 바깥에 뒀고(내 책장이 고정이라 이전/다음이 2·3열에만 걸린다는 뜻이었다),
+              mdlg·sm은 둘 다 바깥에 뒀다. 두 벌 모두 캐비닛 안쪽 여백(px-[28px])에 버튼을 맞추느라
+              테두리+본문 padding 합을 리터럴로 복제하고 있어서, 캐비닛 상자 모델이 바뀌면 조용히
+              어긋나는 값이었다. 시안은 구간과 무관하게 좌우 버튼이 캐비닛 "바깥" 가장자리에 걸쳐
+              있으므로, 오버레이를 하나로 합치고 위치 기준도 캐비닛 바깥 테두리(inset-0)로 옮겼다 —
+              이제 안쪽 여백 리터럴에 의존하지 않는다. 페이지 이동 로직(canGoPrevious/canGoNext,
+              getLibraryPageSlots)은 그대로다. aria-label만 구간에 따라 다르게 유지한다 — xl에서
+              넘어가는 대상은 팔로우한 책장뿐이고, mdlg·sm은 내 책장까지 포함한 시퀀스이기 때문이다. */}
+          <div className="pointer-events-none absolute inset-0">
+            <ShelfPageButton
+              direction="left"
+              onClick={handlePrevious}
+              disabled={!canGoPrevious}
+              label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
+            />
+            <ShelfPageButton
+              direction="right"
+              onClick={handleNext}
+              disabled={!canGoNext}
+              label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
+            />
+          </div>
         </div>
       </div>
     </main>
