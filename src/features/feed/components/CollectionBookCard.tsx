@@ -1,5 +1,6 @@
-import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
+import { useCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
 import { CollectionCover } from './covers/CollectionCover';
+import { isCompactCoverWidth } from '../lib/collectionCoverVariant';
 import type { FeedCollectionItem } from '../api/getFeedCollections';
 
 /**
@@ -30,11 +31,8 @@ const COVER_FONT_RATIO = 0.08;
 const COVER_FONT_MIN_PX = 9;
 const COVER_FONT_MAX_PX = 22;
 
-// 이 폭 미만이면 축약 모드 — 카테고리·부제·날짜를 생략하고 제목 + 저장된 장소 수만 남긴다. 폭
-// 150px이면 카테고리 글자가 약 5.5px(0.46em × 12px)이라 읽히지 않는데, 안 읽히는 글자를 넣느니
-// 제목에 자리를 더 주는 편이 낫다. 행 수 결정의 하한(FEED_ROWS_MIN_CARD_WIDTH_PX = 112)과는 다른
-// 값이다 — 그쪽은 "배치를 포기하는 선", 이쪽은 "정보를 덜어내는 선"이다.
-const COVER_COMPACT_WIDTH_PX = 150;
+// 331: 축약 판정(COVER_COMPACT_WIDTH_PX)은 collectionCoverVariant.ts로 옮겼다 — 폭에서 슬롯을
+// 정하는 규칙은 전부 그 파일 하나가 갖는다.
 
 export interface CollectionBookCardProps {
   item: FeedCollectionItem;
@@ -48,8 +46,12 @@ export function CollectionBookCard({ item, widthPx, heightPx, onClick }: Collect
     COVER_FONT_MAX_PX,
     Math.max(COVER_FONT_MIN_PX, widthPx * COVER_FONT_RATIO),
   );
-  const isCompact = widthPx < COVER_COMPACT_WIDTH_PX;
-  const accentColor = getCollectionAccentColor(item.collectionId);
+  const isCompact = isCompactCoverWidth(widthPx);
+  // 331: 표지가 있으면 그 이미지의 대표색을 팔레트에 매핑한 색, 없으면 기존 collectionId 해시 색이다
+  // (getCollectionAccentColor). 카드 배경과 도판 폴백 그라디언트가 같은 값을 쓰므로, 표지 있는 책은
+  // 책과 그림의 색이 맞고 없는 책은 지금까지와 똑같이 보인다.
+  const coverImageUrl = item.coverImageUrl ?? null;
+  const accentColor = useCollectionAccentColor(item.collectionId, coverImageUrl);
 
   return (
     <button
@@ -76,7 +78,7 @@ export function CollectionBookCard({ item, widthPx, heightPx, onClick }: Collect
           // 실패하면 공통 파츠(CoverArtwork)가 accent 그라디언트 폴백으로 흡수한다 — 둘 다 오류가
           // 아닌 정상 상태다(docs/api-contract.md § Collection 표지 이미지).
           // 값은 같은 오리진 상대 경로(/image/files/….webp)라 API_BASE_URL을 붙이지 않고 그대로 쓴다.
-          imageUrl={item.coverImageUrl ?? null}
+          imageUrl={coverImageUrl}
           isCompact={isCompact}
         />
       </div>
