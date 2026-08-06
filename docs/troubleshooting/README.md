@@ -39,3 +39,4 @@
 
 - [인증 방식 BFF 전환 결정](2026-07-27-auth-bff-decision.md) — 인증이 JWT/Bearer 전제에서 BFF/쿠키 전제로 바뀐 배경과 문서 영향
 - [카카오 장소 검색·지도 — 프론트 직접 호출로 확정](2026-07-27-kakao-search-direct-call.md) — api-contract.md의 "BFF 경유" 서술과 원본 명세의 모순을 프론트 직접 호출로 정정
+- [운영 백엔드 /dev/auth/login 노출 여부 확인](2026-08-06-dev-auth-login-prod-check.md) — 실측 결과 운영에서 인증 없이 세션을 내주는 경로로 동작하지 않음을 확인
