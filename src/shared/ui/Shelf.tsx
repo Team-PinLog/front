@@ -47,11 +47,27 @@ import {
 // (getPageContentBudgetPx)를 직접 넘겨 캐비닛 높이를 확정한다 — 퍼센트 체인 대신 확정값이라
 // 안쪽 flex-1들도 늘어날 공간을 정확히 알게 된다. heightPx를 넘기지 않으면(/shelf 단독 화면)
 // 기존 h-full 동작 그대로다.
+// 329(디자인 피드백): 프레임에 Feed 선반과 같은 나뭇결을 깐다 — 선반 판만 나무이고 그 판을 물고 있는
+// 가구는 무지 아이보리라 재질이 따로 놀았다.
+// 결을 자식 레이어가 아니라 이 요소의 background-image로 주는 이유: 자식은 아무리 늘려도 테두리
+// 영역을 덮지 못하고(absolute의 inset-0은 padding box 기준), overflow-hidden이 padding box에서
+// 잘라내 음수 inset도 통하지 않는다. 대신 border-color를 투명으로 두면 기본 background-clip
+// (border-box)이 테두리 자리까지 배경을 칠해, 결이 프레임 전체에 끊김 없이 이어진다. 테두리는
+// 원래도 본문과 같은 shelf-frame 색이었으므로(319) 색이 바뀌는 것은 없고 두께 역할만 남는다.
+// 바탕은 shelf-frame 단색 그대로 둔다 — 판처럼 3단 그라디언트까지 얹으면 캐비닛 톤이 통째로
+// 어두워져 319가 맞춘 아이보리에서 벗어난다.
 export function ShelfCabinet({ children, heightPx }: { children: ReactNode; heightPx?: number }) {
   return (
     <div
-      style={{ '--shelf-scale': SHELF_SCALE_CSS, height: heightPx } as CSSProperties}
-      className={`flex flex-col overflow-hidden rounded-2xl border-[10px] border-shelf-frame bg-shelf-frame shadow-[0_18px_40px_rgba(4,33,66,.10)] ring-1 ring-shelf-frame-edge ${
+      style={
+        {
+          '--shelf-scale': SHELF_SCALE_CSS,
+          height: heightPx,
+          backgroundImage: CABINET_GRAIN_IMAGE,
+          backgroundSize: '800px 600px',
+        } as CSSProperties
+      }
+      className={`flex flex-col overflow-hidden rounded-2xl border-[10px] border-transparent bg-shelf-frame bg-clip-border shadow-[0_18px_40px_rgba(4,33,66,.10)] ring-1 ring-shelf-frame-edge ${
         heightPx === undefined ? 'h-full' : ''
       }`}
     >
@@ -100,18 +116,33 @@ export function ShelfLabel({ children }: { children: ReactNode }) {
 //      background-image라 한 요소에 합치면 Tailwind 그라디언트가 덮여버린다.
 // 319: FeedList 안에 있던 이 컴포넌트를 여기로 옮겼다 — Library의 ShelfBoard가 쓰던 짙은 나무색
 // 하드코딩(#e0b77d/#b9854f)을 지우면서 두 화면의 선반이 완전히 같은 판이 됐기 때문이다.
-const PLANK_GRAIN_SVG = [
-  '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="60">',
-  '<filter id="g" x="0" y="0" width="100%" height="100%">',
-  '<feTurbulence type="fractalNoise" baseFrequency="0.006 0.13" numOctaves="4" seed="17"/>',
-  '<feColorMatrix type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.32 1 0 0 0 -0.42"/>',
-  '</filter>',
-  '<rect width="800" height="60" filter="url(#g)"/>',
-  '</svg>',
-].join('');
+// 329(디자인 피드백 "책장에 Feed 선반 나무 텍스처를 넣어달라"): 같은 결을 캐비닛 프레임에도 쓰게
+// 되면서 크기·강도만 다른 두 벌이 필요해졌다. 판(얇고 가로로 긴 면)과 프레임(캐비닛만 한 큰 면)은
+// 같은 값을 그대로 쓰면 결이 전혀 다르게 보인다:
+//  - height: 이 SVG는 backgroundSize로 늘려 쓰므로, 60px짜리를 900px 프레임에 깔면 결이 15배로
+//    늘어나 뭉개진 띠가 된다. 프레임용은 애초에 큰 캔버스로 만들어 자연 크기에 가깝게 깐다.
+//  - alphaThreshold: feColorMatrix 알파 행의 상수항은 "이 값 미만의 노이즈는 투명"이라는 문턱이다.
+//    문턱을 올리면 굵은 결만 남고 잔결이 사라진다 — 넓은 면에서는 잔결이 얼룩처럼 도드라져서
+//    프레임 쪽 문턱을 더 높게 잡는다.
+function buildGrainImage(width: number, height: number, alphaThreshold: number): string {
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
+    '<filter id="g" x="0" y="0" width="100%" height="100%">',
+    '<feTurbulence type="fractalNoise" baseFrequency="0.006 0.13" numOctaves="4" seed="17"/>',
+    `<feColorMatrix type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.32 1 0 0 0 -${alphaThreshold}"/>`,
+    '</filter>',
+    `<rect width="${width}" height="${height}" filter="url(#g)"/>`,
+    '</svg>',
+  ].join('');
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
 
 // 800px 주기로 가로 반복한다 — 선반이 그보다 짧으면 반복 자체가 화면에 드러나지 않는다.
-const PLANK_GRAIN_IMAGE = `url("data:image/svg+xml,${encodeURIComponent(PLANK_GRAIN_SVG)}")`;
+const PLANK_GRAIN_IMAGE = buildGrainImage(800, 60, 0.42);
+
+// 캐비닛 프레임용. 세로 600px은 실제 캐비닛 높이(뷰포트 예산에 따라 대략 400~900px)와 같은 자릿수라
+// 늘어나거나 여러 번 반복되는 일이 거의 없다.
+const CABINET_GRAIN_IMAGE = buildGrainImage(800, 600, 0.58);
 
 // 328(2차 디자인 피드백 "여전히 뚝 끊기는 느낌"): 낙하 그림자를 box-shadow에서 별도 레이어로
 // 분리한다. box-shadow는 요소의 사각형을 그대로 복제해 흐리는 것이라, 판 좌우 끝에서 그림자가
