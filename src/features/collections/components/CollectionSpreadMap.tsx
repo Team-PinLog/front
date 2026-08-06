@@ -143,6 +143,9 @@ export function CollectionSpreadMap({
   useEffect(() => {
     onSelectPlaceRef.current = onSelectPlace;
   });
+  // 356: "지금 이 장에서 지도를 어떻게 맞춰야 하는가"(크기 재계산 + 중앙 정렬)를 담아두는 ref.
+  // 아래 마커 effect가 매번 최신 규칙으로 갱신하고, 컨테이너 리사이즈 감시가 그것을 다시 부른다.
+  const applyViewportRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,29 +203,58 @@ export function CollectionSpreadMap({
 
     const activePlace = places.find((place) => place.recordId === activeRecordId) ?? null;
 
-    // 목차 페이지: 활성 record 중심이 아니라 places 전체를 감싸는 최소 사각형으로 fitBounds한다.
-    // 1개면 sw=ne인 점 사각형이 되는데, 이는 08_API_명세.md 4.2가 문서화한 "1개면 점 사각형" 규칙과
-    // 같은 모양이라 RecordMapView.tsx와 동일하게 별도 분기 없이 setBounds에 그대로 넘긴다.
-    if (fitAllBounds && places.length > 0) {
-      const lats = places.map((place) => place.lat);
-      const lngs = places.map((place) => place.lng);
-      const sw = new kakao.maps.LatLng(Math.min(...lats), Math.min(...lngs));
-      const ne = new kakao.maps.LatLng(Math.max(...lats), Math.max(...lngs));
-      map.setBounds(
-        new kakao.maps.LatLngBounds(sw, ne),
-        FIT_BOUNDS_PADDING,
-        FIT_BOUNDS_PADDING,
-        FIT_BOUNDS_PADDING,
-        FIT_BOUNDS_PADDING,
-      );
-    } else if (activePlace) {
-      // 레벨을 매번 명시적으로 되돌린다 — 목차 장의 fitBounds가 레벨을 바꿔 놓기 때문에, setCenter만
-      // 하면 목차를 한 번 거친 뒤부터는 전체 bounds 레벨 그대로 남는다.
-      map.setLevel(ACTIVE_RECORD_LEVEL);
-      map.setCenter(new kakao.maps.LatLng(activePlace.lat, activePlace.lng));
-    }
-    map.relayout();
+    // 356: 이 화면의 지도 컨테이너는 장(page)마다 크기가 달라진다 — 목차 장에서는 속표지 아래
+    // 작은 액자(min-h-[180px] + flex-1 + p-1.5)이고 record 장에서는 페이지 전체 높이(h-full)다
+    // (CollectionDetailView). 카카오 지도는 컨테이너 크기를 내부에 캐시해 두고 relayout()에서만
+    // 다시 읽는데, 이전 구현은 setCenter/setBounds를 **먼저** 하고 relayout()을 마지막에 불렀다.
+    // 그래서 중앙 정렬은 옛 크기 기준으로 계산되고, 그 뒤 relayout()이 새 크기를 반영하면서
+    // 늘어난 만큼 핀이 중앙에서 밀렸다. 순서를 뒤집어 **크기를 먼저 확정하고 그 다음 중앙을
+    // 잡는다** — 카카오 공식 샘플이 relayout() 뒤에 setCenter를 다시 부르는 것과 같은 이유다.
+    const applyViewport = () => {
+      map.relayout();
+
+      // 목차 페이지: 활성 record 중심이 아니라 places 전체를 감싸는 최소 사각형으로 fitBounds한다.
+      // 1개면 sw=ne인 점 사각형이 되는데, 이는 08_API_명세.md 4.2가 문서화한 "1개면 점 사각형" 규칙과
+      // 같은 모양이라 RecordMapView.tsx와 동일하게 별도 분기 없이 setBounds에 그대로 넘긴다.
+      if (fitAllBounds && places.length > 0) {
+        const lats = places.map((place) => place.lat);
+        const lngs = places.map((place) => place.lng);
+        const sw = new kakao.maps.LatLng(Math.min(...lats), Math.min(...lngs));
+        const ne = new kakao.maps.LatLng(Math.max(...lats), Math.max(...lngs));
+        map.setBounds(
+          new kakao.maps.LatLngBounds(sw, ne),
+          FIT_BOUNDS_PADDING,
+          FIT_BOUNDS_PADDING,
+          FIT_BOUNDS_PADDING,
+          FIT_BOUNDS_PADDING,
+        );
+      } else if (activePlace) {
+        // 레벨을 매번 명시적으로 되돌린다 — 목차 장의 fitBounds가 레벨을 바꿔 놓기 때문에, setCenter만
+        // 하면 목차를 한 번 거친 뒤부터는 전체 bounds 레벨 그대로 남는다.
+        map.setLevel(ACTIVE_RECORD_LEVEL);
+        map.setCenter(new kakao.maps.LatLng(activePlace.lat, activePlace.lng));
+      }
+    };
+
+    applyViewport();
+    // 컨테이너 크기가 바뀌는 순간(창 리사이즈 등)에 다시 실행할 수 있도록 최신 규칙을 남겨둔다.
+    applyViewportRef.current = applyViewport;
   }, [places, activeRecordId, status, fitAllBounds, collectionId]);
+
+  // 356: 위 effect는 장을 넘기거나 데이터가 바뀔 때만 돈다 — 창 폭을 바꿔 지도 컨테이너만 커지거나
+  // 작아지는 경우에는 아무도 relayout()을 부르지 않아, 지도가 옛 크기를 기준으로 그려진 채 남고
+  // 핀이 중앙에서 밀린 상태가 유지됐다(티켓 확인 절차 4번). 컨테이너 자체를 관찰해 크기가 바뀔
+  // 때마다 같은 규칙(크기 확정 → 중앙 정렬)을 다시 적용한다. window resize 리스너가 아니라
+  // ResizeObserver인 이유는, 이 컨테이너가 창 크기와 무관하게 장별 클래스 변화로도 바뀌기 때문이다.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (status !== 'ready' || !container || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(() => applyViewportRef.current?.());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [status]);
 
   const overlayMessage =
     status === 'error'
