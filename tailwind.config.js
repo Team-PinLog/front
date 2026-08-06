@@ -41,13 +41,33 @@ export default {
         'cover-gold': '#B68235', // 괘선·표제 라벨 (시안 rgba(182,130,53))
         'cover-gold-soft': '#DCC7A0', // 옅은 프레임 (시안 --color-accent-200)
       },
+      // 357: 세 서체 모두 public/fonts/의 로컬 서브셋 WOFF2다. @font-face는 src/index.css에
+      // 있고, 외부 CDN(jsDelivr Pretendard·Google Fonts) 링크는 제거했다.
+      // 폰트를 바꾸려면 여기와 index.css의 @font-face를 함께 고친다.
       fontFamily: {
-        sans: ['Pretendard Variable', 'Pretendard', 'sans-serif'],
-        // 332: Collection 펼친 화면 시안의 포스트잇 손글씨. 본문 폰트(Pretendard)와 대비되는
-        // "직접 적어 붙인 메모"라는 인상이 시안에서 Context를 다른 정보(장소·주소·키워드)와
-        // 구분하는 유일한 장치라 도입한다. ⚠️ 포스트잇(ContextStickyNote) 밖에서 쓰지 않는다.
-        // 웹폰트 로드는 index.html의 Google Fonts <link>가 담당한다.
-        hand: ['Nanum Pen Script', 'Pretendard Variable', 'cursive'],
+        // 본문 기본값. 잘난고딕은 잘난체와 같은 뼈대를 가진 본문용 고딕이라, 제목(잘난체)과
+        // 한 가족으로 읽히면서도 주소·Context 원문 같은 긴 텍스트의 가독성을 유지한다.
+        // 폴백은 시스템 폰트다 — 외부 의존을 없애는 것이 이 티켓의 목적이라 Pretendard CDN을
+        // 되살리지 않는다. 사용자 기기에 Pretendard가 설치돼 있으면 그것이 먼저 쓰인다.
+        sans: [
+          'JalnanGothic',
+          'Pretendard Variable',
+          'Pretendard',
+          'system-ui',
+          '-apple-system',
+          'Apple SD Gothic Neo',
+          'Malgun Gothic',
+          'sans-serif',
+        ],
+        // 357 신설. "브랜드"로 읽혀야 하는 자리 — 페이지 제목·책 표지 제목·책등·컬렉션 이름.
+        // ⚠️ 본문에 깔지 않는다. 굵은 제목용 서체라 긴 텍스트의 가독성이 떨어진다.
+        // 폴백이 JalnanGothic인 이유: 잘난체가 아직 안 왔을 때 전혀 다른 계열로 튀지 않는다.
+        display: ['Jalnan2', 'JalnanGothic', 'sans-serif'],
+        // 332: Collection 펼친 화면 시안의 포스트잇 손글씨. 본문 서체와 대비되는 "직접 적어
+        // 붙인 메모"라는 인상이 시안에서 Context를 다른 정보(장소·주소·키워드)와 구분하는
+        // 유일한 장치라 도입한다. ⚠️ 포스트잇(ContextStickyNote) 밖에서 쓰지 않는다.
+        // 357: Google Fonts의 나눔펜에서 로컬 번들한 나눔손글씨 금은보화로 교체했다.
+        hand: ['NanumGeumEunBoHwa', 'JalnanGothic', 'cursive'],
       },
     },
   },
