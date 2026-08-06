@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
@@ -7,20 +7,12 @@ import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecor
 import { SmartSearchPanel } from '@/features/home/components/SmartSearchPanel';
 import { HomeMapSection } from '@/features/home/components/HomeMapSection';
 import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
+import {
+  HERO_MAP_FADE_MASK,
+  HERO_OVERLAY_HEIGHT_CLASS,
+  HERO_OVERLAY_OPAQUE_PX,
+} from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS } from '@/shared/lib/shelfCabinetLayout';
-
-/**
- * 배경 지도 위 히어로 오버레이의 알파 마스크. 위 48%는 검정(=오버레이 100% 표시)으로 유지해
- * 제목부터 검색바까지를 완전히 불투명하게 덮고, 거기서부터 100%까지 transparent로 떨어뜨려
- * 블러와 흰 tint가 함께 서서히 사라지게 한다. 색이 같은 두 스톱(black 0%/48%) 사이라 정지
- * 구간에서 단차는 생기지 않는다.
- *
- * 48%를 고른 근거: 오버레이 높이가 h-[28rem](448px)이라 불투명 구간이 448 * 0.48 ≈ 215px다.
- * 실측상 SmartSearchPanel의 검색바 아래끝이 약 184px(1440x900, xl)이라 30px 남짓 여유가
- * 남는다 — 검색바 텍스트가 흐려진 지도 위에 걸치지 않는다. 나머지 233px이 감쇠 구간이라
- * 이전(384px 중 115px 불투명)보다 불투명 구간과 감쇠 구간이 함께 늘어났다.
- */
-const HERO_MAP_FADE_MASK = 'linear-gradient(to bottom, black 0%, black 48%, transparent 100%)';
 
 /**
  * 홈 화면: 스마트 검색(149)과 지도(150)를 한 화면에서 함께 보여준다.
@@ -44,6 +36,12 @@ export function HomePage() {
   const navigate = useNavigate();
   const searchMutation = useSearchRecordsMutation();
   const [openRecordId, setOpenRecordId] = useState<number | null>(null);
+  // 방금 저장한 Record. 마커 목록이 갱신되는 대로 지도가 그 좌표로 이동하고 값을 비운다.
+  // 근거: Jira S15P11A705-325.
+  const [savedRecordId, setSavedRecordId] = useState<number | null>(null);
+  // 지도 쪽 effect의 deps에 들어가므로 참조를 고정한다 — 인라인 화살표로 두면 홈이 리렌더될 때마다
+  // 이동 effect가 다시 돈다.
+  const handleSavedRecordFocused = useCallback(() => setSavedRecordId(null), []);
 
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
   // mockup의 homeSearchNoResults(검색은 했지만 0건)에 대응한다 — idle·pending·error와 달리
@@ -61,7 +59,12 @@ export function HomePage() {
             누출원(카카오 SDK 내부 z-index)은 RecordMapView 컨테이너에서 이미 가두지만, 아래
             오버레이가 지도 위에 보이는 것은 이 레이어 구조 자체의 전제라 여기서도 명시한다. */}
         <div className="isolate absolute inset-0">
-          <HomeMapSection onMarkerClick={setOpenRecordId} />
+          <HomeMapSection
+            onMarkerClick={setOpenRecordId}
+            topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+            focusRecordId={savedRecordId}
+            onFocusRecordHandled={handleSavedRecordFocused}
+          />
         </div>
 
         {/* 히어로 쪽으로 갈수록 지도가 흐려지는 오버레이. 클릭은 지도로 통과시켜야 해서
@@ -80,7 +83,7 @@ export function HomePage() {
             근거: Jira S15P11A705-307 후속 디자인 피드백. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-paper-white backdrop-blur-lg"
+          className={`pointer-events-none absolute inset-x-0 top-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
           style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 
@@ -112,7 +115,7 @@ export function HomePage() {
         </div>
       </main>
 
-      <PlaceRecordSheet />
+      <PlaceRecordSheet onRecordSaved={setSavedRecordId} />
 
       {openRecordId !== null && (
         <RecordDetailOverlay recordId={openRecordId} onClose={() => setOpenRecordId(null)} />
