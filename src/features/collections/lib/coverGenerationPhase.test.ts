@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { CoverJobStatus, CoverRequestState } from '../api/coverGeneration';
 import {
+  COVER_POLL_MAX_CONSECUTIVE_FAILURES,
   COVER_POLL_TIMEOUT_MS,
+  hasCoverPollingGivenUp,
   isCoverPollingExpired,
   isCoverPollingSettled,
   isTerminalJobStatus,
   pickRandomReadyCandidate,
   resolveCoverCandidates,
+  resolveSavableCoverUrl,
 } from './coverGenerationPhase';
 
 // 317: 이 흐름에서 가장 깨지기 쉬운 지점은 "폴링을 언제 멈추는가"다. 잘못 멈추면 인쇄본이 완성돼도
@@ -42,6 +45,13 @@ describe('isCoverPollingSettled', () => {
     // 호출부가 단계를 잘못 넘겨도 무한 폴링이 되지 않게 하는 안전판이다.
     expect(isCoverPollingSettled(undefined, 'idle')).toBe(true);
     expect(isCoverPollingSettled(state({ status: 'running' }), 'idle')).toBe(true);
+  });
+
+  it('326: accepted면 아직 그리는 중이어도 멈춘다', () => {
+    // 화풍 선택이 접수되면 화면 쪽 흐름은 끝난다 — 인쇄본은 백그라운드 러너가 별도로 본다.
+    // 여기서 멈추지 않으면 모달이 닫힌 뒤에도 후보 폴링이 러너와 겹쳐 두 배로 나간다.
+    expect(isCoverPollingSettled(state({ status: 'running' }), 'accepted')).toBe(true);
+    expect(isCoverPollingSettled(undefined, 'accepted')).toBe(true);
   });
 
   describe('generating(화풍 선택 전)', () => {
@@ -112,6 +122,53 @@ describe('isCoverPollingExpired', () => {
   it('상한은 인자로 바꿀 수 있다(테스트·향후 조정용)', () => {
     expect(isCoverPollingExpired(startedAt, startedAt + 10, 5)).toBe(true);
     expect(isCoverPollingExpired(startedAt, startedAt + 3, 5)).toBe(false);
+  });
+});
+
+describe('resolveSavableCoverUrl', () => {
+  // 326: 백그라운드 저장으로 바뀌면서 아무도 보지 않는 상태로 PATCH가 나간다 — 무엇을 저장해도
+  // 되는지의 판정이 이 함수 하나에 모인다. 서버는 파일 존재를 검증하지 않는다.
+  it('done이고 url이 있으면 그 url을 저장한다', () => {
+    expect(resolveSavableCoverUrl(candidate('done'))).toBe('/image/files/a.webp');
+  });
+
+  it('아직 인쇄본 잡이 없으면(null) 저장할 것이 없다', () => {
+    expect(resolveSavableCoverUrl(null)).toBeNull();
+  });
+
+  it('그리는 중이면 저장하지 않는다', () => {
+    expect(resolveSavableCoverUrl(candidate('running'))).toBeNull();
+    expect(resolveSavableCoverUrl(candidate('queued'))).toBeNull();
+  });
+
+  it('실패한 인쇄본은 저장하지 않는다', () => {
+    expect(resolveSavableCoverUrl(candidate('failed'))).toBeNull();
+  });
+
+  it('status는 done인데 url이 없으면 저장하지 않는다', () => {
+    // 보내면 깨진 표지가 그대로 남는다 — 서버는 경로 패턴만 본다.
+    expect(
+      resolveSavableCoverUrl({ styleId: 'a', label: 'a', status: 'done', url: null }),
+    ).toBeNull();
+  });
+});
+
+describe('hasCoverPollingGivenUp', () => {
+  // 326: 백그라운드 러너에는 실패를 보고 다시 누를 사람이 없다. 순간적인 끊김은 견디고, 계속
+  // 실패하면 상한(5분)까지 1초마다 두드리지 않고 조용히 접는다.
+  it('연속 실패가 상한 미만이면 계속 폴링한다', () => {
+    expect(hasCoverPollingGivenUp(0)).toBe(false);
+    expect(hasCoverPollingGivenUp(COVER_POLL_MAX_CONSECUTIVE_FAILURES - 1)).toBe(false);
+  });
+
+  it('연속 실패가 상한에 닿으면 포기한다', () => {
+    expect(hasCoverPollingGivenUp(COVER_POLL_MAX_CONSECUTIVE_FAILURES)).toBe(true);
+    expect(hasCoverPollingGivenUp(COVER_POLL_MAX_CONSECUTIVE_FAILURES + 1)).toBe(true);
+  });
+
+  it('상한은 인자로 바꿀 수 있다', () => {
+    expect(hasCoverPollingGivenUp(1, 2)).toBe(false);
+    expect(hasCoverPollingGivenUp(2, 2)).toBe(true);
   });
 });
 
