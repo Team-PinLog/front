@@ -521,6 +521,12 @@ interface ShelfBookSpineProps {
   collectionId: number;
   recordCount: number;
   onClick: () => void;
+  /**
+   * 362: 이 책등에 관심이 생겼다(요소를 넘김)·사라졌다(null)를 알린다. 표지 팝오버를 띄우는 쪽
+   * (MyShelfColumn)이 지연·좌표·렌더링을 맡고, 책등은 그 존재를 모른다 — 넘기지 않으면 아무 일도
+   * 일어나지 않으므로, 이 기능을 쓰지 않는 화면(팔로우한 책장·Feed의 책장 미리보기)은 그대로다.
+   */
+  onPreview?: (element: HTMLElement | null) => void;
 }
 
 // 287-14: index는 여전히 "선반 위 위치"(폭 순환 판단)에만 쓰고, 색·기울기·높이 지터는 collectionId
@@ -532,6 +538,7 @@ export function ShelfBookSpine({
   collectionId,
   recordCount,
   onClick,
+  onPreview,
 }: ShelfBookSpineProps) {
   const height = getSpineHeight(recordCount, collectionId);
   const width = getSpineWidth(index);
@@ -549,8 +556,31 @@ export function ShelfBookSpine({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => {
+        // 362: 클릭하면 컬렉션이 펼쳐진다 — 그 화면 위에 표지가 남지 않도록 먼저 닫는다.
+        // pointerleave만 믿으면 오버레이가 열리는 동안 표지가 떠 있는 순간이 생긴다.
+        onPreview?.(null);
+        onClick();
+      }}
       title={title}
+      // 362: pointer 이벤트를 쓰고 마우스일 때만 반응한다 — 터치 기기에서는 탭이 pointerenter를
+      // 함께 발생시켜, mouse로 좁히지 않으면 탭할 때마다 표지가 떴다가 화면이 전환된다. 터치는
+      // 기존 클릭(펼치기) 그대로 두는 것이 이 티켓의 결정이다.
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse') {
+          onPreview?.(event.currentTarget);
+        }
+      }}
+      onPointerLeave={() => onPreview?.(null)}
+      // 키보드 이동에서도 같은 표지를 보여준다. :focus-visible로 좁히는 이유는 마우스 클릭도
+      // 포커스를 남기기 때문이다 — 그때까지 표지가 뜨면 클릭으로 화면을 옮긴 뒤 돌아왔을 때
+      // 사용자가 올린 적 없는 표지가 떠 있다.
+      onFocus={(event) => {
+        if (event.currentTarget.matches(':focus-visible')) {
+          onPreview?.(event.currentTarget);
+        }
+      }}
+      onBlur={() => onPreview?.(null)}
       style={
         {
           width: scalePx(width),

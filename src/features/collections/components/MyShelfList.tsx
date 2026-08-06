@@ -21,7 +21,9 @@ import {
   ShelfTier,
 } from '@/shared/ui/Shelf';
 import { useMyCollectionsQuery } from '../hooks/useMyCollectionsQuery';
+import { useShelfCoverPreview } from '../hooks/useShelfCoverPreview';
 import { NewCollectionModal } from './NewCollectionModal';
+import { ShelfCoverPreview } from './ShelfCoverPreview';
 
 // 287-16: 행별 권수(getRowCapacity) seed의 열 구분용 salt — FollowedShelfCard.tsx의
 // FOLLOWED_SHELF_SEED_SALT_BASE와 절대 겹치지 않는 범위를 쓴다.
@@ -66,6 +68,9 @@ export function MyShelfColumn({
   const navigate = useNavigate();
   const myCollectionsQuery = useMyCollectionsQuery();
   const [isNewCollectionModalOpen, setIsNewCollectionModalOpen] = useState(false);
+  // 362: 책등에 머무르면 표지를 보여준다. 332에서 확정된 "좌측 책장은 제목만 보여준다"와 충돌하지
+  // 않는다 — 호버·포커스라는 명시적 행동에만 나오고, 책장이 기본으로 보여주는 정보는 그대로다.
+  const coverPreview = useShelfCoverPreview<CollectionSummary>();
 
   if (myCollectionsQuery.isPending) {
     return <p className="text-sm text-ink-gray">불러오는 중…</p>;
@@ -126,13 +131,16 @@ export function MyShelfColumn({
           paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,
           paddingRight: SHELF_SCROLL_SIDE_PADDING_PX,
         }}
-        onScroll={(event) =>
+        onScroll={(event) => {
+          // 362: 팝오버 위치는 열릴 때 읽은 책등 좌표에 고정된다 — 스크롤하면 책은 움직이는데
+          // 표지만 남아 엉뚱한 자리를 가리키므로 닫는다.
+          coverPreview.close();
           handleShelfScrollFetchNext(event, {
             hasNext,
             isFetchingNextPage: myCollectionsQuery.isFetchingNextPage,
             fetchNextPage: () => void myCollectionsQuery.fetchNextPage(),
-          })
-        }
+          });
+        }}
         className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto"
       >
         {collectionRows.map((row, rowIndex) => (
@@ -144,6 +152,13 @@ export function MyShelfColumn({
                 collectionId={collection.collectionId}
                 title={collection.title}
                 recordCount={collection.recordCount}
+                onPreview={(element) => {
+                  if (element === null) {
+                    coverPreview.close();
+                    return;
+                  }
+                  coverPreview.open(collection, element);
+                }}
                 onClick={() => {
                   void navigate({
                     to: '/collections/$collectionId',
@@ -184,6 +199,13 @@ export function MyShelfColumn({
           <p className="flex-none py-1 text-center text-xs text-ink-gray">불러오는 중…</p>
         )}
       </div>
+
+      {coverPreview.preview !== null && (
+        <ShelfCoverPreview
+          collection={coverPreview.preview.item}
+          anchor={coverPreview.preview.anchor}
+        />
+      )}
 
       <NewCollectionModal
         isOpen={isNewCollectionModalOpen}
