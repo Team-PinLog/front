@@ -63,8 +63,10 @@ export function ShelfCabinet({ children, heightPx }: { children: ReactNode; heig
         {
           '--shelf-scale': SHELF_SCALE_CSS,
           height: heightPx,
-          backgroundImage: CABINET_GRAIN_IMAGE,
-          backgroundSize: '800px 600px',
+          // 360: 결이 한 겹에서 네 겹 + 이음새로 늘었다(CABINET_TEXTURE_IMAGE). 색은 그대로다 —
+          // 바탕은 여전히 shelf-frame 토큰이고 결 잉크도 329가 쓰던 그 색 하나다.
+          backgroundImage: CABINET_TEXTURE_IMAGE,
+          backgroundSize: CABINET_TEXTURE_SIZE,
         } as CSSProperties
       }
       className={`flex flex-col overflow-hidden rounded-2xl border-[10px] border-transparent bg-shelf-frame bg-clip-border shadow-[0_18px_40px_rgba(4,33,66,.10)] ring-1 ring-shelf-frame-edge ${
@@ -124,12 +126,48 @@ export function ShelfLabel({ children }: { children: ReactNode }) {
 //  - alphaThreshold: feColorMatrix 알파 행의 상수항은 "이 값 미만의 노이즈는 투명"이라는 문턱이다.
 //    문턱을 올리면 굵은 결만 남고 잔결이 사라진다 — 넓은 면에서는 잔결이 얼룩처럼 도드라져서
 //    프레임 쪽 문턱을 더 높게 잡는다.
-function buildGrainImage(width: number, height: number, alphaThreshold: number): string {
+/**
+ * 결 잉크. **이 색 하나로 모든 결 층을 그린다.**
+ *
+ * 360: 결을 여러 겹으로 나누면서도 색은 329가 쓰던 이 값 그대로 둔다 — 이 티켓은 질감만 바꾸고
+ * 색은 건드리지 않는다(캐비닛·선반 모두 기존 크림 토큰 그대로다). 층별 차이는 색이 아니라
+ * 주파수·문턱·진하기(alphaScale)로만 만든다.
+ */
+const GRAIN_INK = [0.55, 0.45, 0.32] as const;
+interface GrainLayerOptions {
+  width: number;
+  height: number;
+  /** 가로 주파수. 낮을수록 결이 면을 따라 길게 흐른다. */
+  frequencyX: number;
+  /** 세로 주파수. 높을수록 결 가닥이 촘촘해진다. 이 x:y 비(이방성)가 곧 "결의 방향"이다. */
+  frequencyY: number;
+  /** 굵은 결과 잔결이 함께 나오는 정도. 1이면 한 굵기만, 4면 네 배율이 겹친다. */
+  octaves: number;
+  /** 층마다 다른 값을 줘야 여러 겹이 같은 무늬로 포개지지 않는다. */
+  seed: number;
+  /** 이 값 미만의 노이즈는 투명. 올리면 봉우리(진한 가닥)만 남고, 내리면 면 전체가 결로 덮인다. */
+  alphaThreshold: number;
+  /** 층의 진하기. 알파 행의 계수라 색은 그대로 두고 농도만 바뀐다. */
+  alphaScale: number;
+}
+
+// feColorMatrix 알파 행 `k 0 0 0 -t`는 "알파 = k × 빨강채널 - t"라는 뜻이다. t가 문턱(이 값 미만은
+// 투명), k가 진하기다. 색 세 줄은 상수라 결의 색은 언제나 GRAIN_INK 하나다.
+function buildGrainImage({
+  width,
+  height,
+  frequencyX,
+  frequencyY,
+  octaves,
+  seed,
+  alphaThreshold,
+  alphaScale,
+}: GrainLayerOptions): string {
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
     '<filter id="g" x="0" y="0" width="100%" height="100%">',
-    '<feTurbulence type="fractalNoise" baseFrequency="0.006 0.13" numOctaves="4" seed="17"/>',
-    `<feColorMatrix type="matrix" values="0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.32 1 0 0 0 -${alphaThreshold}"/>`,
+    `<feTurbulence type="fractalNoise" baseFrequency="${frequencyX} ${frequencyY}" numOctaves="${octaves}" seed="${seed}"/>`,
+    `<feColorMatrix type="matrix" values="0 0 0 0 ${GRAIN_INK[0]} 0 0 0 0 ${GRAIN_INK[1]} 0 0 0 0 ${GRAIN_INK[2]} ${alphaScale} 0 0 0 -${alphaThreshold}"/>`,
     '</filter>',
     `<rect width="${width}" height="${height}" filter="url(#g)"/>`,
     '</svg>',
@@ -138,11 +176,196 @@ function buildGrainImage(width: number, height: number, alphaThreshold: number):
 }
 
 // 800px 주기로 가로 반복한다 — 선반이 그보다 짧으면 반복 자체가 화면에 드러나지 않는다.
-const PLANK_GRAIN_IMAGE = buildGrainImage(800, 60, 0.42);
+// 선반 판은 이 티켓에서 건드리지 않는다(색·질감 모두 329 그대로다).
+const PLANK_GRAIN_IMAGE = buildGrainImage({
+  width: 800,
+  height: 60,
+  frequencyX: 0.006,
+  frequencyY: 0.13,
+  octaves: 4,
+  seed: 17,
+  alphaThreshold: 0.42,
+  alphaScale: 1,
+});
 
-// 캐비닛 프레임용. 세로 600px은 실제 캐비닛 높이(뷰포트 예산에 따라 대략 400~900px)와 같은 자릿수라
-// 늘어나거나 여러 번 반복되는 일이 거의 없다.
-const CABINET_GRAIN_IMAGE = buildGrainImage(800, 600, 0.58);
+// --- 360: 캐비닛 프레임(책장 테두리)의 나뭇결 -------------------------------------------------------
+//
+// --- 360: 캐비닛(프레임·기둥)의 나무 판재 질감 ------------------------------------------------------
+//
+// 이 티켓이 손보는 곳이다. 329가 프레임에 결을 깔긴 했지만 노이즈 한 겹이라, 나무라기보다 "옅게
+// 얼룩진 면"이었다.
+//
+// ⚠️ 여기까지 두 번 헛짚었다. ① 카테드럴 아치+옹이를 그렸다가 폐기(레퍼런스는 무늬목이 아니었다),
+// ② 가는 평행 결만 아주 옅게 깔았다가 폐기(결만으로는 나무 "판"으로 안 읽혔다). 최종 레퍼런스는
+// **가로 널판을 여러 장 쌓아 만든 벽/데크 판재**이고, 거기서 나무로 읽히게 만드는 것은 결이 아니라
+// **구조**였다. 그래서 이번 텍스처의 1번 요소는 결이 아니라 널판 분할이다.
+//
+// 레퍼런스에서 가져온 네 가지:
+//   ① 널판 분할 — 가로로 긴 널이 쌓여 있고, 판 사이마다 가늘고 진한 이음 홈이 지나간다.
+//      첫인상을 만드는 것이 이 규칙적인 분할이다.
+//   ② 널판마다 미묘한 밝기 차 — 어떤 널은 살짝 밝고 어떤 널은 살짝 어둡다. 판재가 제각각이라는
+//      자연스러움이 여기서 나온다. **밝기 차이지 색 차이가 아니다** — 크림 톤 안에서만 움직인다.
+//   ③ 널 안의 가로 잔결 — 곧게 흐르고 대비는 중간 이하.
+//   ④ 작은 옹이가 드문드문(널당 0~2개).
+//   (레퍼런스의 나사 자국 점은 외벽 판재 특징이라 생략했다 — 가구에는 어울리지 않는다.)
+//
+// 방향: 널판은 **가로로 눕는다.** 캐비닛은 테두리(10px)와 칸 사이 기둥(20px)이 한 요소의 배경을
+// 공유하므로 부재별로 결 방향을 나눌 수 없다(자식 레이어는 테두리를 못 덮는다 — 아래 ShelfCabinet
+// 주석). 레퍼런스가 가로 널판 벽이고, 가로 부재(상·하단 테두리)가 시선에 먼저 들어오므로 가로로
+// 통일했다. 세로 기둥에서는 널 이음 홈이 기둥을 가로지르는 짧은 선으로 보인다.
+//
+// **색은 하나도 새로 만들지 않았다.** 어두운 선·톤은 329부터 쓰던 GRAIN_INK, 밝은 선은 앱이 이미
+// 쓰는 paper-white 값이고, 바탕은 여전히 shelf-frame 토큰이다.
+const CABINET_TEXTURE_WIDTH_PX = 800;
+const CABINET_TEXTURE_HEIGHT_PX = 600;
+
+// ⚙️ 조절 손잡이 — 피드백은 대부분 이 값들로 흡수된다.
+/** 널 한 장의 높이(=이음 홈 간격). 키우면 판이 넓어지고, 줄이면 촘촘한 루버처럼 보인다. */
+const CABINET_PLANK_PITCH_PX = 44;
+/** 이음 홈의 진하기. 이 텍스처의 첫인상을 좌우한다. */
+const CABINET_SEAM_ALPHA = 0.22;
+/** 널판 간 밝기 차. 0.03이면 "있는지 없는지 알 정도"이고, 0.08을 넘으면 줄무늬로 읽힌다. */
+const CABINET_PLANK_TONE_ALPHA = 0.04;
+/** 잔결의 진하기·촘촘함. */
+const CABINET_FIBER_ALPHA = 0.6;
+const CABINET_FIBER_THRESHOLD = 0.32;
+/** 옹이의 진하기. 0이면 옹이가 사라진다. */
+const CABINET_KNOT_OPACITY = 0.3;
+
+/**
+ * ① 널판 이음 홈. 어두운 선 한 줄 바로 아래에 밝은 선을 붙여, 맞댄 두 널의 "그림자 + 모서리 빛"이
+ * 되게 한다. 한 줄만 그리면 홈이 아니라 그어놓은 선으로 보인다.
+ */
+const CABINET_PLANK_SEAMS = [
+  'repeating-linear-gradient(to bottom,',
+  `rgba(140,115,82,0) 0px, rgba(140,115,82,0) ${CABINET_PLANK_PITCH_PX - 2}px,`,
+  `rgba(140,115,82,${CABINET_SEAM_ALPHA}) ${CABINET_PLANK_PITCH_PX - 2}px, rgba(140,115,82,${CABINET_SEAM_ALPHA}) ${CABINET_PLANK_PITCH_PX - 1}px,`,
+  `rgba(250,247,246,.5) ${CABINET_PLANK_PITCH_PX - 1}px, rgba(250,247,246,.5) ${CABINET_PLANK_PITCH_PX}px,`,
+  `rgba(140,115,82,0) ${CABINET_PLANK_PITCH_PX}px, rgba(140,115,82,0) ${CABINET_PLANK_PITCH_PX + 1}px)`,
+].join(' ');
+
+/**
+ * ② 널판마다 다른 밝기. 주기를 널 세 장(3×pitch)으로 잡아 어두운 널 → 그대로 → 밝은 널이 돌아가게
+ * 한다. 주기가 널 한 장이면 모든 널이 같아져 ①만 남고, 두 장이면 명암이 규칙적으로 번갈아 보인다.
+ * 세 장이면 눈이 규칙을 잘 못 잡는다.
+ */
+const CABINET_PLANK_TONES = [
+  'repeating-linear-gradient(to bottom,',
+  `rgba(140,115,82,${CABINET_PLANK_TONE_ALPHA}) 0px, rgba(140,115,82,${CABINET_PLANK_TONE_ALPHA}) ${CABINET_PLANK_PITCH_PX}px,`,
+  `rgba(140,115,82,0) ${CABINET_PLANK_PITCH_PX}px, rgba(140,115,82,0) ${CABINET_PLANK_PITCH_PX * 2}px,`,
+  `rgba(250,247,246,${CABINET_PLANK_TONE_ALPHA * 1.6}) ${CABINET_PLANK_PITCH_PX * 2}px, rgba(250,247,246,${CABINET_PLANK_TONE_ALPHA * 1.6}) ${CABINET_PLANK_PITCH_PX * 3}px)`,
+].join(' ');
+
+interface FiberTextureOptions {
+  /** 결의 색(0~1). 329부터 쓰던 GRAIN_INK 하나다. */
+  color: readonly [number, number, number];
+  /** 결 방향 주파수. 극단적으로 낮아야 선이 곧다. */
+  frequencyX: number;
+  /** 결을 가로지르는 방향의 주파수. 높을수록 선이 가늘고 촘촘하다. */
+  frequencyY: number;
+  seed: number;
+  /** 이 값 미만은 투명. 낮출수록 선이 많아진다. */
+  alphaThreshold: number;
+  /** 선의 진하기. */
+  alphaScale: number;
+  /** 밀도 리듬 마스크의 seed. 두 레이어가 같은 리듬을 타지 않게 다르게 준다. */
+  maskSeed: number;
+}
+
+/**
+ * ③ 널 안의 가로 잔결.
+ *
+ * 가로 주파수를 세로의 1/1000까지 낮춰(0.0008 / 0.8) 노이즈를 극단적으로 늘이면 사실상 곧은
+ * 평행선이 된다. octaves는 1이다 — 옥타브를 겹칠수록 선이 굽이친다.
+ *
+ * 밀도 리듬은 저주파 노이즈를 따로 만들어 **알파를 곱해서** 만든다(feComposite operator="in"은
+ * in2의 알파로 in1을 깎는다). 곱셈이라 색은 그대로 두고 농도만 물결친다 — 촘촘한 구간과 성긴
+ * 구간이 갈린다.
+ *
+ * stitchTiles: 배경으로 반복되므로 타일 경계에서 노이즈가 끊기면 이음선이 보인다.
+ */
+function buildFiberTexture({
+  color,
+  frequencyX,
+  frequencyY,
+  seed,
+  alphaThreshold,
+  alphaScale,
+  maskSeed,
+}: FiberTextureOptions): string {
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${CABINET_TEXTURE_WIDTH_PX}" height="${CABINET_TEXTURE_HEIGHT_PX}">`,
+    '<filter id="f" x="0" y="0" width="100%" height="100%">',
+    `<feTurbulence type="fractalNoise" baseFrequency="${frequencyX} ${frequencyY}" numOctaves="1" seed="${seed}" stitchTiles="stitchTiles" result="fiber"/>`,
+    `<feColorMatrix in="fiber" type="matrix" values="0 0 0 0 ${color[0]} 0 0 0 0 ${color[1]} 0 0 0 0 ${color[2]} ${alphaScale} 0 0 0 -${alphaThreshold}" result="ink"/>`,
+    `<feTurbulence type="fractalNoise" baseFrequency="0.004 0.0015" numOctaves="2" seed="${maskSeed}" stitchTiles="stitchTiles" result="rhythm"/>`,
+    '<feColorMatrix in="rhythm" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.1 0 0 0 0.15" result="rhythmAlpha"/>',
+    '<feComposite in="ink" in2="rhythmAlpha" operator="in"/>',
+    '</filter>',
+    `<rect width="${CABINET_TEXTURE_WIDTH_PX}" height="${CABINET_TEXTURE_HEIGHT_PX}" filter="url(#f)"/>`,
+    '</svg>',
+  ].join('');
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+const CABINET_FIBER_IMAGE = buildFiberTexture({
+  color: GRAIN_INK,
+  frequencyX: 0.0008,
+  frequencyY: 0.8,
+  seed: 11,
+  alphaThreshold: CABINET_FIBER_THRESHOLD,
+  alphaScale: CABINET_FIBER_ALPHA,
+  maskSeed: 5,
+});
+
+/**
+ * ④ 옹이. 널 높이(pitch)에 맞춰 배치해 "널 안에 있는" 것으로 보이게 한다 — 아무 데나 흩으면 이음
+ * 홈에 걸쳐 얼룩처럼 보인다. 타원 두 겹(심 + 테)이고, 주변 결이 살짝 휘는 느낌은 왜곡 필터가 낸다.
+ * 널 세 장에 하나 꼴로만 둔다(레퍼런스도 드문드문이다).
+ */
+function buildKnotImage(): string {
+  const knot = (cx: number, cy: number, rx: number) =>
+    [
+      `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${(rx * 0.62).toFixed(1)}" fill="none" stroke-width="1.1"/>`,
+      `<ellipse cx="${cx}" cy="${cy}" rx="${(rx * 0.42).toFixed(1)}" ry="${(rx * 0.26).toFixed(1)}" fill="%238C7352" stroke="none"/>`,
+    ].join('');
+
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${CABINET_TEXTURE_WIDTH_PX}" height="${CABINET_TEXTURE_HEIGHT_PX}">`,
+    '<filter id="k" x="-20%" y="-20%" width="140%" height="140%">',
+    '<feTurbulence type="fractalNoise" baseFrequency="0.02 0.05" numOctaves="2" seed="31" result="n"/>',
+    '<feDisplacementMap in="SourceGraphic" in2="n" scale="4" xChannelSelector="R" yChannelSelector="G"/>',
+    '</filter>',
+    `<g filter="url(%23k)" stroke="%238C7352" fill="none" stroke-opacity="${CABINET_KNOT_OPACITY}" fill-opacity="${CABINET_KNOT_OPACITY}">`,
+    // y좌표는 널의 중앙(pitch의 절반 + n×pitch)에 맞춘다.
+    knot(120, CABINET_PLANK_PITCH_PX * 1.5, 7),
+    knot(560, CABINET_PLANK_PITCH_PX * 4.5, 5.5),
+    knot(300, CABINET_PLANK_PITCH_PX * 7.5, 6.5),
+    knot(690, CABINET_PLANK_PITCH_PX * 10.5, 5),
+    knot(190, CABINET_PLANK_PITCH_PX * 12.5, 6),
+    '</g>',
+    '</svg>',
+  ].join('');
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+const CABINET_KNOT_IMAGE = buildKnotImage();
+
+// 네 겹을 한 요소의 background-image 목록으로 겹친다. 자식 레이어로 나눌 수 없는 이유는 아래
+// ShelfCabinet 주석에 있다 — 자식은 테두리 영역(결이 이어져야 하는 자리)을 덮지 못한다.
+// 목록의 앞이 위층이다: 이음 홈 → 옹이 → 잔결 → 널 밝기.
+const CABINET_TEXTURE_IMAGE = [
+  CABINET_PLANK_SEAMS,
+  CABINET_KNOT_IMAGE,
+  CABINET_FIBER_IMAGE,
+  CABINET_PLANK_TONES,
+].join(', ');
+const CABINET_TEXTURE_SIZE = [
+  'auto',
+  `${CABINET_TEXTURE_WIDTH_PX}px ${CABINET_TEXTURE_HEIGHT_PX}px`,
+  `${CABINET_TEXTURE_WIDTH_PX}px ${CABINET_TEXTURE_HEIGHT_PX}px`,
+  'auto',
+].join(', ');
 
 // 328(2차 디자인 피드백 "여전히 뚝 끊기는 느낌"): 낙하 그림자를 box-shadow에서 별도 레이어로
 // 분리한다. box-shadow는 요소의 사각형을 그대로 복제해 흐리는 것이라, 판 좌우 끝에서 그림자가
