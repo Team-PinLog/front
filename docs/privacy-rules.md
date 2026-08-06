@@ -9,6 +9,8 @@ PinLog은 익명 SNS다. 타인에게는 발행된 Collection과 공개 가능�
 - 타인 조회 응답에서 Record의 `contexts`는 **항상 `null`**이다(`08_API_명세` 14.1, DTO `RecordDetail.contexts: ContextDetail[] | null`).
 - 공개 진입 경로는 **Feed / 타인 Shelf / Collection 상세** 셋뿐이다. 이 화면에서 Context 원문을 렌더링하지 않는다.
 - `ownedByMe`(Collection 상세) 또는 `contexts === null` 여부로 소유자/타인을 구분한다. 타인이면 원문 영역 자체를 그리지 않는다.
+- **Context 원문이 반드시 사용자가 직접 쓴 메모인 것은 아니다.** 대화 캡처 이미지로 기록하는 경로(front#114, `POST /places/suggestions`)에서는 AI가 추출한 `extracted.contextSuggestion`이 본문 초안으로 채워진다 — 사용자가 그대로 저장하면 **제3자의 발화에서 파생된 문장이 Context 원문이 된다**. 규칙 자체는 그대로지만 위반 시 대가가 커졌으니, 이 화면 계열을 손댈 때 위 세 줄을 특히 엄격히 본다.
+  - 같은 응답의 `extracted.evidence`(대화 근거 문장)는 **저장·전송하지 않는다.** 현재는 기록 시트 안 읽기 전용 표시에만 쓰인다(front#114 확인). 이 값을 Context 본문·Collection·검색 색인 등 서버로 나가는 어떤 필드에도 넣지 않는다.
 
 ## 2. `member.id`(내부 사용자 ID)를 쓰지 않는다
 

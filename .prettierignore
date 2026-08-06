@@ -1,2 +1,8 @@
 node_modules
 dist
+
+# docs/reference/는 Team-PinLog/docs 레포의 사본이다. 원본과 바이트 단위로 같아야
+# doc-syncer의 diff 기반 동기화에 포맷 잡음이 끼지 않는다 — Prettier가 건드리지 않는다.
+# (lint-staged가 *.md 전체에 prettier --write를 걸기 때문에 이 항목이 없으면
+#  참조 문서를 스테이징할 때마다 자동으로 재포맷된다.)
+docs/reference/

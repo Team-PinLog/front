@@ -1,8 +1,8 @@
 # 아키텍처
 
-대상: PC 웹. 스택 예정: React + TypeScript + Vite + Tailwind + TanStack Query + TanStack Router + Axios + React Hook Form + Zod.
+대상: PC 웹. 스택: React + TypeScript + Vite + Tailwind + TanStack Query + TanStack Router + Axios + React Hook Form + Zod.
 
-> 프로젝트는 아직 생성 전이다. 아래 폴더 구조는 **계획**이며, 생성 시 이 문서를 기준으로 맞춘다.
+> 아래 폴더 구조는 계획이 아니라 **현행**이다. 새 도메인을 추가하면 2장 목록을 함께 갱신한다.
 
 ## 1. 데이터 흐름
 
@@ -37,17 +37,18 @@
 - **로그인 상태 확인**: `logged_in` 비-`HttpOnly` 쿠키로 앱 시작 시 초기 화면(로그인/메인)을 결정한다. **UI 힌트 전용이며 인가 판단에 쓰지 않는다** — 실제 인가는 서버가 매 요청 인증 쿠키로 검증한다.
 - 세부 계약은 `docs/api-contract.md`의 [확정] 인증 섹션을 따른다.
 
-## 2. 폴더 구조 계획
+## 2. 폴더 구조
 
 ```text
 src/
   app/          # 라우터, 프로바이더, 전역 레이아웃
   pages/        # 라우트 단위 화면
-  features/     # 도메인 단위 묶음 (records, collections, feed, follow, search, auth ...)
+  features/     # 도메인 단위 묶음 (아래 목록)
     <feature>/
       api/       # API 함수 + 요청/응답 타입(Zod 스키마)
       hooks/     # useXxxQuery / useXxxMutation
       components/
+      lib/       # 그 도메인 안에서만 쓰는 순수 함수
   shared/
     http/        # Axios 인스턴스, 인터셉터
     ui/          # 공용 컴포넌트
@@ -55,7 +56,10 @@ src/
   contexts/     # UI 상태용 Context (아래 3장)
 ```
 
+현재 `features/`는 11개다 — `auth`, `collections`, `feed`, `follows`, `home`, `layout`, `map`, `me`, `places`, `records`, `search`.
+
 - 폴더 소유자를 나누지 않는다. 구현은 한 사람이 담당한다.
+- `layout`은 도메인이 아니라 AppShell(사이드바·헤더) 묶음이고, `home`·`me`는 화면 단위 묶음이다 — 나머지 8개가 실제 도메인이다.
 
 ## 3. 상태 분리
 

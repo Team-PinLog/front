@@ -1,9 +1,9 @@
 # PinLog Front — 에이전트 하네스
 
-PinLog 프론트엔드(PC 웹). 스택 예정: React + TypeScript + Vite + Tailwind + TanStack Query/Router + Axios + React Hook Form + Zod.
+PinLog 프론트엔드(PC 웹). 스택: React + TypeScript + Vite + Tailwind + TanStack Query/Router + Axios + React Hook Form + Zod.
 백엔드: Spring Boot 4.1.0 / PostgreSQL / Redis / OAuth2. 구현은 나, UI/UX는 동료(ghkim1632).
 
-> Vite 프로젝트는 아직 생성 전이다. 현재 레포에는 문서·설정만 있다.
+> Vite 프로젝트는 생성돼 있고 기능 구현이 진행 중이다. 폴더 구조는 `docs/architecture.md` 2장이 현행 기준이다.
 
 ## 작업 전 반드시 읽는다
 
