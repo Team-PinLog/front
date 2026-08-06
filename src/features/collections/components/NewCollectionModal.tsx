@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
-import { useCoverJobQueue } from '@/contexts/useCoverJobQueue';
 import { useMyRecordListQuery } from '@/features/map/hooks/useMyRecordListQuery';
 import { useCreateCollectionMutation } from '../hooks/useCreateCollectionMutation';
-import { useCoverGeneration } from '../hooks/useCoverGeneration';
-import { CoverStylePicker } from './CoverStylePicker';
+import { CollectionCoverModal } from './CollectionCoverModal';
 import type { CreateCollectionResponse } from '../api/createCollection';
 
 const TITLE_MAX_LENGTH = 20;
@@ -34,14 +32,12 @@ interface NewCollectionModalProps {
  * 317(표지 생성): mode="library"에서만 "만들기" 성공 후 **모달을 닫지 않고 표지 화풍 선택 단계로
  * 넘어간다.** 컬렉션은 그 시점에 이미 만들어져 있고(표지를 기다리지 않는다 — api-contract.md
  * § Collection 표지 이미지), 사용자가 화풍을 고르지 않고 닫아도 표지 없는 정상 상태로 남는다.
+ * 화풍이 정해지는 순간 모달은 닫히고, 그 뒤(인쇄본 완성 → PATCH 저장)는 CoverJobProvider가
+ * 백그라운드에서 이어받는다(326).
  *
- * 326: **화풍이 정해지는 순간 모달은 닫힌다.** 여기까지가 사용자의 일이고, 그 뒤(인쇄본 GPU 잡
- * 완성 → PATCH 저장)는 CoverJobProvider가 백그라운드에서 이어받는다. 예전에는 이 모달이 인쇄본
- * 완성까지 붙잡고 "완료"를 누르게 했는데, 그 대기가 몇 분이 될 수 있어 "생성 버튼을 표지 완성에
- * 묶지 않는다"는 원칙과 어긋났다. 그래서 완료 버튼·표지 저장 상태가 이 모달에서 사라졌다.
- * mode="fromNewRecord"에는 붙이지 않는다 — 그 경로는 모달이 컬렉션을 만들지 않고(제목만 상위로
- * 넘긴다) 실제 생성은 Record 저장 뒤 PlaceRecordSheet가 하며, 제목을 여러 개 쌓아 한 번에 여러
- * 컬렉션을 만들 수 있어 "표지를 몇 번 고르게 할 것인가"가 별도 UX 결정이 된다.
+ * 327: 그 표지 단계는 CollectionCoverModal로 떼어냈다. mode="fromNewRecord"는 여전히 여기서
+ * 표지를 다루지 않는다 — 그 경로는 이 모달이 컬렉션을 만들지 않고(제목만 상위로 넘긴다) 실제
+ * 생성은 Record 저장 뒤 PlaceRecordSheet가 하므로, 표지 단계도 그쪽이 저장 성공 후에 띄운다.
  */
 export function NewCollectionModal({
   isOpen,
@@ -58,31 +54,17 @@ export function NewCollectionModal({
   const isLibraryMode = mode === 'library';
   const recordListQuery = useMyRecordListQuery(isOpen && isLibraryMode);
   const createCollectionMutation = useCreateCollectionMutation();
-  const coverJobQueue = useCoverJobQueue();
 
-  const cover = useCoverGeneration({
-    // 326: 인쇄본을 기다리지 않는다. 선택이 접수되는 즉시 백그라운드에 넘기고 모달을 닫는다 —
-    // 컬렉션은 이미 만들어져 있고, 표지는 완성되는 대로 책장·상세에 나중에 나타난다.
-    onStyleAccepted: (job) => {
-      coverJobQueue.enqueue(job);
-      resetState();
-      onClose();
-    },
-  });
-
-  // 함수 선언인 이유: 위 onStyleAccepted가 이 함수를 부르고 이 함수가 cover를 쓴다 — 화살표
-  // 상수로는 순환 참조라 선언 순서를 잡을 수 없다(호출 시점에는 cover가 이미 할당돼 있다).
-  function resetState() {
+  const resetState = () => {
     setTitle('');
     setSelectedRecordIds([]);
     setCreatedCollection(null);
     createCollectionMutation.reset();
-    cover.reset();
-  }
+  };
 
   const handleClose = () => {
     // 표지 단계에서 닫아도 컬렉션은 이미 만들어져 있다 — 취소가 아니라 표지만 없는 상태다.
-    // 화풍을 고르기 전이라 맡길 인쇄본도 없다. 후보 폴링은 cover.reset()으로 멈춘다.
+    // 표지 요청·폴링은 CollectionCoverModal이 언마운트되면서 함께 정리된다.
     resetState();
     onClose();
   };
@@ -122,69 +104,18 @@ export function NewCollectionModal({
         onSuccess: (data: CreateCollectionResponse) => {
           // 317: 컬렉션 생성은 여기서 이미 끝났다. 호출부(책장 갱신 등)에 먼저 알리고, 모달은
           // 닫지 않은 채 표지 단계로 넘어간다 — 표지를 기다리느라 생성 완료를 늦추지 않는다.
+          // 표지 요청 자체는 표지 모달이 뜨면서 시작한다(CollectionCoverModal).
           onCreated?.({ collectionId: data.collectionId, title: data.title });
           setCreatedCollection(data);
-          cover.start({ collectionId: data.collectionId, title: data.title });
         },
       },
     );
   };
 
   if (isCoverStep) {
-    // 표지를 만들 길이 없을 때만 "표지 없이 닫기"를 연다 — 요청 자체가 실패했거나(서비스 장애),
-    // 상한을 넘겨 그만 물은 경우다. 인쇄본 실패는 이제 여기서 볼 수 없다(모달은 그 전에 닫힌다).
-    const canLeaveWithoutCover = cover.error !== null || cover.isTimedOut;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/40 p-4">
-        <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-lg bg-white p-6">
-          <h2 className="flex-none text-sm font-bold text-pin-navy">
-            &lsquo;{createdCollection.title}&rsquo; 표지 만들기
-          </h2>
-
-          <div className="mt-4 flex min-h-0 flex-1 flex-col">
-            <CoverStylePicker
-              cover={cover}
-              onRedraw={() =>
-                cover.start({
-                  collectionId: createdCollection.collectionId,
-                  title: createdCollection.title,
-                })
-              }
-            />
-          </div>
-
-          {/* 표지를 만들 수 없는 상황(서비스 장애·상한 초과)에서의 유일한 탈출구. 이때는 표지 없는
-              컬렉션이 남지만, 그건 우리가 고를 수 있는 선택지가 아니라 만들 그림 자체가 없는 것이다. */}
-          {canLeaveWithoutCover && (
-            <button
-              type="button"
-              onClick={handleClose}
-              className="mt-2 flex-none text-xs text-ink-gray underline"
-            >
-              표지 없이 닫기
-            </button>
-          )}
-
-          {/* 318 수정: "나중에 하기"를 없앴다. 표지 없는 컬렉션을 남기면 나중에 표지를 붙이는
-              별도 UI가 반드시 필요해진다 — 고르기 싫은 사용자에게는 무작위 한 장이 빈 표지보다
-              낫다. 다만 이미지 서비스가 아예 응답하지 않는 상황에서는 나갈 길이 있어야 하므로,
-              그때만 "표지 없이 닫기"가 나타난다(위).
-              326: "완료"는 없앴다. 화풍이 정해지면 그것으로 사용자의 일은 끝이고 모달이 닫힌다 —
-              인쇄본을 기다리는 버튼을 남겨두면 백그라운드 저장의 의미가 없다. */}
-          <div className="mt-4 flex-none">
-            <button
-              type="button"
-              onClick={cover.requestAutoPick}
-              disabled={cover.isAutoPicking || cover.phase !== 'generating'}
-              className="h-11 w-full rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy disabled:opacity-40"
-            >
-              {cover.isAutoPicking ? '고르는 중…' : '알아서 골라주기'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    // 327: 표지 단계는 CollectionCoverModal로 떼어냈다(장소 추가 흐름과 공유). 이 자리에서
+    // 폼 대신 그대로 반환하므로 라이브러리에서 보이는 화면·순서는 그대로다.
+    return <CollectionCoverModal collection={createdCollection} onClose={handleClose} />;
   }
 
   return (
