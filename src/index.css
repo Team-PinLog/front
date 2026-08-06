@@ -52,6 +52,74 @@
   }
 }
 
+@layer base {
+  /* 359 — 전역 높이 계약 ①: 문서 루트까지 높이를 이어 준다.
+     `height: %`는 부모의 높이가 **확정**일 때만 해석된다. 이 세 줄이 없으면 앱 안에서 h-full을
+     쓴 순간 조용히 auto로 무너지고, 그 자리에 뷰포트 단위(dvh/vh)를 대신 박게 된다 — 그렇게
+     하면 높이의 출처가 컴포넌트마다 흩어져 "누가 화면을 넘치게 했는지"를 추적할 수 없다.
+     AppLayout 셸은 확정 높이(100dvh)를 자기가 선언하므로 이 규칙에 의존하지 않지만, AppLayout을
+     쓰지 않는 화면(로그인 등)까지 같은 기준을 갖게 하려면 계약은 문서 루트에서 시작해야 한다.
+
+     ⚠️ body에 overflow: hidden을 걸지 않는다. 그러면 아직 세로가 넘치는 화면의 하단이 스크롤도
+     못 한 채 잘려 **닿을 수 없는 UI**가 된다. 페이지 스크롤을 없애는 일은 셸이 자기 높이를 확정하고
+     내부에 스크롤 영역을 내주는 방식으로만 한다(AppLayout <main>). */
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    /* 셸이 뷰포트 높이에 딱 맞으면 오버스크롤 반동 때 문서 배경이 그대로 드러난다. 기본 흰색이
+       아니라 앱 배경과 같은 색이어야 이음매가 보이지 않는다. */
+    background-color: theme('colors.paper-white');
+  }
+
+  /* 359 — 브랜드 스크롤바.
+     표준(scrollbar-width/color)과 WebKit 의사요소를 **둘 다** 넣는다. Firefox는 표준만, Chrome·
+     Safari는 의사요소만 해석하므로 한쪽만으로는 절반의 브라우저가 기본 회색 스크롤바를 그린다.
+     scrollbar-color는 상속되므로 html에 한 번만 선언하면 내부 스크롤 영역까지 함께 따라온다.
+     의사요소는 상속되지 않아 선택자를 한정하지 않고 전역으로 둔다.
+
+     ⚠️ 폭을 0으로 만들거나 display:none으로 숨기지 않는다. 스크롤바는 "여기 더 있다"를 알리는
+     유일한 시각 단서라, 없애면 스크롤 가능 영역인지 알 수 없어진다. 얇게(thin/8px) + 배경과
+     가까운 색으로 은은하게 만들되 항상 보이게 둔다.
+     색은 tailwind.config.js에 이미 있는 토큰만 theme()로 가져온다 — 그 파일은 357이 독점하므로
+     새 색을 추가하지 않는다. */
+  html {
+    scrollbar-color: theme('colors.line-card') theme('colors.paper-white');
+  }
+
+  /* scrollbar-color는 상속되지만 **scrollbar-width는 상속되지 않는다.** html에만 걸면 Firefox에서
+     문서 스크롤바만 얇아지고 AppLayout 본문·목록 같은 내부 스크롤 영역은 기본 두께로 남는다. */
+  * {
+    scrollbar-width: thin;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background-color: theme('colors.paper-white');
+  }
+
+  ::-webkit-scrollbar-thumb {
+    /* 투명 테두리 + content-box 클립으로 트랙 안에 여백을 만든다. 실제로 칠해지는 폭은 10 - 3*2 =
+       4px이라 표준 쪽 `thin`과 두께 인상이 맞는다. border-radius만으로는 이 여백이 생기지 않는다. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+    background-color: theme('colors.line-card');
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.ink-gray-light');
+  }
+}
+
 /* Team-PinLog/mockup index.html .book-context-postit(라인 284)·hover(라인 289)를 그대로 옮긴 값이다.
    회전각은 --note-rotate 커스텀 프로퍼티로 인스턴스마다 다르게 주입한다(ContextStickyNote 참고). */
 .context-sticky-note {

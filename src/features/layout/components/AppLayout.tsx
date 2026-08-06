@@ -236,7 +236,22 @@ function AppShell() {
 
   return (
     <>
-      <div className="min-h-screen bg-paper-white">
+      {/* 359 — 전역 높이 계약 ②: 셸이 **확정 높이**를 선언한다.
+          min-h-screen이었을 때는 "최소 뷰포트만큼"이라 내용이 넘치면 그만큼 문서가 자라 페이지
+          전체가 스크롤됐다. 해상도에 따라 앱이 화면 밖으로 흘러 반응형이 깨진 인상을 준 원인이다.
+          h-[100dvh]로 바꿔 셸의 높이를 화면에 고정하고, 넘치는 만큼은 아래 <main> 안에서만 스크롤한다.
+
+          100vh가 아니라 100dvh인 이유 — iOS Safari의 100vh는 주소창이 보이는 상태에서도 "주소창이
+          숨겨졌을 때의 큰 화면"을 가리켜 실제 보이는 높이보다 크다. 고정 높이로 못 박는 순간 그
+          차이가 그대로 잘려 하단 탭바가 화면 밖으로 밀려난다. dvh는 지금 실제로 보이는 높이다.
+          (이미 PAGE_MIN_HEIGHT_CLASS와 PlaceRecordSheet가 dvh 기준이라 단위도 여기서 통일된다.)
+
+          overflow-hidden은 안전판이다. 아래 <main>이 flex-1이라 이 높이를 넘을 수 없지만, 나중에
+          in-flow 형제가 하나 늘면 조용히 문서가 자라는 것을 막는다.
+          ⚠️ 고정 위치 자식(사이드바·탭바·설정 패널·배경막)은 이 overflow에 잘리지 않는다 — 이 div에
+          transform·filter가 없어 containing block이 되지 않기 때문이다. 여기에 transform 계열
+          속성을 추가하면 그 순간 전부 잘린다. */}
+      <div className="flex h-[100dvh] flex-col overflow-hidden bg-paper-white">
         {/* 330: sm(<768) 전용 하단 탭바. 화면 바닥에 붙는 딱딱한 바 대신 둥근 알약이 떠 있는 형태다
             (디자인 피드백). md 이상은 좌측 사이드바가 대신하므로 md:hidden으로 숨긴다 —
             display:none이 되면 아래 ResizeObserver가 높이 0을 보고하고, 그게 그대로 "사이드바 모드는
@@ -399,7 +414,18 @@ function AppShell() {
             PAGE_MIN_HEIGHT_CLASS도 이 값과 짝을 맞춘다.
             (이슈 1.1: pb/pl 값 자체는 여전히 레이아웃 시프트 방지용 Tailwind 리터럴이고, sm의 실제
             예산 계산은 아래 Context로 흘려보내는 navChromeHeightPx 실측값을 쓴다 — 둘은 별개다.) */}
-        <main className="pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 md:pl-[4.5rem] xl:pl-60">
+        {/* 359 — 전역 높이 계약 ③: 남는 세로를 전부 차지하는 **유일한 스크롤 영역**.
+            flex-1로 셸의 남은 높이를 받고, min-h-0으로 "flex 자식은 내용보다 작아지지 않는다"는
+            기본값을 푼다 — 이 한 줄이 없으면 내용 높이만큼 늘어나 overflow-y-auto가 영영 발동하지
+            않는다(flex 스크롤 박스의 고전적인 함정). 페이지 스크롤이 이 영역 안의 스크롤로 옮겨온다.
+
+            pb는 그대로 스크롤 내용 안쪽에 남는다 — sm에서 목록 맨 아래까지 스크롤했을 때 마지막
+            항목이 떠 있는 탭바에 가리지 않게 하는 여백이라, 스크롤 박스 바깥으로 빼면 안 된다.
+
+            PAGE_MIN_HEIGHT_CLASS(shelfCabinetLayout.ts)와 정확히 짝이 맞는다: 이 영역의 content
+            box 높이는 sm에서 100dvh - 5rem - 인셋, md 이상에서 100dvh이고 그게 곧 그 상수의 값이다.
+            따라서 기존 페이지들은 "딱 맞아 스크롤 없음"이 되고, 넘치는 화면만 여기서 스크롤된다. */}
+        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 md:pl-[4.5rem] xl:pl-60">
           <LayoutMetricsContext.Provider
             value={{ navChromeHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
           >
