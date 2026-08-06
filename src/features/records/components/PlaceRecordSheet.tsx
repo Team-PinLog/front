@@ -8,6 +8,8 @@ import { useMyCollectionsQuery } from '@/features/collections/hooks/useMyCollect
 import { useAddRecordsToCollectionMutation } from '@/features/collections/hooks/useAddRecordsToCollectionMutation';
 import { useCreateCollectionMutation } from '@/features/collections/hooks/useCreateCollectionMutation';
 import { NewCollectionModal } from '@/features/collections/components/NewCollectionModal';
+import { CollectionCoverModal } from '@/features/collections/components/CollectionCoverModal';
+import type { CreateCollectionResponse } from '@/features/collections/api/createCollection';
 import { useCreateRecordMutation } from '../hooks/useCreateRecordMutation';
 import type { CreateRecordResponse } from '../api/createRecord';
 import {
@@ -179,6 +181,12 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     CollectionCreationOutcome[] | null
   >(null);
   const [previewSavedRecord, setPreviewSavedRecord] = useState<CreateRecordResponse | null>(null);
+  // 327: 저장 직후 표지를 고를 새 컬렉션. 생성에 성공했을 때만 채워지고, 표지 모달을 닫으면
+  // 다시 null이 되어 두 번 뜨지 않는다.
+  const [coverTargetCollection, setCoverTargetCollection] = useState<{
+    collectionId: number;
+    title: string;
+  } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -234,6 +242,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     setExistingCollectionAddResults(null);
     setCollectionCreationResults(null);
     setPreviewSavedRecord(null);
+    setCoverTargetCollection(null);
   };
 
   const handleClose = () => {
@@ -465,6 +474,20 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
         status: result.status === 'fulfilled' ? 'success' : 'error',
       })),
     );
+
+    // 327: 새로 만든 컬렉션이 있으면 저장 결과 화면 위에 표지 단계를 한 번 띄운다.
+    // 생성이 실패했으면 건너뛴다 — 붙일 컬렉션이 없고, 결과 화면의 실패 안내·재시도가 그대로 남는다.
+    // 이 흐름의 새 컬렉션은 1개로 제한되므로(아래 "+ 컬렉션 생성" 참고) 표지 모달도 한 번뿐이다.
+    const createdCollection = createResults.find(
+      (result): result is PromiseFulfilledResult<CreateCollectionResponse> =>
+        result.status === 'fulfilled',
+    );
+    if (createdCollection) {
+      setCoverTargetCollection({
+        collectionId: createdCollection.value.collectionId,
+        title: createdCollection.value.title,
+      });
+    }
   };
 
   const searchResults = searchMutation.data ?? [];
@@ -482,6 +505,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
     ? myCollectionsQuery.data.pages.flatMap((page) => page.items)
     : [];
   const canSave = !!sheet.selectedPlace && !!sheet.contextBody.trim() && !isSaving;
+  const hasStagedCollection = sheet.stagedCollectionTitles.length > 0;
   const manualDetailsReady = activeTab === 'manual' && !!sheet.selectedPlace;
   const showDetails = activeTab === 'image' ? imageStage === 'details' : manualDetailsReady;
 
@@ -504,6 +528,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
               existingCollectionAddResults={existingCollectionAddResults}
               collectionCreationResults={collectionCreationResults}
               onClose={handleClose}
+              onCollectionCreated={setCoverTargetCollection}
             />
           ) : (
             <>
@@ -942,14 +967,25 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                       <span className="text-[11px] font-bold tracking-[0.12em] text-log-mint">
                         추가할 컬렉션 · 선택 사항
                       </span>
+                      {/* 327: 이 흐름의 새 컬렉션은 1개까지다. 여러 개를 허용하면 저장 완료 후
+                          표지 모달이 연달아 떠 저장의 완결감을 끊는다. 기존 컬렉션 다중 선택은
+                          그대로다(그쪽은 표지를 고를 일이 없다). */}
                       <button
                         type="button"
                         onClick={() => setIsNewCollectionModalOpen(true)}
-                        className="rounded-full bg-log-mint/15 px-3 py-1.5 text-[11px] font-bold text-pin-navy"
+                        disabled={hasStagedCollection}
+                        className="rounded-full bg-log-mint/15 px-3 py-1.5 text-[11px] font-bold text-pin-navy disabled:opacity-40"
                       >
                         + 컬렉션 생성
                       </button>
                     </div>
+
+                    {hasStagedCollection && (
+                      <p className="text-xs text-ink-gray">
+                        여기서는 새 컬렉션을 하나만 만들 수 있어요. 더 필요하면 저장 후 나의
+                        책장에서 만들어 주세요.
+                      </p>
+                    )}
 
                     {sheet.stagedCollectionTitles.length > 0 && (
                       <div className="flex flex-wrap gap-2">
@@ -1041,6 +1077,16 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
         onClose={() => setIsNewCollectionModalOpen(false)}
         onTitleStaged={(title) => sheet.stageCollectionTitle(title)}
       />
+
+      {/* 327: 저장 결과 화면 **위에** 겹쳐 띄운다. 저장은 이미 끝났고(뒤에 결과가 보인다) 표지는
+          그 다음 일이라, 결과보다 먼저 띄우면 저장이 아직 안 끝난 것처럼 보인다. 닫으면 결과
+          화면이 그대로 남아 사용자가 "확인"으로 마무리한다. */}
+      {coverTargetCollection && (
+        <CollectionCoverModal
+          collection={coverTargetCollection}
+          onClose={() => setCoverTargetCollection(null)}
+        />
+      )}
     </>
   );
 }
