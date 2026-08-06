@@ -431,26 +431,60 @@ function getPageHorizontalPaddingPx(viewportWidthPx: number): number {
 export const FEED_SIDE_GUTTER_PX = 28; // 원형 버튼 h-7(28px)이 딱 들어가는 폭
 
 /**
+ * 328: 선반 판(ShelfPlank) 그림자가 판 좌우로 번지는 폭.
+ *
+ * 그림자는 `0 10px 16px`이라 x offset이 0이고 blur가 16px이다 — CSS 명세상 blur는 도형 경계를
+ * 기준으로 안팎으로 절반씩 퍼지므로, 판의 좌·우 끝에서 정확히 8px씩 바깥으로 나간다. 세로(아래
+ * 10 + 8 = 18px)는 FEED_ROWS_PADDING_BOTTOM_PX가 이미 받아주고 있었는데 가로만 빠져 있었다:
+ * 행 스크롤 박스의 `overflow-y-auto`는 세로만 스크롤할 뿐 **가로도 함께 클리핑**하기 때문에
+ * (overflow-x가 자동으로 auto가 된다) 판 좌우 그림자가 정확히 이 폭만큼 잘려 나갔다.
+ *
+ * 그래서 스크롤 박스 좌우에 이 폭만큼 padding을 주고(FeedList의 getRowsScrollStyle), 그만큼을
+ * 아래 두 함수에서 카드 가로 예산에서 빼고 선반 덩어리 폭에는 더한다 — 빼지 않으면 확보한 여백이
+ * 그대로 카드 폭을 침범해 컨테이너를 넘고(가로 스크롤바), 더하지 않으면 판이 그만큼 좁아진다.
+ * 세로 여백과 달리 여유분을 얹지 않는다 — 폰트 지표 같은 브라우저 편차가 없는 결정적 값이다.
+ */
+export const FEED_PLANK_SHADOW_BLEED_PX = 8;
+
+/**
  * 314: 선반 한 덩어리(책 줄 + 좌우 gutter)의 실제 폭.
  *
  * 카드 폭이 세로 예산에 걸려 작아지면 가로에 남는 폭이 생기는데, 선반 판을 컨테이너 전체로 늘리면
  * 그 남는 폭만큼 판이 책 없는 허공까지 뻗어 "우측이 비었다"로 보인다. 대신 선반 전체를 이 폭으로
  * 잡고 가운데 정렬하면, 판은 책보다 좌우 gutter만큼만 넉넉하게 깔리고(시안의 오버행) 남는 폭은
  * 양쪽으로 균등하게 빠진다. 그 gutter가 좌우 페이지 버튼의 자리이기도 하다.
+ * 328: 여기에 그림자 번짐 폭이 더해진다 — 이 값은 스크롤 박스의 좌우 padding으로 들어가므로
+ * 선반 판 자체는 여전히 "책 줄 + gutter"만큼만 넓다(판이 더 넓어지는 게 아니라, 판 바깥에 그림자가
+ * 살 자리가 생긴다). 좌우 페이지 버튼은 이 바깥 박스의 left-0/right-0이라 판 끝에 반쯤 걸친다.
  */
 export function getFeedShelfWidthPx(
   columns: number,
   cardWidthPx: number,
   gridGapPx: number,
 ): number {
-  return columns * cardWidthPx + (columns - 1) * gridGapPx + 2 * FEED_SIDE_GUTTER_PX;
+  return (
+    columns * cardWidthPx +
+    (columns - 1) * gridGapPx +
+    2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX)
+  );
+}
+
+/**
+ * 328: PAGE_CONTAINER_CLASS가 실제로 만드는 컨테이너 폭. getFeedGridAreaWidthPx가 원래 안에서
+ * 계산하던 첫 두 줄을 그대로 꺼낸 것이다 — 선반 덩어리(getFeedShelfWidthPx)가 이 폭 안에
+ * 들어가는지가 "가로 스크롤바가 생기지 않는다"의 정의라, 테스트가 리터럴을 복제하지 않고 같은
+ * 식을 부를 수 있어야 한다.
+ */
+export function getPageContainerWidthPx(viewportWidthPx: number, reservedLeftPx = 0): number {
+  const effectiveWidthPx = viewportWidthPx - reservedLeftPx;
+  return Math.min(effectiveWidthPx, 1152) - 2 * getPageHorizontalPaddingPx(viewportWidthPx);
 }
 
 export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx = 0): number {
-  const effectiveWidthPx = viewportWidthPx - reservedLeftPx;
-  const containerWidth =
-    Math.min(effectiveWidthPx, 1152) - 2 * getPageHorizontalPaddingPx(viewportWidthPx);
-  return containerWidth - 2 * FEED_SIDE_GUTTER_PX;
+  return (
+    getPageContainerWidthPx(viewportWidthPx, reservedLeftPx) -
+    2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX)
+  );
 }
 
 // --- Feed: 책장 세로 예산(동적, 전 구간) -------------------------------------------------------------
@@ -528,8 +562,12 @@ export function getPageContentBudgetPx(
 // 그만큼 줄어드는데 solveFeedScale이 그걸 모르면 계산상으로만 딱 맞고 실제로는 스크롤바가 뜬다.
 // 값은 FeedList.tsx가 인라인 style로 직접 읽어 쓴다 — Tailwind 클래스 리터럴(pt-2 등)로 두면 JS
 // 상수와 두 곳에서 따로 관리돼 어긋날 수 있어서, 이 파일을 단일 소스로 삼는다.
+// 328: 좌우도 같은 이유의 여백이 필요했는데 빠져 있어 모든 선반 판의 좌우 그림자가 잘렸다
+// (FEED_PLANK_SHADOW_BLEED_PX 주석). 세로 여백과 달리 이 값은 카드 "세로" 예산이 아니라 "가로"
+// 예산에서 차감된다 — getFeedGridAreaWidthPx가 이미 빼고 있으므로 여기서는 값만 정의한다.
 export const FEED_ROWS_PADDING_TOP_PX = 8; // hover 리프트(6px) 수용
 export const FEED_ROWS_PADDING_BOTTOM_PX = 24; // 맨 아래 선반 판 그림자
+export const FEED_ROWS_PADDING_X_PX = FEED_PLANK_SHADOW_BLEED_PX; // 선반 판 좌우 그림자
 const FEED_ROWS_PADDING_PX = FEED_ROWS_PADDING_TOP_PX + FEED_ROWS_PADDING_BOTTOM_PX;
 
 /**
