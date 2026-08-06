@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useMyRecordListQuery } from '@/features/map/hooks/useMyRecordListQuery';
 import { useCreateCollectionMutation } from '../hooks/useCreateCollectionMutation';
@@ -60,6 +60,49 @@ export function NewCollectionModal({
   const recordListQuery = useMyRecordListQuery(isOpen && isLibraryMode);
   const createCollectionMutation = useCreateCollectionMutation();
 
+  /**
+   * 363: 생성 요청이 **날아가 있는 동안만** 이탈을 막는다.
+   *
+   * 이 구간은 서버에 요청이 가 있고 응답을 아직 못 받은 상태다. 여기서 새로고침하면 컬렉션이
+   * 만들어졌는지 아닌지를 사용자가 알 수 없게 된다(만들어졌는데 화면에는 없거나, 다시 시도해
+   * 중복으로 만들거나).
+   *
+   * ⚠️ 반대로 **모달이 열려만 있을 때는 걸지 않는다.** 제목을 입력하다 새로고침하는 것은 사용자가
+   * 의도한 행동이고, 그때까지 서버에 만들어진 것은 아무것도 없다. 과잉 방어는 경고 피로만 만든다.
+   *
+   * ⚠️ **표지 생성 폴링 단계도 막지 않는다.** 판단 근거는
+   * docs/troubleshooting/2026-08-06-background-polling-provider-lifetime.md(326)다:
+   *  - 그 폴링은 화면 전환에 살아남도록 CoverJobProvider를 라우터 바깥에 둔 설계다. 새로고침까지
+   *    살아남지는 못한다(메모리 안의 러너라 문서가 다루는 범위가 "이동"이지 "새로고침"이 아니다) —
+   *    즉 새로고침하면 완성된 표지를 저장하는 후속 PATCH는 사라진다.
+   *  - 그런데도 막지 않는 이유는 **표지 없는 컬렉션이 오류가 아니라 정상 상태**이기 때문이다
+   *    (docs/api-contract.md § Collection 표지 이미지). 잃는 것은 "이번에 고른 표지"뿐이고
+   *    컬렉션 자체는 이미 안전하다.
+   *  - 게다가 GPU 잡이라 완성까지 몇 분이 걸린다. 그 몇 분 내내 이탈 경고를 띄우는 것은 위의 과잉
+   *    방어 금지에 정면으로 걸리고, 326이 만든 "표지를 기다리지 않고 떠나도 된다"는 계약과도
+   *    어긋난다.
+   *
+   * 문구는 브라우저 기본값을 쓴다 — 커스텀 문구는 요즘 브라우저가 무시한다.
+   */
+  const isCreating = createCollectionMutation.isPending;
+
+  useEffect(() => {
+    if (!isCreating) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // preventDefault가 표준이고, returnValue는 이를 아직 요구하는 브라우저용 하위호환이다.
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    // 요청이 끝나거나(성공·실패) 모달이 사라지면 반드시 걷는다 — 남으면 앱 어디서 나가든 경고가
+    // 뜨는 사고가 된다. 의존성이 isCreating 하나라 상태가 바뀔 때마다 등록/해제가 짝을 이룬다.
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isCreating]);
+
   const resetState = () => {
     setTitle('');
     setSelectedRecordIds([]);
@@ -88,7 +131,7 @@ export function NewCollectionModal({
 
   const trimmedTitle = title.trim();
   const canSubmit = isLibraryMode
-    ? trimmedTitle.length > 0 && selectedRecordIds.length > 0 && !createCollectionMutation.isPending
+    ? trimmedTitle.length > 0 && selectedRecordIds.length > 0 && !isCreating
     : trimmedTitle.length > 0;
 
   const handleSubmit = () => {
@@ -138,7 +181,7 @@ export function NewCollectionModal({
           onChange={(event) => setTitle(event.target.value)}
           maxLength={TITLE_MAX_LENGTH}
           placeholder="컬렉션 제목을 입력해 주세요"
-          disabled={createCollectionMutation.isPending}
+          disabled={isCreating}
           className="mt-4 h-11 flex-none rounded-lg border border-pin-navy/15 bg-white px-3 text-sm text-pin-navy outline-none placeholder:text-ink-gray-light focus:border-log-mint focus:ring-2 focus:ring-log-mint/20 disabled:opacity-40"
         />
         <p className="mt-1 flex-none text-right text-[11px] text-ink-gray-light">
@@ -200,7 +243,7 @@ export function NewCollectionModal({
           <button
             type="button"
             onClick={handleClose}
-            disabled={createCollectionMutation.isPending}
+            disabled={isCreating}
             className="h-11 flex-1 rounded-lg border border-pin-navy/15 text-sm font-bold text-pin-navy disabled:opacity-40"
           >
             취소
@@ -211,7 +254,7 @@ export function NewCollectionModal({
             disabled={!canSubmit}
             className="h-11 flex-1 rounded-lg bg-log-mint text-sm font-bold text-pin-navy disabled:opacity-40"
           >
-            {createCollectionMutation.isPending ? '만드는 중…' : '만들기'}
+            {isCreating ? '만드는 중…' : '만들기'}
           </button>
         </div>
       </div>
