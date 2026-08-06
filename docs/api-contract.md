@@ -80,6 +80,50 @@
 - **카카오 키**: JS 키·REST 키 모두 프론트 `.env`에 저장한다(`.gitignore`로 커밋 제외). **보안은 `.gitignore`가 아니라 카카오 개발자 콘솔의 도메인(플랫폼) 등록에 의존한다** — 등록되지 않은 도메인에서는 키가 유출돼도 호출이 거부된다.
 - 지도(`GET /records/map`)·검색(`POST /search/records`) 응답의 `bounds`는 `fitBounds`용 **최소 사각형**이다. 결과 없으면 **`null`**, 1개면 sw=ne 점 사각형.
 
+### 이미지 기반 장소 제안 (`POST /places/suggestions`)
+
+> ⚠️ **이 절의 근거는 원본 `08_API_명세`가 아니라 front#109다.** Collection 표지 생성 절(§"Collection 표지 생성")과 같은 패턴 — 원본 문서에 이 엔드포인트가 아직 없고, 스키마가 바뀌면 이 문서가 아니라 그 이슈가 기준이다. 이 엔드포인트는 Core API 소속이라(`/image/api/*`와 달리) `httpClient`를 그대로 쓴다.
+
+<!-- 근거: front#109, S15P11A705-344 -->
+
+- **목적**: 대화 캡처 이미지 1장에서 장소명 후보를 AI가 추출하고, 후보마다 카카오 로컬 검색 결과를 붙여 함께 내려준다. 위 "세 가지 장소 검색" 표에는 없는 **네 번째 경로**다 — 카카오도 `GET /records/map`도 아니고, 이미지 한 장에서 장소를 **발견**하는 용도다. 사용자가 최종 확인·수정한 뒤 기존 `POST /records`로 저장한다. **AI 결과만으로 자동 저장되지 않는다.**
+- **요청**: `multipart/form-data`, 필드명 `image`, 이미지 **1장만**, **JPEG/PNG만**, **최대 5 MiB**(front#109). 기존 로그인 쿠키+CSRF 흐름을 그대로 쓴다 — 별도 인증 방식이 없다.
+  - `httpClient`는 기본 헤더로 `Content-Type: application/json`을 고정하므로, 이 요청만은 `headers: { 'Content-Type': undefined }`로 재정의해야 브라우저가 multipart boundary를 자동으로 붙인다(`suggestPlacesFromImage.ts`).
+  - 프론트 자체 제한(5MB, JPG/PNG, `PlaceRecordSheet.tsx`)은 front#109의 서버 제한과 **값이 일치한다.** 완화·강화 논의 없이 프론트 제한을 서버 제한과 다르게 바꾸지 않는다.
+- **응답 스키마**(프론트 Zod, `src/features/places/api/suggestPlacesFromImage.ts` 기준):
+
+  ```typescript
+  type PlaceSuggestionResponse = {
+    requestId: string;
+    candidates: Array<{
+      candidateId: string;
+      extracted: {
+        placeName: string;
+        regionHints: string[];
+        branchHint: string | null;
+        evidence: string[];
+        contextSuggestion: string | null;
+      };
+      kakaoSearch: {
+        status: 'SUCCESS' | 'NO_RESULTS' | 'FAILED';
+        query: string;
+        items: SuggestedKakaoPlace[]; // 후보당 최대 3개(front#109)
+      };
+    }>; // 최대 3개(front#109)
+    warnings: Array<{ code: string; message: string; candidateId: string | null }>;
+  };
+  ```
+
+- **`warnings[].code` 값**(front#109, 확정):
+  | `code`                         | 의미                                                              |
+  | ------------------------------ | ----------------------------------------------------------------- |
+  | `NO_PLACE_CANDIDATES`          | 이미지에서 추출된 장소 후보가 없음                                |
+  | `KAKAO_SEARCH_PARTIAL_FAILURE` | 일부 후보의 카카오 검색이 실패함                                  |
+  | `KAKAO_PLACE_NOT_RECORDABLE`   | 저장 API의 제약(길이 제한 등)으로 쓸 수 없는 카카오 후보가 제외됨 |
+- **요청 자체가 거부되는 HTTP 오류**(front#109, 확정 — 공통 [확정]의 응답 봉투를 따른다): `400 INVALID_IMAGE_COUNT`·`400 INVALID_IMAGE`·`413 IMAGE_TOO_LARGE`·`415 UNSUPPORTED_MEDIA_TYPE`·`502 PLACE_SUGGESTION_UPSTREAM_ERROR`·`503 PLACE_SUGGESTION_UNAVAILABLE`·`503 PLACE_SUGGESTION_BUSY`·`504 PLACE_SUGGESTION_TIMEOUT`. 내부 오류를 그대로 노출하지 않고 재시도 또는 수동 검색 유도 문구로 안내한다.
+
+이 엔드포인트와 관련해 아직 근거가 없어 [협의 필요]로 남긴 항목은 문서 하단 [협의 필요] 목록의 3·4번을 참고한다.
+
 ### [확정] 지도 마커 조회 응답에 latestCollectionId 추가
 
 - 대상 엔드포인트: `GET /records/map`(지도 마커 목록 조회)
@@ -287,6 +331,8 @@ type PlaceSummary = {
 1. **provider 대소문자** — 경로는 소문자(`kakao`), 응답은 대문자(`KAKAO`). 타입은 대문자로 두고 경로 조립 시 `toLowerCase()`로 매핑한다.
 2. **표지 생성 요청의 인증·rate limit** — `POST /image/api/covers`는 GPU 비용이 발생하는데 front#99 예제에 인증 헤더가 없다. 비로그인 허용 여부와 남용 방지 정책이 미확정이다(`05-1_파트간_요구사항.md` §3.2). <!-- 2026-08-05 doc-sync -->
    - **구현은 막지 않는다** — 가이드대로 인증 없이 호출한다. 다만 인증이 붙으면 요청 헤더가 바뀌므로, 이미지 서비스 호출부를 전용 클라이언트 한 곳에 모아 그 변경이 한 파일에서 끝나게 한다.
+3. **이미지 기반 장소 제안(`POST /places/suggestions`)의 rate limit 구체값** — Gemini Vision 등 분석 비용이 발생하는 경로다. front#109가 `503 PLACE_SUGGESTION_BUSY`(동시 분석 제한)의 **존재**는 명시하지만 임계값(동시 요청 수·시간당 횟수 등)은 없다. 표지 생성(위 2번)과 같은 이유로 협의 필요. <!-- 근거: front#109, S15P11A705-344 -->
+4. **`kakaoSearch.status`(`NO_RESULTS`/`FAILED`)가 오류인지 정상 응답 안의 상태 표시인지** — 200 응답 안에 후보별로 내려오는 필드라는 스키마 형태로 미루어 보면 "정상 응답, 개별 후보 실패"에 가깝지만, front#109 본문에는 이 필드명 자체가 없다(이슈는 `warnings[].code`로만 부분 실패를 표현한다). 확정 전까지 프론트는 후보별 안내로만 처리하고 전체 요청 실패로 승격하지 않는다(`PlaceRecordSheet.tsx`, S15P11A705-343). <!-- 근거: front#109 부재, S15P11A705-343/344 -->
 
 ### 이번에 [협의 필요]에서 제거(확정으로 흡수)됨
 
