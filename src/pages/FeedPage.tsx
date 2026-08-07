@@ -1,4 +1,5 @@
 import { FeedList } from '@/features/feed/components/FeedList';
+import { FEED_LAYOUT } from '@/features/feed/lib/feedLayout';
 import {
   PAGE_CONTAINER_CLASS,
   PAGE_MIN_HEIGHT_CLASS,
@@ -21,8 +22,15 @@ export function FeedPage() {
     <main
       className={`${PAGE_CONTAINER_CLASS} ${PAGE_MIN_HEIGHT_CLASS} flex flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS}`}
     >
+      {/* 382: 서점 레이아웃에서는 표제를 명조(380이 들여온 제주명조, font-serif)로 세운다 — 서점
+          매대의 안내판은 고딕보다 명조로 조판되는 쪽이 "책이 놓인 자리"라는 인상을 만든다. 문구는
+          그대로 두었다: 이 페이지가 하는 일이 바뀐 게 아니라 놓는 방식만 바뀌었고, 서점 흉내를 내는
+          새 문구("이번 주의 책" 같은)는 실제로 주간 큐레이션이 아닌데 그렇게 읽히게 만든다.
+          ⏪ 롤백: FEED_LAYOUT이 'classic'이면 이 조판도 예전 그대로(고딕)로 돌아간다. */}
       <PageTitle
-        className="text-2xl font-extrabold text-pin-navy"
+        className={`text-2xl font-extrabold text-pin-navy ${
+          FEED_LAYOUT === 'bookstore' ? 'font-serif' : ''
+        }`}
         description="익명의 사용자가 만든 다양한 컬렉션을 구경해 보세요."
       >
         새로운 장소를 발견해 보세요
