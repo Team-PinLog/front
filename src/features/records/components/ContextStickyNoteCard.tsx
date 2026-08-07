@@ -94,8 +94,11 @@ export function ContextStickyNoteCard({
 
   if (isEditing) {
     return (
+      // 415: 수정 중인 카드가 흰 입력 상자로 변하면 무리에서 한 장만 종이가 아닌 것처럼 튄다.
+      // 작성 자리(ContextComposerSlot)와 같은 인덱스 카드 문법(크림 종이·잉크 테두리·대시 점선·
+      // 손글씨 본문)으로 맞춰, 고치는 동안에도 같은 포스트잇으로 읽히게 한다. 동작은 그대로다.
       <div
-        className="relative flex flex-col gap-2 rounded-lg border border-log-mint bg-white p-4"
+        className="relative flex flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5 shadow-[0_1px_1px_rgba(4,33,66,0.1),0_2px_4px_-2px_rgba(4,33,66,0.14)]"
         style={{ marginTop: stackIndex > 0 ? -CONTEXT_STICKY_NOTE_STACK_OFFSET_PX : 0 }}
       >
         <textarea
@@ -106,9 +109,11 @@ export function ContextStickyNoteCard({
           onKeyDown={handleKeyDown}
           maxLength={CONTEXT_BODY_MAX_LENGTH}
           disabled={updateContextMutation.isPending}
-          className="min-h-[80px] resize-none rounded-lg border border-pin-navy/15 bg-white p-2 text-sm leading-relaxed text-pin-navy outline-none focus:border-log-mint focus:ring-2 focus:ring-log-mint/20 disabled:opacity-40"
+          aria-label="맥락 본문 수정"
+          className="min-h-[76px] flex-1 resize-none bg-transparent font-hand text-xl leading-6 text-pin-navy outline-none disabled:opacity-60"
         />
-        <p className="text-right text-[11px] text-ink-gray-light">
+        <div aria-hidden="true" className="mt-2 h-0 border-t border-dashed border-[#CFC5AC]" />
+        <p className="mt-2 text-right font-sans text-[11px] tracking-wide text-[#a89f8a]">
           {draftBody.length}/{CONTEXT_BODY_MAX_LENGTH}
         </p>
         {updateContextMutation.isError && (

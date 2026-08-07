@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadKakaoMaps, type KakaoMap, type KakaoMarker } from '@/shared/lib/kakaoMaps';
+import { loadKakaoMaps, type KakaoMap, type KakaoCustomOverlay } from '@/shared/lib/kakaoMaps';
+import {
+  getRecordMarkerAsset,
+  RECORD_MARKER_ASSET_HEIGHT,
+  RECORD_MARKER_ASSET_WIDTH,
+  RECORD_MARKER_TIP_Y_RATIO,
+} from '@/shared/lib/getRecordMarkerAsset';
 
 // 폴라로이드 한 장 안에 담기는 지도라 "이 장소 하나"만 읽히면 된다. 4는 KakaoPlaceMap이 선택된
 // 장소를 보여줄 때 쓰는 것과 같은 레벨(축척 100m)이다.
@@ -10,6 +16,55 @@ const MAP_LEVEL = 4;
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 
 type MapStatus = 'loading' | 'ready' | 'error';
+
+/* ---------------------------------------------------------------------- *
+ * 415-13: 이 지도의 핀을 **앱의 지도 마커 자산**으로 통일한다.
+ *
+ * 이전에는 `new kakao.maps.Marker(...)`(카카오 기본 빨간 핀)를 썼다. 홈 지도(RecordMapView)와
+ * 컬렉션 펼침 지도(CollectionSpreadMap)는 둘 다 `assets/color-markers/*.svg` 20색 자산을
+ * CustomOverlay에 올려 쓰고 있어서, 상세 화면만 다른 핀이 찍혀 있었다.
+ *
+ * 값·문법은 RecordMapView에서 그대로 가져왔다(그 파일은 features/map 소유라 수정하지 않고
+ * 읽기만 했다):
+ * - 표시 크기는 원본(64x76)의 정확히 1/2 — 비율이 어긋나지 않는다.
+ * - `<img src>`로 넣는다. asset 20개가 모두 같은 `<filter id="shadow">`를 갖고 있어 인라인
+ *   SVG로 심으면 문서 전체에서 id가 충돌한다(그림자도 asset에 내장돼 있다).
+ * - Tailwind preflight의 `img { max-width:100% }` 때문에 폭 0인 오버레이 래퍼 안에서 마커가
+ *   0x0으로 찌그러진다 — max-width를 풀고 크기를 인라인으로 못박아야 그려진다.
+ * - yAnchor는 1이 아니라 RECORD_MARKER_TIP_Y_RATIO다(asset 아래 여백은 그림자 자리라 바닥을
+ *   기준으로 잡으면 핀 끝이 좌표에서 밀린다).
+ *
+ * 색: `getRecordMarkerAsset(null)` = 미분류 slate. RecordDetail DTO에는 `latestCollectionId`가
+ * 없어(11.1 — recordId·place·contexts·keywords·createdAt) 홈 지도처럼 컬렉션 색을 고를 근거가
+ * 없다. 없는 값을 지어내지 않고 미분류 자산을 쓴다.
+ *
+ * 강조: 이 지도에는 핀이 하나뿐이고 그게 "지금 보고 있는 장소"라 홈의 **선택 핀** 상태로 그린다.
+ * scale 1.35 + 원점 = 핀 끝, 그리고 선택 시 그림자. 두 값 모두 RecordMapView 안의 모듈 상수라
+ * import할 수 없어 같은 값을 여기 적는다(출처: RecordMapView.tsx MARKER_HIGHLIGHT_SCALE/ORIGIN,
+ * applyMarkerVisualState).
+ * ---------------------------------------------------------------------- */
+const MARKER_WIDTH = RECORD_MARKER_ASSET_WIDTH / 2;
+const MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
+const MARKER_HIGHLIGHT_SCALE = 1.35;
+const MARKER_HIGHLIGHT_ORIGIN = `50% ${RECORD_MARKER_TIP_Y_RATIO * 100}%`;
+const MARKER_HIGHLIGHT_SHADOW = 'drop-shadow(0 6px 10px rgba(4,33,66,0.45))';
+
+/** 선택 상태로 그린 기록 마커 엘리먼트. */
+function createSelectedMarkerElement(title: string): HTMLImageElement {
+  const image = document.createElement('img');
+  image.src = getRecordMarkerAsset(null);
+  image.alt = '';
+  image.title = title;
+  image.draggable = false;
+  image.style.display = 'block';
+  image.style.maxWidth = 'none';
+  image.style.width = `${MARKER_WIDTH}px`;
+  image.style.height = `${MARKER_HEIGHT}px`;
+  image.style.transformOrigin = MARKER_HIGHLIGHT_ORIGIN;
+  image.style.transform = `scale(${MARKER_HIGHLIGHT_SCALE})`;
+  image.style.filter = MARKER_HIGHLIGHT_SHADOW;
+  return image;
+}
 
 interface RecordPlaceMapSnapshotProps {
   lat: number;
@@ -34,7 +89,7 @@ interface RecordPlaceMapSnapshotProps {
 export function RecordPlaceMapSnapshot({ lat, lng, name }: RecordPlaceMapSnapshotProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
-  const markerRef = useRef<KakaoMarker | null>(null);
+  const markerRef = useRef<KakaoCustomOverlay | null>(null);
   const [status, setStatus] = useState<MapStatus>('loading');
 
   useEffect(() => {
@@ -74,7 +129,13 @@ export function RecordPlaceMapSnapshot({ lat, lng, name }: RecordPlaceMapSnapsho
     map.setCenter(position);
 
     markerRef.current?.setMap(null);
-    markerRef.current = new kakao.maps.Marker({ map, position, title: name });
+    markerRef.current = new kakao.maps.CustomOverlay({
+      map,
+      position,
+      content: createSelectedMarkerElement(name),
+      xAnchor: 0.5,
+      yAnchor: RECORD_MARKER_TIP_Y_RATIO,
+    });
   }, [lat, lng, name, status]);
 
   return (

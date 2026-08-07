@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PinPushMount } from '@/shared/ui/PinSymbols';
 import { RecordPlaceMapSnapshot } from './RecordPlaceMapSnapshot';
 
 interface RecordPolaroidStackProps {
@@ -23,38 +24,57 @@ function PlacePhotoFallback() {
       className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(150deg,#f6f2ec,#e9e3d9)] px-4 text-center"
       aria-hidden="true"
     >
-      <svg viewBox="0 0 48 48" width="30" height="30" fill="none" stroke="#b8ae9f" strokeWidth={2}>
+      <svg viewBox="0 0 48 48" width="26" height="26" fill="none" stroke="#b8ae9f" strokeWidth={2}>
         <rect x="6" y="12" width="36" height="27" rx="4" />
         <circle cx="24" cy="26" r="7" />
         <path d="M18 12l3-4h6l3 4" />
       </svg>
-      <span className="text-xs leading-relaxed text-[#a29d95]">아직 이 장소의 사진이 없어요</span>
+      <span className="text-[11px] leading-relaxed text-[#a29d95]">
+        아직 이 장소의 사진이 없어요
+      </span>
     </div>
   );
 }
 
 /**
- * 373 시안 우상단의 "폴라로이드 두 장"(지도 스냅샷 + 장소 사진). 흰 테두리 5px, 각각 1.2deg/-1.6deg
- * 회전, 서로 겹쳐 떠 있는 연출이다.
+ * 종이를 판에 고정하는 핀. **앱의 기존 푸시핀(shared/ui/PinSymbols의 PinPushMount)을 그대로 쓴다.**
  *
- * 시안은 이 덩어리를 페이지에 absolute로 얹어 본문 위를 덮게 뒀지만(레이아웃 공간 0), 시안의
- * 페이지 폭은 1080px·비율 3/4이라 본문이 아래로 길게 흐르는 전제다. 실제 모달은 그보다 좁고
- * 세로도 뷰포트에 묶여서, 그대로 얹으면 키워드 칩과 포스트잇 위를 폴라로이드가 가린다.
- * 그래서 **폭만 오른쪽 열로 예약하고**(lg 이상) 그 안에서 시안 그대로 겹쳐 띄운다 — 회전과
- * 음수 오프셋으로 열 밖으로 삐져나오는 "떠 있는" 인상은 유지되고, 글자는 가리지 않는다.
- * lg 미만에서는 열을 만들지 않고 본문 위에 자연스럽게 쌓인다.
+ * 415 첫 판에서는 이 자리에 그라디언트로 직접 그린 초록 압정을 새로 만들었는데, 386에서 확정된
+ * 푸시핀 심볼이 이미 shared/ui에 있었다(홈 '최근의 장소' 카드 RecentRecordCard, 홈 지도 포스터
+ * MapPosterFrame이 쓴다). 같은 앱에서 종이를 꽂는 물건이 화면마다 다르면 안 된다.
  *
- * 408: 사진 칸을 고정 px(228x163 = 1.40:1)에서 계약 비율인 **4:3**으로 맞추고, 스택 전체를
- * 고정 px 대신 비율·백분율로 다시 잡았다. 근거는 front#94 / api-contract DTO — PlaceSummary:
- * 썸네일은 4:3·가로 1200px 고정 제공이라 표시도 4:3으로 잘라야 한다.
- * - 스택: 폭 100%(최대 280px) + 세로 비율 280:330(= 기존 280x318을 사진 높이 증가분만큼 늘린 값).
- *   컨테이너 폭이 줄면 두 폴라로이드가 같은 비율로 함께 줄고, 시안의 겹침·삐져나옴은 유지된다.
- *   그래서 안쪽 배치도 px가 아니라 백분율로 적는다.
- * - 사진: 프레임 높이를 고정하지 않고 안쪽 img에 폭 100% + 비율 4/3 + object-fit cover를 준다.
- *   테두리 5px가 border-box에 포함돼 프레임 쪽에 비율을 걸면 사진이 4:3에서 어긋나므로,
- *   비율은 테두리가 없는 img 자신에게 건다.
- * - 폴백도 같은 4/3 상자라 사진 유무로 높이가 달라지지 않는다. 비율만으로 로딩 전 영역이
- *   확보돼 이미지가 늦게 와도 레이아웃이 밀리지 않는다.
+ * 색은 currentColor라 부모의 text-log-mint를 따른다 — MapPosterFrame이 지도를 꽂을 때 쓰는 것과
+ * 같은 값이고, 그림자(PIN_PUSH_SHADOW)와 기울기(22deg)는 심볼이 이미 갖고 있다.
+ */
+
+/**
+ * 415 최종 시안 우측 열: **압정으로 꽂힌 폴라로이드 + 압정으로 꽂힌 지도 조각**.
+ *
+ * 이 화면에서 과감함을 쓰는 단 한 곳이다(frontend-design — "boldness는 한 곳에"). 좌측 열
+ * (글·포스트잇)은 그만큼 조용하게 둔다.
+ *
+ * 415 실물 피드백·최종 시안 반영:
+ * - **색 필터를 걷어냈다.** 처음에는 지도에 세피아 필터 + 베이지 multiply + 안쪽 그림자를 얹어
+ *   "종이에 인쇄된 지도"로 만들었는데, 지도는 정보이지 장식이 아니다 — 색을 바꾸면 실제 지도에서
+ *   길·물·녹지를 가르던 색 구분이 흐려져 읽기 어려워진다. 지도는 있는 그대로 둔다.
+ * - **선 테두리도 흰 매트도 없다.** "포스터처럼"이라는 지시를 매트 프레임으로 한 번 풀었지만
+ *   최종 시안은 프레임이 보이지 않는다. 남는 건 종이 조각의 물성뿐이다 — 거의 각진 모서리,
+ *   은은한 가장자리 그림자, 살짝 기울임, 그리고 우상단에 꽂힌 초록 압정.
+ * - **압정으로 통일했다.** 지도에 쓰던 마스킹 테이프를 뺐다. 한 판 위의 두 장을 같은 방식으로
+ *   꽂아 둔 쪽이 "게시판에 붙인 콜라주"로 읽히고, 테이프는 포스트잇 쪽 문법으로 남겨 두는 편이
+ *   좌·우 열의 역할 구분에도 맞는다(왼쪽=붙인 종이, 오른쪽=꽂은 물건).
+ * - **폴라로이드를 키우고 왼쪽으로 기울였다**(열 폭의 78%→88%, 테두리 7/24→9/30px, +3.6→-3.2deg).
+ *   우측 열이 340px로 넓어진 만큼 사진이 이 열의 주인공이 되어야 한다.
+ *
+ * 373→415 변경: 이전에는 폴라로이드 **두 장**(지도 한 장 + 사진 한 장)이 서로 겹쳐 떠 있었다.
+ * 시안은 지도를 폴라로이드에서 빼내 아래에 넓게 깔고, 폴라로이드는 사진 한 장만 남겨 지도 위에
+ * 겹치게 한다 — 지도가 작은 액자에 갇혀 있을 때보다 "이 장소가 어디인지"가 읽힌다.
+ *
+ * 408 계약은 그대로 지킨다:
+ * - 사진은 계약 비율인 **4:3**으로 자른다(비율은 테두리 없는 img 자신에게 건다 — 프레임에 걸면
+ *   border-box에 테두리가 포함돼 사진이 4:3에서 어긋난다).
+ * - `thumbnailUrl`이 null이거나 로드 실패면 같은 4:3 상자의 폴백으로 간다(높이가 달라지지 않는다).
+ * - 받은 URL 문자열을 그대로 src에 넣는다(front#94 정정 코멘트).
  */
 export function RecordPolaroidStack({
   lat,
@@ -69,26 +89,70 @@ export function RecordPolaroidStack({
   const photoUrl = thumbnailUrl && thumbnailUrl !== failedUrl ? thumbnailUrl : null;
 
   return (
-    <div className="relative mx-auto aspect-[28/33] w-full max-w-[280px] flex-none lg:mx-0">
-      <div className="absolute left-[-8.57%] top-0 h-[51.5%] w-[86.43%] rotate-[1.2deg] overflow-hidden rounded-[12px] border-[5px] border-white shadow-[0_8px_20px_-10px_rgba(60,54,48,0.4)]">
-        <RecordPlaceMapSnapshot lat={lat} lng={lng} name={placeName} />
+    // 상한을 열 폭에 맞춘다. 286px로 묶여 있던 동안 열 오른쪽이 비어 있었고, 사진을 키우라는
+    // 지시(2번)가 그만큼 덜 반영됐다. 열은 맥락 콜라주에 폭을 내주며 340→300px로 줄었다.
+    <div className="relative mx-auto flex w-full max-w-[296px] flex-1 flex-col">
+      {/*
+        지도 포스터. 폴라로이드는 absolute라 흐름에 높이를 보태지 않으므로, 이 위 여백이 곧 두 장이
+        겹치는 깊이를 정한다. 19번 피드백("사진이 지도 위 절반을 덮는다")으로 50%→72%까지 내렸다 —
+        폴라로이드 아래끝(≈열 폭의 74%)보다 조금 작은 값이라 이제 **모서리만** 스친다.
+        88%까지 내려 봤더니 겹침이 아예 사라져 두 장이 따로 놀았다(실렌더 확인).
+        지도는 열 폭의 92%에 오른쪽 정렬이다 — 왼쪽으로 기운 폴라로이드와 어긋나야 겹침이 산다.
+
+        높이는 비율로 잡는다(5:6). 한때 flex-1로 남는 높이를 다 먹게 했더니 모달이 세로로 커지면서
+        지도가 열 끝까지 늘어난 **두루마리**가 됐다 — 종이 한 조각으로 읽히지 않는다. 비율로 두면
+        어떤 모달 높이에서도 같은 모양이고, 남는 높이는 페이지 여백으로 둔다.
+      */}
+      <div className="relative mt-[72%] aspect-[5/6] w-[92%] flex-none self-end rotate-[-1.2deg] text-log-mint">
+        {/* 지도 **포스터**. 20번 지시로 재단선·캡션 판형을 걷어내고 레퍼런스대로 **사방 균일한
+            흰 매트**를 두른다. 폴라로이드는 아래만 두꺼운 판형이라 두 장이 같은 형식이 아니고,
+            그 차이가 "사진"과 "지도"를 가른다.
+
+            남긴 인쇄물 문법은 하프톤 하나뿐이다 — 캡션(장소명·좌표)은 균일한 매트 안에서는 아래
+            여백만 두껍게 만들어 매트를 깨므로 뺐다. 지도 색은 건드리지 않는다(3번 지시).
+            21번: 그림자는 포스트잇 수준(alpha 0.10/0.14)까지 낮춘다. */}
+        <div className="h-full w-full rounded-[2px] bg-white p-2.5 shadow-[0_1px_1px_rgba(60,54,48,0.10),0_3px_6px_-3px_rgba(60,54,48,0.16)]">
+          <div className="relative h-full w-full overflow-hidden">
+            <RecordPlaceMapSnapshot lat={lat} lng={lng} name={placeName} />
+            {/* 하프톤: 3px 격자의 검정 3.5% 점. 색조를 바꾸지 않는 무채색 질감이다. */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+              style={{
+                backgroundImage: 'radial-gradient(rgba(0,0,0,0.035) 0.5px, transparent 0.5px)',
+                backgroundSize: '3px 3px',
+              }}
+            />
+          </div>
+        </div>
+
+        <PinPushMount height={30} className="right-2 top-0 -translate-y-1/2" />
       </div>
 
-      <div className="absolute left-[11.43%] top-[47%] z-[3] w-[81.43%] rotate-[-1.6deg] overflow-hidden rounded-[12px] border-[5px] border-white shadow-[0_10px_24px_-10px_rgba(60,54,48,0.45)]">
-        {photoUrl ? (
-          // 경로·확장자를 가정하지 않고 응답 문자열을 그대로 넣는다(front#94 정정 코멘트).
-          <img
-            src={photoUrl}
-            alt={`${placeName} 사진`}
-            onError={() => setFailedUrl(photoUrl)}
-            className="block aspect-[4/3] w-full object-cover"
-            draggable={false}
-          />
-        ) : (
-          <div className="aspect-[4/3] w-full">
-            <PlacePhotoFallback />
-          </div>
-        )}
+      {/* 폴라로이드: **왼쪽으로** 기운다(-3.2deg, 실물 피드백 8). 지도가 -1.2deg로 같은 쪽으로
+          기울어 있어 사진까지 오른쪽으로 기울면 둘이 서로 벌어져 보였다 — 같은 방향으로 기울되
+          각도를 크게 벌리면 한 손으로 붙인 두 장으로 읽힌다.
+          아래 테두리를 두껍게 준 것이 폴라로이드의 "적는 칸"이다. */}
+      {/* 21번: 그림자를 포스트잇과 같은 급으로 낮춘다(alpha 0.5 → 0.10/0.16). 종이 세 종류가
+          모두 같은 세기로 눌려 있어야 한 판 위에 놓인 것으로 읽힌다. */}
+      <div className="absolute -left-2 top-0 z-20 w-[88%] rotate-[-3.2deg] rounded-[3px] border-[9px] border-b-[30px] border-white bg-white text-log-mint shadow-[0_1px_1px_rgba(60,54,48,0.10),0_3px_6px_-3px_rgba(60,54,48,0.16)]">
+        <PinPushMount height={36} className="-top-4 left-1/2 -translate-x-1/2" />
+        <div className="overflow-hidden">
+          {photoUrl ? (
+            // 경로·확장자를 가정하지 않고 응답 문자열을 그대로 넣는다(front#94 정정 코멘트).
+            <img
+              src={photoUrl}
+              alt={`${placeName} 사진`}
+              onError={() => setFailedUrl(photoUrl)}
+              className="block aspect-[4/3] w-full object-cover"
+              draggable={false}
+            />
+          ) : (
+            <div className="aspect-[4/3] w-full">
+              <PlacePhotoFallback />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

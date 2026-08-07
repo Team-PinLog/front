@@ -68,13 +68,16 @@ export function ContextComposerSlot({ recordId, isFirst }: ContextComposerSlotPr
 
   if (!isComposing) {
     return (
+      // 415 실물 피드백: 이 자리는 포스트잇 무리의 꼬리가 아니라 **맥락 섹션 우상단에 고정된**
+      // 자리다(RecordDetailView가 위치를 정한다). 폭은 호출부가 주므로 여기서는 w-full로 받고,
+      // 카드 자체는 "다음에 붙을 한 장"의 빈 실루엣 모양을 유지한다.
       <button
         ref={slotButtonRef}
         type="button"
         onClick={() => setIsComposing(true)}
-        className="flex min-h-[150px] w-full flex-col items-center justify-center gap-2 rounded-sm border-2 border-dashed border-[#ded8cd] bg-white/45 px-6 py-8 text-center transition-colors hover:border-[#c7bda9] hover:bg-white/70 focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white/70"
+        className="flex min-h-[104px] w-full flex-col items-center justify-center gap-1.5 rounded-sm border-2 border-dashed border-[#ded8cd] bg-white/45 px-4 py-5 text-center transition-colors hover:border-[#c7bda9] hover:bg-white/70 focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white/70"
       >
-        <span className="text-2xl leading-none text-[#c9c2b6]" aria-hidden="true">
+        <span className="text-xl leading-none text-[#c9c2b6]" aria-hidden="true">
           ＋
         </span>
         <span className="whitespace-pre-line font-hand text-xl leading-6 text-[#a29d95]">
@@ -90,7 +93,7 @@ export function ContextComposerSlot({ recordId, isFirst }: ContextComposerSlotPr
     <>
       {/* 인덱스 카드 문법(378)을 그대로 쓴다 — 크림 종이 + 잉크 테두리 + 대시 점선. 작성 중인
           메모가 이미 붙어 있는 메모들과 같은 종류로 보여야 "이 자리에 적는다"가 성립한다. */}
-      <div className="flex min-h-[150px] flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5 shadow-[0_1px_1px_rgba(4,33,66,0.1),0_2px_4px_-2px_rgba(4,33,66,0.14)]">
+      <div className="flex min-h-[124px] flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5 shadow-[0_1px_1px_rgba(4,33,66,0.1),0_2px_4px_-2px_rgba(4,33,66,0.14)]">
         <textarea
           autoFocus
           value={draftBody}
@@ -100,7 +103,7 @@ export function ContextComposerSlot({ recordId, isFirst }: ContextComposerSlotPr
           disabled={addContextMutation.isPending}
           aria-label="새 맥락 본문"
           placeholder="이 장소에서 기억하고 싶은 맥락을 적어보세요"
-          className="min-h-[92px] flex-1 resize-none bg-transparent font-hand text-xl leading-6 text-pin-navy outline-none placeholder:text-[#b3ab99] disabled:opacity-60"
+          className="min-h-[76px] flex-1 resize-none bg-transparent font-hand text-xl leading-6 text-pin-navy outline-none placeholder:text-[#b3ab99] disabled:opacity-60"
         />
 
         <div aria-hidden="true" className="mt-2 h-0 border-t border-dashed border-[#CFC5AC]" />
