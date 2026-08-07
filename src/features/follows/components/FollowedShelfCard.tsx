@@ -9,7 +9,13 @@ import {
   SHELF_SCROLL_TOP_PADDING_PX,
 } from '@/shared/lib/shelfSpine';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
-import { ShelfBookSpine, ShelfIconButton, ShelfLabel, ShelfTier } from '@/shared/ui/Shelf';
+import {
+  ShelfBookSpine,
+  ShelfColumnSkeleton,
+  ShelfIconButton,
+  ShelfLabel,
+  ShelfTier,
+} from '@/shared/ui/Shelf';
 import { PendingLabel } from '@/shared/ui/PendingLabel';
 import { useFollowShelfCollectionsQuery } from '../hooks/useFollowShelfCollectionsQuery';
 import { useUpdateFollowAliasMutation } from '../hooks/useUpdateFollowAliasMutation';
@@ -284,10 +290,16 @@ export function FollowedShelfCard({
       {updateAliasMutation.isError && (
         <p className="text-xs text-red-600">{updateAliasMutation.error.message}</p>
       )}
+      {/* 416: 로딩·오류에서도 선반은 그대로 깔린다(ShelfColumnSkeleton 주석). 문구만 띄우면
+          목록이 도착할 때 선반이 통째로 나타나 "선반 수가 갑자기 바뀐다"로 보인다. */}
       {collectionsQuery.isPending ? (
-        <p className="text-sm text-ink-gray">불러오는 중…</p>
+        <ShelfColumnSkeleton rowCount={visibleRowCount} message="불러오는 중…" />
       ) : collectionsQuery.isError ? (
-        <p className="text-sm text-red-600">책장을 불러오지 못했어요.</p>
+        <ShelfColumnSkeleton
+          rowCount={visibleRowCount}
+          message="책장을 불러오지 못했어요."
+          tone="error"
+        />
       ) : (
         <FollowedShelfCollections
           followId={followId}
@@ -441,6 +453,8 @@ function FollowedShelfCollections({
           MyShelfColumn과 동일한 handleShelfScrollFetchNext를 공유한다. */}
       <div
         style={{
+          // 416/22번: 행 높이 기준(ShelfTier 주석). 데이터가 아니라 visibleRowCount가 정한다.
+          ['--shelf-rows' as string]: visibleRowCount,
           paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
           paddingBottom: SHELF_SCROLL_BOTTOM_PADDING_PX,
           paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,

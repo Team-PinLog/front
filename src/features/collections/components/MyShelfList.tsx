@@ -17,6 +17,7 @@ import {
   ShelfBookSpine,
   ShelfCabinet,
   ShelfColumn,
+  ShelfColumnSkeleton,
   ShelfLabel,
   ShelfTier,
 } from '@/shared/ui/Shelf';
@@ -72,12 +73,29 @@ export function MyShelfColumn({
   // 않는다 — 호버·포커스라는 명시적 행동에만 나오고, 책장이 기본으로 보여주는 정보는 그대로다.
   const coverPreview = useShelfCoverPreview<CollectionSummary>();
 
+  // 416: 로딩·오류에서도 **선반은 그대로 깔린다.** 문구 한 줄만 띄우면 목록이 도착하는 순간
+  // 선반 0개 → visibleRowCount개로 가구가 통째로 나타나 "선반 수가 갑자기 바뀐다"로 보인다.
+  // 레이블도 함께 남긴다 — 이 칸이 무엇인지가 상태에 따라 사라지면 안 된다.
   if (myCollectionsQuery.isPending) {
-    return <p className="text-sm text-ink-gray">불러오는 중…</p>;
+    return (
+      <>
+        <ShelfLabel>내 컬렉션</ShelfLabel>
+        <ShelfColumnSkeleton rowCount={visibleRowCount} message="불러오는 중…" />
+      </>
+    );
   }
 
   if (myCollectionsQuery.isError) {
-    return <p className="text-sm text-red-600">컬렉션을 불러오지 못했어요.</p>;
+    return (
+      <>
+        <ShelfLabel>내 컬렉션</ShelfLabel>
+        <ShelfColumnSkeleton
+          rowCount={visibleRowCount}
+          message="컬렉션을 불러오지 못했어요."
+          tone="error"
+        />
+      </>
+    );
   }
 
   const pages = myCollectionsQuery.data.pages;
@@ -126,6 +144,9 @@ export function MyShelfColumn({
           스크롤 하나로 합쳤다. */}
       <div
         style={{
+          // 416/22번: 이 박스가 행 높이의 기준을 내려보낸다 — 모든 열·모든 상태에서 선반 높이가
+          // 같아야 하므로 데이터가 아니라 visibleRowCount 하나가 정한다(ShelfTier 주석).
+          ['--shelf-rows' as string]: visibleRowCount,
           paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
           paddingBottom: SHELF_SCROLL_BOTTOM_PADDING_PX,
           paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,

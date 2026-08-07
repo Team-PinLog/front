@@ -15,6 +15,9 @@ import {
   getSpineTilt,
   getSpineTiltLiftPx,
   getSpineWidth,
+  SHELF_SCROLL_BOTTOM_PADDING_PX,
+  SHELF_SCROLL_SIDE_PADDING_PX,
+  SHELF_SCROLL_TOP_PADDING_PX,
   SPINE_MAX_HEIGHT,
 } from '@/shared/lib/shelfSpine';
 
@@ -507,13 +510,104 @@ export function ShelfRow({ children }: { children: ReactNode }) {
 // 그 아래 6px 틈이 남아 책이 선반 위에 "떠 있는" 것처럼 보였다.
 // 319: grow shrink-0 — 스크롤 박스가 내주는 남는 높이를 행들이 균등하게 나눠 갖되(위 ShelfRow
 // 주석), 행이 많아 넘칠 때는 서로 눌리지 않고 스크롤로 넘어간다.
+/**
+ * 416/22번: 선반 한 칸의 높이는 **`--shelf-rows`가 정한다.**
+ *
+ * 그전에는 `grow`로 남는 높이를 행들이 나눠 가졌다. 행 수가 열마다 같을 때만 성립하는 방식이라,
+ * 컬렉션이 많아 한 열만 행이 더 생기면 그 열의 선반만 낮아졌다("컬렉션마다 선반 높이가 다르다").
+ * 이제 각 행이 스크롤 박스 높이의 정확히 1/n(행 사이 간격을 뺀 뒤)을 가진다 — 데이터가 몇 줄이든,
+ * 어느 열이든, 로딩 중이든 **선반 높이가 같다.** n을 넘는 줄은 그대로 스크롤로 넘어간다.
+ *
+ * ⚠️ `--shelf-rows`는 스크롤 박스가 인라인 style로 준다(ShelfScrollRows). 그 값이 없으면 1이
+ * 되어 한 행이 박스를 다 쓰므로, 실수로 빠뜨리면 화면에서 바로 드러난다.
+ * ⚠️ 6px은 스크롤 박스의 `gap-1.5`다 — Tailwind 리터럴과 짝인 값이라 둘을 함께 바꾼다.
+ */
 export function ShelfTier({ children }: { children: ReactNode }) {
   return (
-    <div className="flex shrink-0 grow flex-col gap-0">
+    <div
+      style={{
+        height: 'calc((100% - (var(--shelf-rows, 1) - 1) * 6px) / var(--shelf-rows, 1))',
+      }}
+      className="flex flex-none flex-col gap-0"
+    >
       <ShelfRow>{children}</ShelfRow>
       <ShelfBoard />
     </div>
   );
+}
+
+interface ShelfColumnSkeletonProps {
+  /** 깔 선반 수. 호출부는 그 화면의 visibleRowCount를 그대로 넘긴다. */
+  rowCount: number;
+  /** 선반 위 가운데에 얹을 한 줄. 없으면 빈 선반만 남는다. */
+  message?: string | null;
+  /** 오류 문구는 색이 다르다. 그 밖에는 전부 안내 톤이다. */
+  tone?: 'muted' | 'error';
+}
+
+/**
+ * 416: **책이 아직 없는 칸의 뼈대** — 선반 판만 깔고 그 위에 안내 한 줄을 얹는다.
+ *
+ * 지금까지 로딩·오류·빈 목록 상태는 칸 안에 문구 한 줄만 띄웠다. 그래서 두 가지가 어긋났다:
+ *   ① 팔로우한 책장이 0개인 계정은 그 칸에 **선반이 아예 없어**, 가구가 아니라 빈 상자로 보였다.
+ *   ② 목록이 도착하는 순간 선반 0개 → visibleRowCount개로 **선반 수가 갑자기 바뀌었다.**
+ * 두 증상의 원인이 같다 — "책이 없으면 선반도 그리지 않는다"였다. 빈 책장도 책장으로 보여야
+ * 한다는 것은 Feed가 314에서 이미 내린 결론이고(FeedList의 EmptyShelves), 이 컴포넌트가 책장
+ * 쪽에서 같은 일을 한다.
+ *
+ * ⚠️ 선반 수는 rowCount **그대로**다. 데이터 개수를 보지 않으므로 로딩 중이든 비었든 채워졌든
+ * 같은 수의 선반이 같은 자리에 있다.
+ *
+ * 스크롤 박스의 여백은 실제 칸(MyShelfColumn/FollowedShelfCollections)과 같은 값을 쓴다 — 다르면
+ * 데이터가 도착할 때 선반 위치가 몇 px 튄다.
+ */
+export function ShelfColumnSkeleton({
+  rowCount,
+  message = null,
+  tone = 'muted',
+}: ShelfColumnSkeletonProps) {
+  return (
+    <div
+      style={{
+        ['--shelf-rows' as string]: Math.max(1, rowCount),
+        paddingTop: SHELF_SCROLL_TOP_PADDING_PX,
+        paddingBottom: SHELF_SCROLL_BOTTOM_PADDING_PX,
+        paddingLeft: SHELF_SCROLL_SIDE_PADDING_PX,
+        paddingRight: SHELF_SCROLL_SIDE_PADDING_PX,
+      }}
+      className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden"
+    >
+      {Array.from({ length: Math.max(1, rowCount) }, (_, index) => (
+        <ShelfTier key={index}>
+          {/* 416/27번: 문구를 칸 한가운데에 절대 위치로 띄우면 선반 가로선을 가로질러 걸친다.
+              첫 선반 **위에** 놓는다 — ShelfRow가 items-end라 책이 서는 것과 같은 자리에 앉는다. */}
+          {index === 0 && message !== null ? (
+            <p
+              className={`w-full pb-1 text-center text-xs ${
+                tone === 'error' ? 'text-red-600' : 'text-ink-gray'
+              }`}
+            >
+              {message}
+            </p>
+          ) : null}
+        </ShelfTier>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 416/25번: 칸 머리(레이블 pill · 별칭 편집 행)가 세로에서 차지하는 자리.
+ *
+ * 팔로우한 책장이 없어 비어 있는 칸에는 머리에 놓을 것이 없는데, 그렇다고 아무것도 두지 않으면
+ * 그 칸만 선반이 머리 높이(h-7 + ShelfColumn의 gap-3)만큼 위로 올라붙어 **열마다 첫 선반의
+ * 높이가 달라진다.** 내용이 없어도 자리는 그대로 비워 둔다 — 가구의 선반은 칸마다 같은 높이에
+ * 있어야 한다.
+ *
+ * ⚠️ h-7은 ShelfLabel·ShelfIconButton과 같은 값이다. 그 셋은 반드시 함께 움직인다.
+ */
+export function ShelfColumnHeadSpacer() {
+  return <div aria-hidden="true" className="h-7 flex-none" />;
 }
 
 interface ShelfBookSpineProps {
