@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   getContrastRatio,
+  getSpineFontSizePx,
   getSpineColor,
   getSpineHeight,
   getSpineTextColor,
   getSpineTilt,
+  isLatinDominantTitle,
   SPINE_COLORS,
+  SPINE_FONT_SIZE_LATIN_PX,
+  SPINE_FONT_SIZE_PX,
   SPINE_MAX_HEIGHT,
   SPINE_TEXT_DARK,
   SPINE_TEXT_LIGHT,
@@ -102,6 +106,47 @@ describe('책등 팔레트 가독성', () => {
         spineColor,
       ).toBeGreaterThanOrEqual(1.8);
     }
+  });
+});
+
+// 365: 책등 글씨가 실제로 곤색(pin-navy)으로 나오는지 — 361의 잉크 통일이 화면까지 도달했는지를
+// id 진입 경로에서 확인한다. 팔레트 순회 테스트(위)와 달리 이쪽은 실제 호출 경로다.
+describe('책등 글자색은 곤색 하나다', () => {
+  it('어떤 collectionId도 pin-navy를 받는다', () => {
+    for (const id of SAMPLE_IDS) {
+      expect(getSpineTextColor(id), `collectionId ${id}`).toBe(SPINE_TEXT_DARK);
+    }
+    expect(SPINE_TEXT_DARK).toBe('#042142');
+  });
+});
+
+// 365: 라틴 글리프는 같은 크기에서 한글보다 작아 보여(x-height가 낮다) 영문 제목만 유독 작았다.
+// 제목 단위로 판정해 한 크기를 쓰는 방식이라, 판정 자체가 이 기능의 전부다.
+describe('책등 글자 크기', () => {
+  it('한글 제목은 기본 크기다', () => {
+    for (const title of ['비 오는 날의 카페', '서울 산책', '혼자 가는 곳']) {
+      expect(getSpineFontSizePx(title), title).toBe(SPINE_FONT_SIZE_PX);
+    }
+  });
+
+  it('영문 위주 제목은 한 단계 크다', () => {
+    for (const title of ['Seoul Cafe', 'RAINY DAY', '2024 Seoul']) {
+      expect(getSpineFontSizePx(title), title).toBe(SPINE_FONT_SIZE_LATIN_PX);
+    }
+  });
+
+  it('한글이 더 많은 혼용 제목은 한글 크기를 따른다', () => {
+    // 한 제목 안에서 크기를 오르내리게 하지 않는다는 결정의 결과다 — 섞이면 다수 쪽을 따른다.
+    expect(isLatinDominantTitle('서울의 Cafe 산책')).toBe(false);
+    expect(getSpineFontSizePx('서울의 Cafe 산책')).toBe(SPINE_FONT_SIZE_PX);
+  });
+
+  it('숫자·기호만 있는 제목은 한글 크기를 따른다(기본값)', () => {
+    expect(getSpineFontSizePx('2024 ****')).toBe(SPINE_FONT_SIZE_PX);
+  });
+
+  it('영문 크기가 기본보다 크다', () => {
+    expect(SPINE_FONT_SIZE_LATIN_PX).toBeGreaterThan(SPINE_FONT_SIZE_PX);
   });
 });
 

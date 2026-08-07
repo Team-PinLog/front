@@ -10,6 +10,7 @@ import {
   getSpineColor,
   getSpineHeight,
   getSpineNeighborClearancePx,
+  getSpineFontSizePx,
   getSpineTextColor,
   getSpineTilt,
   getSpineTiltLiftPx,
@@ -613,13 +614,30 @@ export function ShelfBookSpine({
           색이라 네이비 글자 책 옆에 놓이면 두 잉크가 한 벌로 읽히지 않았다 — 값만 바뀌고 고르는
           규칙은 그대로다.
           같은 이유로 text-shadow도 뺐다 — 대비를 색으로 이미 확보했고, 어두운 글자 아래 깔린 어두운
-          그림자는 도움이 되기는커녕 글자를 번져 보이게 한다. */}
+          그림자는 도움이 되기는커녕 글자를 번져 보이게 한다.
+          365(사용자 피드백 "책등 글씨 너무 작아. 자간도 늘리고 살짝 볼드로. 영어가 한글보다 작아
+          보인다" → 2차 "글씨 너무 커. 볼드 지우고 90%로"): 10 → 13px(영문 위주 제목은 14.5px),
+          자간 0.1em, 굵기 400.
+          - 크기·영문 보정: shelfSpine.ts의 getSpineFontSizePx가 정한다(판정 근거는 그쪽 주석).
+            동적 값이라 Tailwind 클래스가 아니라 인라인 style이다 — 조립한 클래스 문자열은 Tailwind가
+            스캔하지 못한다.
+          - 자간: 세로쓰기(writing-mode: vertical-rl)에서 letter-spacing은 글자가 흐르는 방향, 즉
+            **세로 간격**으로 적용된다. 가로 폭은 그대로라 책등이 굵어지지 않는다. 364가 body에
+            물려주는 letter-spacing 0.02em을 이 값이 덮는다.
+          - 굵기: 800 → 700 → 400으로 두 번 내렸다("볼드 지워줘" = 일반 굵기라는 확정). 357이
+            들어온 지금 이 글씨는 잘난고딕이고, 그 @font-face는 400 하나만 선언한다 — 즉 700을
+            주면 브라우저가 **합성 볼드**로 그린다. 13px 세로쓰기에서 합성 볼드는 획이 번져
+            글자를 뭉개므로, 실제 파일이 있는 400이 이 크기에서 가장 또렷하다.
+          - 넘침: 커진 만큼 한 책등에 들어가는 글자 수가 줄어든다(145px 책 기준 약 12자 → 8자).
+            잘리는 지점이 분명히 보이도록 말줄임(text-ellipsis)을 함께 켠다 — 세로쓰기에서도
+            ellipsis는 글자가 흐르는 방향 끝에 찍힌다. (13px로 내리면서 약 9자로 조금 늘었다.) */}
       <span
         style={{
           color: getSpineTextColor(collectionId),
+          fontSize: getSpineFontSizePx(title),
           maxHeight: `calc(${scalePx(height)} - 24px)`,
         }}
-        className="relative z-[1] [writing-mode:vertical-rl] overflow-hidden whitespace-nowrap text-[10px] font-bold"
+        className="relative z-[1] [writing-mode:vertical-rl] overflow-hidden text-ellipsis whitespace-nowrap font-normal tracking-[0.1em]"
       >
         {title}
       </span>
@@ -646,7 +664,8 @@ export function ShelfAddSlot({ onClick, width, height }: ShelfAddSlotProps) {
       className="flex flex-none flex-col items-center justify-center gap-2 rounded-t-sm rounded-b-[2px] border-2 border-dashed border-log-mint bg-log-mint/5 transition-transform hover:-translate-y-2 hover:bg-log-mint/15"
     >
       <span className="text-lg font-bold leading-none text-log-mint">＋</span>
-      <span className="[writing-mode:vertical-rl] whitespace-nowrap text-[10px] font-bold text-log-mint">
+      {/* 365: 책등과 나란히 서는 슬롯이라 같은 크기·자간을 쓴다 — 여기만 10px로 남으면 줄이 안 맞는다. */}
+      <span className="[writing-mode:vertical-rl] whitespace-nowrap text-[13px] font-normal tracking-[0.1em] text-log-mint">
         새 컬렉션
       </span>
     </button>
