@@ -3,12 +3,13 @@ import { useWithdrawConfirm } from '@/contexts/useWithdrawConfirm';
 import { useLogoutMutation } from '@/features/auth/hooks/useLogoutMutation';
 import { useMeSummaryQuery } from '@/features/me/hooks/useMeSummaryQuery';
 
-// 08_API_명세 3.5의 provider는 KAKAO/GOOGLE/NAVER 중 하나다. 목업(app-topnav 설정 패널)처럼
-// 한글 표기로 보여주고, 알 수 없는 값은 원본 그대로 보여준다(서버가 값을 늘려도 화면이 깨지지 않게).
+// 08_API_명세 3.5의 provider는 KAKAO/GOOGLE/NAVER 중 하나다. 알 수 없는 값은 원본 그대로 보여준다
+// (서버가 값을 늘려도 화면이 깨지지 않게).
+// 372: 한글 표기('카카오'·'구글'·'네이버')에서 각 사의 공식 영문 표기로 바꿨다.
 const PROVIDER_LABELS: Record<string, string> = {
-  KAKAO: '카카오',
-  GOOGLE: '구글',
-  NAVER: '네이버',
+  KAKAO: 'Kakao',
+  GOOGLE: 'Google',
+  NAVER: 'Naver',
 };
 
 /**
