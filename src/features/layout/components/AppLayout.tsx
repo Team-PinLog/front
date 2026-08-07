@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet } from '@tanstack/react-router';
 import logoFull from '@/assets/logo-full.png';
+import { SettingsTriggerContext } from '@/contexts/SettingsTriggerContext';
 import { WithdrawConfirmProvider } from '@/contexts/WithdrawConfirmProvider';
 import { useWithdrawConfirm } from '@/contexts/useWithdrawConfirm';
 import { LayoutMetricsContext } from '@/shared/lib/LayoutMetricsContext';
@@ -203,11 +204,19 @@ function AppShell() {
     return () => window.clearTimeout(timer);
   }, [isSettingsOpen, isSettingsMounted]);
 
-  const openSettings = () => {
+  // 409: 이 함수를 셸 밖(각 화면의 조판)에서도 부를 수 있게 Context로 흘려보낸다. 그래서
+  // 렌더마다 새로 만들지 않는다 — 아래 Provider value가 매 렌더 갈리면 구독하는 화면이 전부
+  // 다시 그려진다. setState 갱신자는 안정적이라 의존성은 비어 있다.
+  const openSettings = useCallback(() => {
     setIsSettingsOpen(true);
     setIsSettingsMounted(true);
-  };
+  }, []);
   const closeSettings = () => setIsSettingsOpen(false);
+
+  // 409: 설정 진입점을 화면 어디서든 열 수 있게 하는 통로(SettingsTriggerContext).
+  // ⚠️ **패널과 그 상태는 그대로 이 컴포넌트가 갖는다** — 넘기는 것은 여는 동작 하나뿐이다.
+  // 셸의 기존 진입점(394 네비 카드, sm 탭바 4번째 칸)도 그대로 살아 있다.
+  const settingsTrigger = useMemo(() => ({ openSettings }), [openSettings]);
 
   // 358 ①: 포커스 이동/복귀. 열릴 때 모달 자신(tabIndex=-1)에 포커스를 주므로 이어지는 Tab이 모달 안
   // 첫 요소로 들어가고, 스크린리더도 dialog 라벨부터 읽는다. 닫으면 열기 직전 요소로 되돌린다.
@@ -509,11 +518,13 @@ function AppShell() {
             **아무 CSS도 만들지 않고 조용히 사라진다**(빌드 산출 CSS로 확인). conventions 2장이 말하는
             "Tailwind는 원시 텍스트 스캔이라 양방향으로 조용히 틀린다"의 실례다. */}
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-4 md:pl-[5.5rem] md:pr-4 md:pt-4 xl:pb-6 xl:pl-[16.5rem] xl:pr-6 xl:pt-6">
-          <LayoutMetricsContext.Provider
-            value={{ navChromeHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
-          >
-            <Outlet />
-          </LayoutMetricsContext.Provider>
+          <SettingsTriggerContext.Provider value={settingsTrigger}>
+            <LayoutMetricsContext.Provider
+              value={{ navChromeHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
+            >
+              <Outlet />
+            </LayoutMetricsContext.Provider>
+          </SettingsTriggerContext.Provider>
         </main>
 
         {/* 렌더 여부는 isSettingsOpen(의도)이 아니라 isSettingsMounted다. 둘은 열 때 openSettings가
