@@ -8,6 +8,7 @@ import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { CollectionDetailPage } from '@/pages/CollectionDetailPage';
 import { MyShelfPage } from '@/pages/MyShelfPage';
 import { LibraryPage } from '@/pages/LibraryPage';
+import { MeActivityPage } from '@/pages/MeActivityPage';
 import { FeedPage } from '@/pages/FeedPage';
 import { TermsPage } from '@/pages/TermsPage';
 import { PrivacyPage } from '@/pages/PrivacyPage';
@@ -115,6 +116,16 @@ const libraryRoute = createRoute({
   component: LibraryPage,
 });
 
+const meActivityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/me/activity',
+  // 보호 라우트: 내 기록 집계(GET /me/activity, 08_API_명세 3.7)라 141/149/150과 동일하게
+  // 본인 관리 화면으로 취급한다. 응답에 memberId가 없고 타인 조회 경로도 없다 — 이 화면은
+  // 로그인한 본인 것만 존재한다.
+  beforeLoad: requireLoggedIn,
+  component: MeActivityPage,
+});
+
 const termsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/terms',
@@ -154,6 +165,7 @@ const routeTree = rootRoute.addChildren([
   shelfRoute,
   feedRoute,
   libraryRoute,
+  meActivityRoute,
 ]);
 
 export const router = createRouter({

@@ -23,4 +23,10 @@ describe('router 가드 배치', () => {
     expect(route.options.beforeLoad).toBe(handleOAuthCallback);
     expect(route.options.validateSearch).toBeDefined();
   });
+
+  it('/me/activity 라우트는 requireLoggedIn을 beforeLoad로 사용한다(본인 집계 화면, 407)', () => {
+    const route = router.routesById['/me/activity'];
+
+    expect(route.options.beforeLoad).toBe(requireLoggedIn);
+  });
 });
