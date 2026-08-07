@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { formatDate } from '@/shared/lib/formatDate';
 
 interface ContextStickyNoteProps {
   contextId: number;
@@ -8,6 +9,13 @@ interface ContextStickyNoteProps {
   onDelete?: () => void;
   /** true면 연필·× 버튼을 비활성화한다(수정/삭제 요청 진행 중). */
   busy?: boolean;
+  /**
+   * ContextDetail.createdAt(ISO 8601). 넘기면 카드 하단에 `created: YYYY-MM-DD` 메타 줄이 붙는다.
+   * ⚠️ 레퍼런스의 `edited:` 병기는 **넣지 않는다** — 서버 DTO에 updatedAt·수정 플래그가 없고
+   * (08_API_명세 11.2 ContextDetail: contextId·body·createdAt), Context 수정은 교체라 새 contextId와
+   * 새 createdAt만 온다. 없는 값을 지어내지 않는다는 규칙에 따라 created만 표시한다.
+   */
+  createdAt?: string;
   /** 세로로 쌓인 스택에서 이 카드의 0-based 순서. 0이면 겹침 없음. */
   stackIndex?: number;
   /**
@@ -19,24 +27,32 @@ interface ContextStickyNoteProps {
   attachment?: 'lifted' | 'flat';
 }
 
-// 목업(Team-PinLog/mockup index.html) book-context-postit / openBook.contextNotes 팔레트(contextNoteColors,
-// 라인 2984)를 그대로 가져온다. 인덱스는 위치가 아니라 contextId 기반 해시로 고른다 — 리스트 순서가
-// 바뀌거나 항목이 추가/삭제돼도 같은 Context는 항상 같은 색·회전각을 유지한다(리렌더 시 값 유지).
-const NOTE_COLORS = ['#fff2a6', '#dcecff', '#efedeb'] as const;
+// 378 사용자 레퍼런스(인덱스 카드 4장): 형광 포스트잇 톤을 버리고 **채도 낮은 종이색**으로 간다.
+// 탠·옐로·크림·라벤더 네 가지이고, 카드마다 종이보다 한 단계 진한 동일 계열 잉크색을 짝지어
+// 1px 테두리·점선 구분선·메타 글자에 쓴다(레퍼런스의 "얇은 잉크 테두리" 문법).
+// ⚠️ 고르는 방식은 그대로 contextId 해시다 — 리스트 순서가 바뀌거나 항목이 추가/삭제돼도 같은
+// Context는 항상 같은 색을 유지한다. 색이 Context의 식별 장치라는 성질(332)은 보존된다.
+const NOTE_PAPERS = [
+  { paper: '#EFE4D2', ink: '#B9A17A' }, // 탠
+  { paper: '#F6EDB8', ink: '#C9B65F' }, // 옐로
+  { paper: '#F7F3E8', ink: '#CFC5AC' }, // 크림
+  { paper: '#E9E5F3', ink: '#B3A9CE' }, // 라벤더
+] as const;
 // 332 시안: 포스트잇이 "붙어 있다"는 인상을 만들기 위해 기울임을 기존(±0.4~0.8deg)보다 키웠다.
 // 각도는 여전히 contextId 해시로 고르는 순수 함수라 같은 Context는 항상 같은 각도를 유지한다.
-const NOTE_ROTATIONS = ['-1.6deg', '1.4deg', '-0.8deg'] as const;
+// ⚠️ 아래 배열들은 모두 NOTE_PAPERS와 길이가 같아야 한다(같은 인덱스로 찾는다).
+const NOTE_ROTATIONS = ['-1.6deg', '1.4deg', '-0.8deg', '1.1deg'] as const;
 // 373 피드백: attachment='flat'에서는 같은 각도의 절반 이하만 준다 — 각도가 클수록 종이에서
 // 들린 것처럼 보인다. 선택 방식(contextId 해시)은 같아서 같은 Context는 여전히 같은 각도다.
-const NOTE_FLAT_ROTATIONS = ['-0.7deg', '0.6deg', '-0.35deg'] as const;
+const NOTE_FLAT_ROTATIONS = ['-0.7deg', '0.6deg', '-0.35deg', '0.5deg'] as const;
 // 호버 시 더해지는 미세 흔들림(±0.5~1도). 노트마다 방향이 갈려야 "흔들"로 읽힌다.
-const NOTE_HOVER_NUDGES = ['0.8deg', '-0.9deg', '0.7deg'] as const;
+const NOTE_HOVER_NUDGES = ['0.8deg', '-0.9deg', '0.7deg', '-0.6deg'] as const;
 // 332 시안: 위쪽 가장자리를 덮던 "접힌 종이 띠"를 폭이 좁고 비스듬한 마스킹 테이프로 바꿨다.
 // 테이프는 종이 색과 무관한 반투명 크라프트 톤 하나로 통일한다 — 시안에서 노트 색이 달라도
 // 테이프 색은 같고, 색까지 3종으로 나누면 "같은 테이프로 붙였다"는 인상이 깨진다.
 const NOTE_TAPE_COLOR = 'rgba(214,196,150,0.62)';
 // 테이프 기울기도 노트 각도처럼 contextId로 고정한다(리렌더돼도 같은 Context는 같은 모양).
-const NOTE_TAPE_ROTATIONS = ['-8deg', '6deg', '-4deg'] as const;
+const NOTE_TAPE_ROTATIONS = ['-8deg', '6deg', '-4deg', '7deg'] as const;
 
 // 겹침을 "카드 높이의 N%"로 계산한다(고정 -22px는 짧은 카드에서 과도해 보이는 문제가 있었다).
 // 목업 .book-context-postit:nth-child(n+4){margin-top:-22px}는 고정 height:166px 기준 약 13.25%였다
@@ -51,7 +67,7 @@ const STACK_OVERLAP_MAX_PX = 40;
 export const CONTEXT_STICKY_NOTE_STACK_OFFSET_PX = 22;
 
 function pickNoteIndex(contextId: number) {
-  return Math.abs(contextId) % NOTE_COLORS.length;
+  return Math.abs(contextId) % NOTE_PAPERS.length;
 }
 
 type StickyNoteStyle = CSSProperties & {
@@ -104,12 +120,13 @@ export function ContextStickyNote({
   onEdit,
   onDelete,
   busy = false,
+  createdAt,
   stackIndex = 0,
   attachment = 'lifted',
 }: ContextStickyNoteProps) {
   const noteIndex = pickNoteIndex(contextId);
   const isFlat = attachment === 'flat';
-  const bg = NOTE_COLORS[noteIndex];
+  const { paper, ink } = NOTE_PAPERS[noteIndex];
   const rotate = (isFlat ? NOTE_FLAT_ROTATIONS : NOTE_ROTATIONS)[noteIndex];
   const tapeRotate = NOTE_TAPE_ROTATIONS[noteIndex];
 
@@ -118,14 +135,16 @@ export function ContextStickyNote({
   const style: StickyNoteStyle = {
     '--note-rotate': rotate,
     '--note-hover-nudge': NOTE_HOVER_NUDGES[noteIndex],
-    backgroundColor: bg,
+    backgroundColor: paper,
+    // 378 레퍼런스: 종이보다 한 단계 진한 동일 계열 1px 잉크 테두리(인덱스 카드 문법).
+    border: `1px solid ${ink}`,
     marginTop: stackIndex > 0 ? -overlapPx : 0,
   };
 
   return (
     <div
       ref={ref}
-      className={`context-sticky-note relative rounded-sm px-5 pb-6 pt-7${
+      className={`context-sticky-note relative rounded-sm px-5 pb-6 pt-9${
         isFlat ? ' context-sticky-note--flat' : ''
       }`}
       style={style}
@@ -140,15 +159,6 @@ export function ContextStickyNote({
           // flat에서는 테이프 아래에 얇은 접촉 그림자를 깔아 "테이프가 종이를 누르고 있다"는
           // 인상을 만든다(373 피드백). lifted는 기존 그대로 그림자 없음.
           boxShadow: isFlat ? '0 1px 2px rgba(90,80,30,0.22)' : undefined,
-        }}
-        aria-hidden="true"
-      />
-
-      {/* 오른쪽 아래 접힌 모서리. 배경 위에 겹치는 삼각형 그림자로만 표현해 노트 색과 무관하게 동작한다. */}
-      <div
-        className="absolute bottom-0 right-0 h-6 w-6 rounded-br-sm"
-        style={{
-          background: 'linear-gradient(135deg, transparent 50%, rgba(4,33,66,0.10) 50%)',
         }}
         aria-hidden="true"
       />
@@ -176,9 +186,32 @@ export function ContextStickyNote({
         </div>
       )}
 
+      {/* 378 레퍼런스: 대시(- - -) 점선으로 구획을 나눈다. 위 선은 버튼이 놓인 머리말과 본문을,
+          아래 선은 본문과 메타 줄을 가른다(레퍼런스의 제목/본문/메타 3단 구성에서 제목 칸에 넣을
+          실데이터가 없어 머리말은 비워 둔다 — 알약형 카테고리 칩도 같은 이유로 생략했다). */}
+      <div
+        aria-hidden="true"
+        className="mb-3 h-0 border-t border-dashed"
+        style={{ borderColor: ink }}
+      />
+
       {/* font-hand(Nanum Pen Script)는 같은 px에서 Pretendard보다 훨씬 작게 보여 text-xl로 올린다.
           폰트가 도착하기 전에는 Pretendard로 그려지므로 그때만 평소보다 크게 보인다(FOUT 허용). */}
       <p className="whitespace-pre-wrap font-hand text-xl leading-6 text-pin-navy">{body}</p>
+
+      {createdAt && (
+        <>
+          <div
+            aria-hidden="true"
+            className="mt-3 h-0 border-t border-dashed"
+            style={{ borderColor: ink }}
+          />
+          {/* 메타는 본문(손글씨)과 대비되도록 작은 고딕이다. 색도 잉크색을 그대로 써서 저채도로 물린다. */}
+          <p className="mt-2 font-sans text-[11px] tracking-wide" style={{ color: ink }}>
+            created: {formatDate(createdAt)}
+          </p>
+        </>
+      )}
     </div>
   );
 }

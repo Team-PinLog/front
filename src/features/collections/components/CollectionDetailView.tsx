@@ -6,6 +6,8 @@ import { useDeleteConfirm } from '@/contexts/useDeleteConfirm';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSection';
 import { ContextStickyNoteCard } from '@/features/records/components/ContextStickyNoteCard';
+// 378: 핀 상세(373)와 같은 손붙임 배치 문법을 쓴다 — 두 화면의 포스트잇 인상이 갈리면 안 된다.
+import { contextNoteScatterStyle } from '@/features/records/components/contextNoteScatter';
 import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
 import type { CollectionDetail } from '../api/getCollectionDetail';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
@@ -16,6 +18,14 @@ import {
   COLLECTION_DANGER_ACTION_CLASS,
   COLLECTION_FOCUS_RING_CLASS,
 } from './collectionActionStyles';
+// 378 바인더 질감 스킨. 이 화면의 질감·테이프·찢은 종이 표현은 전부 이 모듈에 모여 있다(롤백 지점).
+import {
+  BINDER_PAGE_SURFACE,
+  BINDER_PHOTO_FRAME_CLASS,
+  BINDER_TAPE_CLASS,
+  BINDER_TORN_PAPER_STYLE,
+  binderTapeStyle,
+} from './collectionBinderSkin';
 import { CollectionIndexRail } from './CollectionIndexRail';
 import { CollectionOverlayCloseButton } from './CollectionOverlayShell';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
@@ -591,6 +601,9 @@ export function CollectionDetailView({
 
               <div
                 className={`relative z-10 flex flex-col overflow-hidden rounded-[14px] bg-snow-white shadow-[0_2px_6px_rgba(4,33,66,0.12)] md:flex-row ${BOOK_HEIGHT_CLASS}`}
+                // 378 롤백 지점 (1/3): 페이지 종이 질감·괘선. 배경색 클래스는 그대로 두고
+                // backgroundImage만 얹으므로, 이 style 한 줄을 지우면 원래 면으로 돌아간다.
+                style={BINDER_PAGE_SURFACE}
               >
                 {/* 좌·우 종이 단면 */}
                 <div
@@ -661,14 +674,34 @@ export function CollectionDetailView({
                       넘길 때마다 Kakao Map 인스턴스가 재생성된다. 바뀌는 건 감싸는 상자뿐이다. */}
                   <div
                     data-page-turn="ignore"
-                    className={`cursor-default ${
+                    className={`relative cursor-default ${
                       isTocOpen
                         ? // 피드백 1번: 액자가 작아 페이지가 비어 보였다. 남는 세로 공간을 전부
                           // 받도록 flex-1로 바꾸고(min-h는 짧은 화면 하한) 가로도 페이지 폭을 채운다.
-                          'mt-1 min-h-[180px] w-full flex-1 rounded-lg border border-line-card bg-paper-white p-1.5 shadow-sm'
+                          // 378 롤백 지점 (2/3): 액자 테두리만 폴라로이드(흰 5px)로 바꿨다 —
+                          // `border border-line-card`로 되돌리고 아래 테이프 두 조각을 지우면 원상복구다.
+                          `mt-1 min-h-[180px] w-full flex-1 rounded-lg bg-paper-white p-1.5 ${BINDER_PHOTO_FRAME_CLASS}`
                         : 'h-full'
                     }`}
                   >
+                    {/* 378: 액자를 페이지에 붙인 마스킹 테이프. 지도 조작을 가리지 않도록
+                        pointer-events-none이고, 액자 모서리 밖으로 걸치도록 음수 오프셋을 준다.
+                        사진이 없어 폴백(지도·안내 문구)이 보이는 경우에도 "페이지에 붙어 있다"는
+                        인상은 그대로 유지된다. */}
+                    {isTocOpen && (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className={`${BINDER_TAPE_CLASS} -left-5 -top-2`}
+                          style={binderTapeStyle('left')}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={`${BINDER_TAPE_CLASS} -right-5 -top-2`}
+                          style={binderTapeStyle('right')}
+                        />
+                      </>
+                    )}
                     {/* 전체 로드가 끝나기 전에는 마커를 하나도 그리지 않고 로딩 표시만 한다(가벼운 표시, 화면
                   전체를 막지 않음) — 넘길 때마다 핀이 하나씩 느는 방식을 피하기 위함. */}
                     <CollectionSpreadMap
@@ -751,20 +784,47 @@ export function CollectionDetailView({
                         {ownedByMe && currentRecord.contexts && (
                           // 353: 포스트잇 면은 버튼이 아니지만 조작 대상(연필·× 버튼이 그 위에 있고,
                           // 겹쳐 쌓여 빗맞기 쉽다)이라 통째로 넘김에서 제외한다.
-                          <div data-page-turn="ignore" className="flex flex-col pt-2">
+                          <div
+                            data-page-turn="ignore"
+                            className="relative flex flex-wrap content-start gap-x-7 px-3 pb-4 pt-6"
+                          >
+                            {/* 378 롤백 지점 (3/3): 포스트잇 뒤에 깔리는 "찢어낸 종이" 받침.
+                                이 aria-hidden 레이어와 감싸는 div의 `relative`만 지우면 원래대로 돌아간다.
+                                받침은 포스트잇의 **부모가 아니라 형제**여야 한다: 마스크는 자식까지
+                                함께 잘라내므로, 부모로 감싸면 포스트잇 아랫부분이 톱니에 물린다.
+                                z-index는 주지 않는다 — 뒤에 오는 포스트잇들이 DOM 순서대로 이 위에 그려진다. */}
+                            {currentRecord.contexts.length > 0 && (
+                              <span
+                                aria-hidden="true"
+                                className="pointer-events-none absolute -inset-x-3 -top-1 bottom-3"
+                                style={BINDER_TORN_PAPER_STYLE}
+                              />
+                            )}
                             {currentRecord.contexts.length === 0 ? (
                               <p className="text-xs text-ink-gray-light">
                                 아직 기록된 맥락이 없어요.
                               </p>
                             ) : (
+                              /* 378 피드백(사용자가 332의 포스트잇 표현 확정을 직접 해제):
+                                 - 페이지 전폭으로 늘어나 "띠"로 보이던 것을 260px 종이 조각 비례로 고정한다.
+                                 - 세로로 겹쳐 쌓던 배치(stackIndex=index)를 끄고(=0) 373의 손붙임 스캐터로
+                                   어긋나게 놓는다. 겹치면 위 장의 마스킹 테이프가 아래 장 글자를 덮었다.
+                                 - 감싸는 div의 pt-6/px-3/pb-4 여백은 테이프(위로 12px)·스캐터·호버 들림이
+                                   잘리지 않게 하기 위한 것이다(373과 같은 값). */
                               currentRecord.contexts.map((context, index) => (
-                                <ContextStickyNoteCard
+                                <div
                                   key={context.contextId}
-                                  recordId={currentRecord.recordId}
-                                  context={context}
-                                  ownedByMe={ownedByMe}
-                                  stackIndex={index}
-                                />
+                                  className="w-[260px] max-w-full"
+                                  style={contextNoteScatterStyle(index)}
+                                >
+                                  <ContextStickyNoteCard
+                                    recordId={currentRecord.recordId}
+                                    context={context}
+                                    ownedByMe={ownedByMe}
+                                    stackIndex={0}
+                                    attachment="flat"
+                                  />
+                                </div>
                               ))
                             )}
                           </div>
