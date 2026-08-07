@@ -243,3 +243,60 @@
 .place-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   화면 어깨의 조판 링크(shared/ui/PaperCornerNav).
+
+   네비게이션 바(좌측 사이드바 · sm 하단 탭바)를 삭제하면서 그 자리를 대신한다. 바가 아니라
+   "그 화면에 인쇄된 한 줄"이라 배경도 테두리도 없다 — 규격은 종이 지면의 라벨 조판을 따른다
+   (features/explore/paperSpread.css의 .pe-cornernav와 같은 값).
+
+   ⚠️ 민트는 종이 위 2.32:1이라 글자색으로 쓸 수 없다. 밑줄 **면**으로만 얹고 글자는 네이비로
+   둔다(features/home/paperAperture.css의 대비 실측 주석과 같은 규칙).
+
+   함께 사라진 것: --immersion(ShellImmersionContext)과 .shell-aside/.shell-bottom-nav/.shell-main.
+   물릴 크롬이 없으니 물러나는 전환도 없다 — 그 전환이 도는 1.4초 동안 본문 폭이 계속 변해서
+   책장이 뒤늦게 재배치되던 문제도 여기서 함께 없어졌다. 본문 여백은 이제 각 페이지가 갖는다.
+   ══════════════════════════════════════════════════════════════════════ */
+.paper-corner-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 11.5px;
+  letter-spacing: 0.22em;
+  /* letter-spacing이 마지막 글자 뒤에도 붙어 오른쪽 정렬이 그만큼 안쪽으로 밀린다 —
+     한 칸만큼 되민다. */
+  margin-right: -0.22em;
+}
+.paper-corner-nav a,
+.paper-corner-nav button {
+  padding: 0 0 3px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: #042142;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.18s ease;
+}
+/* 종이 화면(홈·탐색)에서 쓰는 변형 — 곁열의 표지 두 권이 살아 있는 넓은 폭에서는 화면 이동
+   링크를 접고 설정만 남긴다. 같은 목적지가 한 화면에 두 번 나오면 안 되기 때문이고, 곁열이
+   사라지는 폭에서는 다시 켜져 나갈 길이 끊기지 않는다.
+   ⚠️ 경계 1080px은 곁열이 사라지는 지점과 **같은 값이어야 한다**(features/explore/paperSpread.css,
+   features/home/paperAperture.css의 반응형 블록). 한쪽만 옮기면 두 진입점이 동시에 사라지거나
+   동시에 나타난다. 탐색은 자기 CSS에서 같은 규칙을 .pe-cornernav로 따로 갖는다 — 그쪽은 위치까지
+   지면 좌표계에 매여 있어서다. */
+@media (min-width: 1081px) {
+  .paper-corner-nav--rails a {
+    display: none;
+  }
+}
+
+.paper-corner-nav a:hover,
+.paper-corner-nav a:focus-visible,
+.paper-corner-nav button:hover,
+.paper-corner-nav button:focus-visible {
+  border-bottom-color: #3bb7a2;
+}

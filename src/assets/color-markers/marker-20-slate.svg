@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="76" viewBox="0 0 64 76" role="img" aria-labelledby="title">
-  <title>slate blank map marker</title>
+  <title>slate book spine map marker</title>
   <defs>
     <filter id="shadow" x="-40%" y="-30%" width="180%" height="190%">
       <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0B2340" flood-opacity="0.22"/>
     </filter>
   </defs>
-  <path d="M32 4C17.64 4 6 15.64 6 30c0 18.5 18.5 32.42 24.15 38.32a2.55 2.55 0 0 0 3.7 0C39.5 62.42 58 48.5 58 30 58 15.64 46.36 4 32 4Z" fill="#3D6280" filter="url(#shadow)"/>
-  <circle cx="32" cy="30" r="10" fill="#FFFFFF"/>
+  <path d="M20 4h24a4 4 0 0 1 4 4v42L32 68.32 16 50V8a4 4 0 0 1 4-4Z" fill="#3D6280" filter="url(#shadow)"/>
+  <path d="M41 4h3a4 4 0 0 1 4 4v42h-7Z" fill="#FBF6EF" fill-opacity="0.95"/>
+  <path d="M20.6 7.5v42" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M22 15h13M22 43.5h13" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="2.4" stroke-linecap="round"/>
 </svg>

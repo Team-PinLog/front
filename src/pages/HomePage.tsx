@@ -1,118 +1,139 @@
-import { useCallback, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useCallback, useMemo, useState } from 'react';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
 import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
-import { SmartSearchPanel } from '@/features/home/components/SmartSearchPanel';
+import { useRecordMapMarkersQuery } from '@/features/map/hooks/useRecordMapMarkersQuery';
 import { HomeMapSection } from '@/features/home/components/HomeMapSection';
 import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
+import { PaperApertureStage } from '@/features/home/components/PaperApertureStage';
+import { HomeSearchDock } from '@/features/home/components/HomeSearchDock';
 import {
-  HERO_MAP_FADE_MASK,
-  HERO_OVERLAY_HEIGHT_CLASS,
-  HERO_OVERLAY_OPAQUE_PX,
-} from '@/features/home/lib/heroMapOverlay';
-import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
+  HomeLeftType,
+  HomeRightType,
+  HomeTopType,
+  HomeTopmark,
+} from '@/features/home/components/HomeSheetPanels';
+import { computeOpen, MAP_TOP_OBSTRUCTION_PX } from '@/features/home/lib/paperAperture';
+import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
 
 /**
- * 홈 화면: 스마트 검색(149)과 지도(150)를 한 화면에서 함께 보여준다.
- * 근거: Jira S15P11A705-165. 검색 mutation은 SmartSearchPanel·SearchResultGallery 형제
- * 컴포넌트가 같은 상태를 공유해야 해서 여기서 한 번만 호출해 나눠 내려준다.
- * 지도 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 연다
- * (Jira S15P11A705-166). openRecordId는 SearchResultGallery 카드 클릭과 동일한 상태를 공유한다.
- * 306: 우측 하단 고정 FAB(구 AddPlaceRecordButton)는 제거했다 — 첨부 디자인 이미지 기준으로
- * "+장소추가" 버튼이 SmartSearchPanel 히어로 안으로 옮겨갔고(usePlaceRecordSheet().open 재사용),
- * 같은 진입점을 화면에 중복 노출할 이유가 없다.
- * 307: 지도를 검색 결과 유무로 전환되는 카드가 아니라 페이지 전체의 배경 레이어로 바꿨다(첨부
- * 디자인 이미지 기준 — idle·검색 결과 상태 모두 지도가 배경에 항상 깔려 있다). <main>을
- * 배경(지도+그라데이션)과 컨텐츠(히어로+검색 결과/안내 문구) 두 레이어로 분리한다 — 컨텐츠 레이어만
- * PAGE_CONTAINER_CLASS(306에서 통일한 max-w-6xl 폭)를 쓰고, 배경 지도 레이어는 폭 제한 없이
- * AppLayout <main>(사이드바 제외 영역)을 꽉 채운다. min-h 값은 FeedPage.tsx와 동일하게
- * AppLayout의 sm·mdlg 고정 헤더(3.5rem)·xl 사이드바 오프셋에 맞춘 것이다.
- * SearchResultGallery(검색 결과 카드)는 이번 티켓 범위 밖이라 내부 로직·위치는 그대로 두고, 배경
- * 지도 위에 얹히는 컨텐츠 레이어 안에서 렌더 위치만 유지했다.
+ * 홈 화면 — "종이에 오려낸 창".
+ *
+ * 종이 네 판이 물러나며 지도를 드러내고, 그 개방률(--open)은 **검색어 길이**에서 나온다.
+ * 스크롤도 타이머도 시간축이 아니라 사람이 치는 속도가 시간축이라, 화려한데도 기다리는
+ * 시간이 없다. 지우면 그대로 되돌아간다. 근거: 디자인 시안 home-paper-aperture.html.
+ *
+ * 이전 구조(제목+검색바 히어로 + backdrop-blur 마스크 오버레이)는 종이 판이 대신하므로
+ * SmartSearchPanel·heroMapOverlay와 함께 걷어냈다.
+ *
+ * 검색 mutation은 도크와 결과 갤러리가 같은 상태를 공유해야 해서 여기서 한 번만 호출해
+ * 나눠 내려준다(기존과 동일). 지도 마커 클릭·결과 카드 클릭은 라우트 이동이 아니라
+ * RecordDetailOverlay를 여는 같은 로컬 상태로 모인다(Jira S15P11A705-166).
  */
 export function HomePage() {
-  const navigate = useNavigate();
   const searchMutation = useSearchRecordsMutation();
+  const [query, setQuery] = useState('');
   const [openRecordId, setOpenRecordId] = useState<number | null>(null);
   // 방금 저장한 Record. 마커 목록이 갱신되는 대로 지도가 그 좌표로 이동하고 값을 비운다.
   // 근거: Jira S15P11A705-325.
   const [savedRecordId, setSavedRecordId] = useState<number | null>(null);
-  // 지도 쪽 effect의 deps에 들어가므로 참조를 고정한다 — 인라인 화살표로 두면 홈이 리렌더될 때마다
-  // 이동 effect가 다시 돈다.
   const handleSavedRecordFocused = useCallback(() => setSavedRecordId(null), []);
 
+  // RecordMapView가 쓰는 것과 **같은 쿼리 키**라 요청이 한 번 더 나가지 않는다(캐시 공유).
+  // 좌판의 대형 숫자와 하판 목록이 이 데이터를 쓴다.
+  const { data: mapData } = useRecordMapMarkersQuery();
+  const places = useMemo(() => mapData?.items ?? [], [mapData]);
+
+  // 검색어를 지우면 창만 닫히는 게 아니라 **결과도 함께 되돌린다.**
+  // reset()이 없으면 mutation이 isSuccess인 채로 남아, 창이 닫힌 뒤에도 결과 카드가 계속 떠 있다
+  // (검색어를 비웠는데 그 검색의 결과만 화면에 남는 상태). 창의 개폐와 결과의 수명이 같은 입력에
+  // 묶여 있어야 "지우면 처음으로 돌아간다"가 성립한다.
+  const { reset: resetSearch } = searchMutation;
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      if (!value.trim()) {
+        resetSearch();
+      }
+    },
+    [resetSearch],
+  );
+
+  const open = computeOpen(query);
+
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
-  // mockup의 homeSearchNoResults(검색은 했지만 0건)에 대응한다 — idle·pending·error와 달리
-  // 지도 위에 "원하는 장소를 찾아보세요" 안내를 함께 보여준다(mockup 1058~1060행).
   const hasNoResults = searchMutation.isSuccess && searchMutation.data.items.length === 0;
+
+  // 창이 열린 뒤 검색바 아래에 뜨는 한 줄. 결과 개수를 여기서 말하고, 결과 자체는 아래
+  // 갤러리가 보여준다. items: []는 오류가 아니라 정상 응답이다(AGENTS.md 절대 금지 4).
+  let status: string | null = null;
+  if (searchMutation.isPending) {
+    status = '찾는 중입니다…';
+  } else if (searchMutation.isError) {
+    status = '검색하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  } else if (hasResults) {
+    status = `${searchMutation.data.items.length}곳을 찾았습니다`;
+  } else if (hasNoResults) {
+    status = '그 문장으로는 아직 찾지 못했습니다. 다르게 적어 보세요.';
+  }
 
   return (
     <PlaceRecordSheetProvider>
-      <main className={`relative ${PAGE_MIN_HEIGHT_CLASS}`}>
-        {/* 배경 레이어: 사이드바를 제외한 남은 영역 전체를 풀블리드로 채우는 지도. CSS 페인트 순서상
-            position:absolute 요소(z-index:auto)는 아래 일반 흐름 컨텐츠보다 항상 위에 그려지므로,
-            이 레이어를 배경으로 두려면 컨텐츠 레이어 쪽에 별도로 relative+z-10을 줘 쌓임 순서를
-            뒤집어야 한다(아래 컨텐츠 레이어 참고). */}
-        {/* isolate는 이 배경 레이어가 어떤 z-index도 바깥으로 새게 하지 않는다는 경계다. 실제
-            누출원(카카오 SDK 내부 z-index)은 RecordMapView 컨테이너에서 이미 가두지만, 아래
-            오버레이가 지도 위에 보이는 것은 이 레이어 구조 자체의 전제라 여기서도 명시한다. */}
-        <div className="isolate absolute inset-0">
-          <HomeMapSection
-            onMarkerClick={setOpenRecordId}
-            topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
-            focusRecordId={savedRecordId}
-            onFocusRecordHandled={handleSavedRecordFocused}
-          />
-        </div>
-
-        {/* 히어로 쪽으로 갈수록 지도가 흐려지는 오버레이. 클릭은 지도로 통과시켜야 해서
-            pointer-events-none.
-            경계선(사각형 단차)의 근본 원인은 tint 그라데이션이 아니라 요소가 "고정 높이에서
-            끝난다"는 사실 자체였다 — backdrop-filter는 요소 영역 안에서만 균일하게 적용되고
-            영역 밖에서 즉시 사라지므로, tint가 이미 투명해진 지점에서도 "흐린 지도 / 선명한
-            지도"가 맞닿는 가로줄이 남는다. 높이가 다른 여러 겹을 겹쳐 단차를 잘게 쪼개는 방식도
-            써봤지만 단차를 줄일 뿐 없애지는 못한다.
-            그래서 레이어는 하나만 두고, mask-image(알파 그라데이션)로 이 요소의 "보이는 정도"
-            자체를 위에서 아래로 연속적으로 0까지 떨어뜨린다. 마스크는 요소의 합성 결과 전체에
-            적용되므로 backdrop-blur와 bg-paper-white(tint)가 같은 곡선을 따라 함께 사라진다 —
-            tint를 별도 레이어로 분리하지 않는 이유다. 알파가 0이 되는 지점에는 그릴 것이 남지
-            않아 끊기는 경계가 원리적으로 생기지 않는다.
-            Safari/구형 Chromium을 위해 -webkit-mask-image(WebkitMaskImage)를 함께 지정한다.
-            근거: Jira S15P11A705-307 후속 디자인 피드백. */}
-        <div
-          aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
-          style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
-        />
-
-        {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다. */}
-        <div className={`relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}>
-          <SmartSearchPanel
-            onSubmit={(query) => searchMutation.mutate(query)}
-            isPending={searchMutation.isPending}
-          />
+      {/* 다른 화면과 달리 PAGE_MIN_HEIGHT_CLASS·PAGE_INSET_CLASS를 쓰지 않는다 — 그 상수들은
+          페이지가 사방에 여백을 둔다는 전제인데, 이 종이는 화면을 가장자리까지 채워야 한다.
+          셸 <main>의 content box 높이가 정확히 100dvh라(h-[100dvh] flex 열의 flex-1, 여백 없음)
+          h-full이면 그대로 들어맞는다. */}
+      <main className="relative h-full">
+        <PaperApertureStage
+          open={open}
+          top={<HomeTopType />}
+          left={<HomeLeftType places={places} onSelectRecord={setOpenRecordId} />}
+          right={<HomeRightType />}
+          topmark={<HomeTopmark />}
+          dock={
+            <HomeSearchDock
+              query={query}
+              onQueryChange={handleQueryChange}
+              onSubmit={(value) => searchMutation.mutate(value)}
+              isPending={searchMutation.isPending}
+              status={status}
+            />
+          }
+        >
+          {/* 창 아래로 흐르는 층. isolate는 카카오 SDK 내부 z-index가 종이 위로 새지
+              않게 가둔다 — 이 경계가 없으면 지도 타일이 종이를 덮는다(S15P11A705-307). */}
+          <div className="isolate absolute inset-0">
+            <HomeMapSection
+              onMarkerClick={setOpenRecordId}
+              topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
+              focusRecordId={savedRecordId}
+              onFocusRecordHandled={handleSavedRecordFocused}
+            />
+          </div>
 
           {hasResults && (
-            <SearchResultGallery
-              items={searchMutation.data.items}
-              onSelectRecord={setOpenRecordId}
-            />
+            <div className="pl-results">
+              <SearchResultGallery
+                items={searchMutation.data.items}
+                onSelectRecord={setOpenRecordId}
+              />
+            </div>
           )}
-          {hasNoResults && (
-            <p className="flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
-              원하는 장소를 찾아보세요.
-              <button
-                type="button"
-                onClick={() => void navigate({ to: '/feed' })}
-                className="font-bold text-log-mint underline"
-              >
-                탐색 탭으로 이동 →
-              </button>
-            </p>
-          )}
-        </div>
+        </PaperApertureStage>
+
+        {/* 지면 오른쪽 어깨. 네비게이션 바를 지운 뒤 이 화면에서 설정(계정·로그아웃·탈퇴)으로
+            가는 유일한 길이고, 우측 곁열이 사라지는 좁은 폭에서는 화면 이동도 여기서 맡는다
+            (index.css .paper-corner-nav--rails — 넓은 폭에서는 표지 두 권이 하므로 링크만 접힌다).
+            무대(.pl-stage) 바깥에 두는 이유: 그쪽은 overflow:hidden에 종이 판이 쓸려 나가는
+            자리라, 항상 제자리에 있어야 하는 이 줄이 개폐에 휩쓸리면 안 된다. */}
+        <PaperCornerNav
+          className="paper-corner-nav--rails absolute right-6 top-6 z-30"
+          items={[
+            { to: '/feed', label: '탐색' },
+            { to: '/library', label: '책장' },
+          ]}
+        />
       </main>
 
       <PlaceRecordSheet onRecordSaved={setSavedRecordId} />

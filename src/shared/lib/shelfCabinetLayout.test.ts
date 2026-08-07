@@ -12,7 +12,7 @@ import {
   getFeedCardDimensions,
   getFeedColumnsKey,
   getPageContainerWidthPx,
-  SHELL_INSET_PX_BY_TIER,
+  PAGE_INSET_PX_BY_TIER,
   getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
@@ -41,13 +41,6 @@ import {
   solveFeedScale,
   type FeedColumnsKey,
 } from './shelfCabinetLayout';
-import {
-  BOTTOM_NAV_HEIGHT_PX_FALLBACK,
-  getNavPlacement,
-  getSidebarWidthPx,
-  SIDEBAR_RAIL_WIDTH_PX,
-  SIDEBAR_WIDE_WIDTH_PX,
-} from './appChrome';
 import type { ShelfWidthTier } from './useShelfBreakpoint';
 
 // 315: Feed 책장 배치 계산은 순수 함수 네 개(getPageContentBudgetPx → getFeedRowsContentBudgetPx →
@@ -99,23 +92,16 @@ const VIEWPORTS: Viewport[] = [
 
 // FeedList가 매 렌더 수행하는 계산과 정확히 같은 순서로 배치를 만든다 — 어느 한 단계라도 순서가
 // 달라지면(예: 여백 차감을 빠뜨리면) 이 테스트는 실제 화면과 다른 것을 검증하게 된다.
-function layoutFor(viewport: Viewport, measured = { navChromeHeightPx: 0, titleHeightPx: 56 }) {
+function layoutFor(viewport: Viewport, measured = { titleHeightPx: 56 }) {
   const columnsKey: FeedColumnsKey = getFeedColumnsKey(viewport.tier, viewport.isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
   const budgetPx = getPageContentBudgetPx(
     viewport.height,
-    {
-      navChromeHeightPx:
-        getNavPlacement(viewport.tier) === 'bottom' ? measured.navChromeHeightPx : 0,
-      titleHeightPx: measured.titleHeightPx,
-    },
+    { titleHeightPx: measured.titleHeightPx },
     viewport.tier,
   );
   const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
-  const availableGridWidthPx = getFeedGridAreaWidthPx(
-    viewport.width,
-    getSidebarWidthPx(viewport.tier),
-  );
+  const availableGridWidthPx = getFeedGridAreaWidthPx(viewport.width);
   const rows = decideFeedRows({
     columns,
     maxRows: FEED_MAX_ROWS_BY_KEY[columnsKey],
@@ -132,7 +118,7 @@ function layoutFor(viewport: Viewport, measured = { navChromeHeightPx: 0, titleH
     dims,
     contentBudgetPx,
     availableGridWidthPx,
-    pageContainerWidthPx: getPageContainerWidthPx(viewport.width, getSidebarWidthPx(viewport.tier)),
+    pageContainerWidthPx: getPageContainerWidthPx(viewport.width),
     usedHeightPx: rows * (dims.cardHeight + dims.boardHeight) + dims.rowsGap * (rows - 1),
     usedWidthPx: columns * dims.cardWidth + (columns - 1) * dims.gridGap,
   };
@@ -189,20 +175,15 @@ describe('Feed 책장 배치', () => {
 
   // 실측(LayoutMetricsContext) 전 첫 프레임에는 폴백 추정치가 들어온다 — 그 프레임에서 예산이
   // 과대 계상되면 마지막 행이 잠깐 넘쳤다가 제자리를 찾는 깜빡임이 생긴다.
-  it('nav·타이틀 높이 실측 전(폴백) 프레임에서도 예산을 넘지 않는다', () => {
+  it('타이틀 높이 실측 전(폴백) 프레임에서도 예산을 넘지 않는다', () => {
     for (const viewport of VIEWPORTS) {
       const budgetPx = getPageContentBudgetPx(
         viewport.height,
-        { navChromeHeightPx: null, titleHeightPx: null },
+        { titleHeightPx: null },
         viewport.tier,
       );
-      // 폴백 프레임의 자기 일관성을 본다 — 예산도 레이아웃도 같은 폴백 값을 쓴다. 여기에 실측
-      // 추정치를 손으로 적어 두면 폴백 상수가 바뀔 때(330: 떠 있는 탭바가 되며 56→88) 테스트가
-      // 예산과 다른 것을 검증하게 된다.
-      const { usedHeightPx } = layoutFor(viewport, {
-        navChromeHeightPx: BOTTOM_NAV_HEIGHT_PX_FALLBACK,
-        titleHeightPx: 56,
-      });
+      // 폴백 프레임의 자기 일관성을 본다 — 예산도 레이아웃도 같은 폴백 값을 쓴다.
+      const { usedHeightPx } = layoutFor(viewport, { titleHeightPx: 56 });
       expect(usedHeightPx).toBeLessThanOrEqual(getFeedRowsContentBudgetPx(budgetPx));
     }
   });
@@ -289,11 +270,7 @@ describe('Library 세로 배치', () => {
   const LIBRARY_CHROME_PX = 132;
 
   it.each(LIBRARY_VIEWPORTS)('$name — 고른 행 수가 캐비닛 예산 안에 들어간다', ({ w, h, tier }) => {
-    const budgetPx = getPageContentBudgetPx(
-      h,
-      { navChromeHeightPx: getNavPlacement(tier) === 'bottom' ? 56 : 0, titleHeightPx: 56 },
-      tier,
-    );
+    const budgetPx = getPageContentBudgetPx(h, { titleHeightPx: 56 }, tier);
     const scale = getShelfScale(w);
     const rows = getLibraryVisibleRowCount(budgetPx, scale);
     const usedPx = rows * getLibraryTierHeightPx(scale) + (rows - 1) * SHELF_TIER_GAP_PX;
@@ -343,48 +320,29 @@ describe('Library 세로 배치', () => {
   });
 });
 
-// --- 330: 네비게이션 배치 ↔ 레이아웃 예산 -------------------------------------------------------
-// 사이드바 경계가 xl에서 md로 내려오면서, 예전에 tier === 'xl' 하나가 담당하던 세 가지 의미
-// ("사이드바 있음" / "네비게이션이 세로를 먹음" / "3열 배치")가 갈라졌다. 그 경계를 고정한다.
-
-describe('getNavPlacement / getSidebarWidthPx', () => {
-  it('sm만 하단 탭바이고 md 이상은 사이드바다', () => {
-    expect(getNavPlacement('sm')).toBe('bottom');
-    expect(getNavPlacement('mdlg')).toBe('side');
-    expect(getNavPlacement('xl')).toBe('side');
-  });
-
-  it('사이드바 폭은 sm 0, md~lg 레일, xl 넓은 폭이다', () => {
-    expect(getSidebarWidthPx('sm')).toBe(0);
-    expect(getSidebarWidthPx('mdlg')).toBe(SIDEBAR_RAIL_WIDTH_PX);
-    expect(getSidebarWidthPx('xl')).toBe(SIDEBAR_WIDE_WIDTH_PX);
-  });
-});
-
 describe('768 경계에서의 가로 예산', () => {
   // 767(sm) → 768(mdlg)로 넘어가는 순간 가용폭이 떨어진다. 의도된 불연속이라 값 자체를 못박아 둔다.
-  // 364: 이 경계에서 생기는 것이 사이드바 레일 하나가 아니라 **둘**이 됐다 — 셸 좌우 여백도 md부터
-  // 붙는다(sm은 0). 둘을 합친 값이 아니면 실패해야 한다.
-  it('사이드바 레일과 셸 좌우 여백이 생기는 만큼 가용폭이 줄어든다', () => {
-    const beforePx = getFeedGridAreaWidthPx(767, getSidebarWidthPx('sm'));
-    const afterPx = getFeedGridAreaWidthPx(768, getSidebarWidthPx('mdlg'));
+  // 네비게이션 바 삭제 이후 이 경계에서 생기는 것은 **페이지 좌우 여백 하나뿐**이다(sm은 0).
+  // 예전에는 사이드바 레일(72px)이 함께 생겨 낙차가 훨씬 컸다.
+  it('페이지 좌우 여백이 생기는 만큼 가용폭이 줄어든다', () => {
+    const beforePx = getFeedGridAreaWidthPx(767);
+    const afterPx = getFeedGridAreaWidthPx(768);
     // 767과 768은 getPageHorizontalPaddingPx 구간이 같으므로(둘 다 640↑1024미만 = 24) 차이는
-    // 폭 1px과 레일 폭, 그리고 셸 좌우 여백뿐이다.
-    expect(beforePx - afterPx).toBe(SIDEBAR_RAIL_WIDTH_PX - 1 + 2 * SHELL_INSET_PX_BY_TIER.mdlg.x);
+    // 폭 1px과 페이지 좌우 여백뿐이다.
+    expect(beforePx - afterPx).toBe(2 * PAGE_INSET_PX_BY_TIER.mdlg.x - 1);
   });
 
-  it('가로 padding은 사이드바를 뺀 컨텐츠 폭이 아니라 뷰포트 폭 기준이다', () => {
+  it('가로 padding은 컨텐츠 폭이 아니라 뷰포트 폭 기준이다', () => {
     // 이건 버그가 아니라 CSS와 일치하는 동작이다 — PAGE_CONTAINER_CLASS의 sm:px-6은 window 폭
-    // media query라, 컨테이너가 664px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
-    // 364: 768 - 72(레일) - 2*16(셸 여백) = 664, 664 - 2*24(padding) = 616.
-    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(616);
+    // media query라, 컨테이너가 좁아져도 window가 768이면 실제로 24px가 적용된다.
+    // 768 - 2*16(페이지 여백) = 736, 736 - 2*24(padding) = 688.
+    expect(getPageContainerWidthPx(768)).toBe(688);
     // 328: 그 컨테이너에서 좌우 gutter(28)와 선반 판 그림자 자리(8)를 더 뺀 값이 카드 예산이다.
-    // 616 - 2*28 - 2*8 = 544.
-    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(544);
+    // 688 - 2*28 - 2*8 = 616.
+    expect(getFeedGridAreaWidthPx(768)).toBe(616);
   });
 
-  it('레일 덕분에 768에서도 3열 카드가 가독성 하한을 넘는다', () => {
-    // 240px 사이드바였다면 가용폭이 424px로 떨어져 카드가 크게 작아졌을 구간이다.
+  it('768에서도 3열 카드가 가독성 하한을 넘는다', () => {
     const viewport = VIEWPORTS.find((item) => item.name === 'mdlg 768x1024 세로');
     expect(viewport).toBeDefined();
     const { columns, dims } = layoutFor(viewport!);
@@ -405,9 +363,8 @@ describe('선반 판 그림자 여백', () => {
   it('확보한 여백이 카드 가로 예산에서 차감돼 있다', () => {
     // 차감을 빠뜨리면 여백이 그대로 카드 폭을 침범해 선반 덩어리가 컨테이너를 넘는다(가로 스크롤바).
     for (const viewport of VIEWPORTS) {
-      const reservedLeftPx = getSidebarWidthPx(viewport.tier);
-      expect(getFeedGridAreaWidthPx(viewport.width, reservedLeftPx)).toBe(
-        getPageContainerWidthPx(viewport.width, reservedLeftPx) -
+      expect(getFeedGridAreaWidthPx(viewport.width)).toBe(
+        getPageContainerWidthPx(viewport.width) -
           2 * (FEED_SIDE_GUTTER_PX + FEED_ROWS_PADDING_X_PX),
       );
     }
@@ -430,26 +387,20 @@ describe('세로 예산과 네비게이션 배치', () => {
   it('사이드바 구간(mdlg·xl)은 실측 전에도 nav 높이를 빼지 않는다', () => {
     const measured = { navChromeHeightPx: null, titleHeightPx: null };
     // mdlg와 xl의 차이는 셸 상하 여백·페이지 padding·타이틀 gap뿐이다(nav 항은 둘 다 0).
-    // 364: 셸 상하 여백 항이 추가됐다(mdlg 16 / xl 24).
+    // 364: 페이지 상하 여백 항이 추가됐다(mdlg 16 / xl 24).
     const mdlgPx = getPageContentBudgetPx(1024, measured, 'mdlg');
     const xlPx = getPageContentBudgetPx(1024, measured, 'xl');
     expect(mdlgPx - xlPx).toBe(
-      (SHELL_INSET_PX_BY_TIER.xl.y - SHELL_INSET_PX_BY_TIER.mdlg.y) * 2 + (24 - 12) * 2 + (32 - 20),
+      (PAGE_INSET_PX_BY_TIER.xl.y - PAGE_INSET_PX_BY_TIER.mdlg.y) * 2 + (24 - 12) * 2 + (32 - 20),
     );
   });
 
-  it('sm은 실측 전 폴백으로 하단 탭바 높이를 뺀다', () => {
-    const withFallbackPx = getPageContentBudgetPx(
-      812,
-      { navChromeHeightPx: null, titleHeightPx: 56 },
-      'sm',
+  it('페이지 상하 여백은 tier마다 다르게 빠진다', () => {
+    // 네비게이션 바 삭제: 예전에 여기 있던 "sm은 폴백으로 하단 탭바 높이를 뺀다" 검증은 근거가
+    // 사라졌다(뺄 탭바가 없다). 남는 tier 의존 항은 페이지 여백·padding·타이틀 gap 셋이다.
+    expect(getPageContentBudgetPx(1024, { titleHeightPx: 56 }, 'sm')).toBeGreaterThan(
+      getPageContentBudgetPx(1024, { titleHeightPx: 56 }, 'xl'),
     );
-    const withMeasuredZeroPx = getPageContentBudgetPx(
-      812,
-      { navChromeHeightPx: 0, titleHeightPx: 56 },
-      'sm',
-    );
-    expect(withMeasuredZeroPx - withFallbackPx).toBe(BOTTOM_NAV_HEIGHT_PX_FALLBACK);
   });
 });
 

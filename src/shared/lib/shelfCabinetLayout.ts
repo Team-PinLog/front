@@ -3,7 +3,6 @@ import {
   SHELF_SCROLL_TOP_PADDING_PX,
   SPINE_MAX_HEIGHT,
 } from './shelfSpine';
-import { BOTTOM_NAV_HEIGHT_PX_FALLBACK, getNavPlacement } from './appChrome';
 import type { ShelfWidthTier } from './useShelfBreakpoint';
 
 // 287-8(→295 반응형 재설계에서 Feed 부분 대체): Feed·Library 캐비닛의 반응형 규칙(좌우 컨테이너,
@@ -54,52 +53,55 @@ export const PAGE_TITLE_GAP_CLASS = 'gap-5 xl:gap-8';
 // 줄어야 한다. 아래 PAGE_PADDING_PX_BY_TIER와 반드시 일치해야 한다.
 export const PAGE_VERTICAL_PADDING_CLASS = 'py-3 xl:py-6';
 
-// 330: 페이지 <main>의 최소 높이. AppLayout <main>의 하단 여백과 짝이다 — sm은 떠 있는 탭바가
-// 차지하는 높이(알약 + 위아래 여백 = 5rem, + safe-area 인셋)만큼 뷰포트에서 덜어내고,
-// md 이상은 탭바가 없어 전체 높이를 쓴다.
+// 페이지 <main>의 최소 높이. 셸 <main>의 content box 높이가 정확히 100dvh이므로(AppLayout —
+// 네비게이션 바를 지우면서 셸은 여백을 전혀 두지 않는다), 여기서는 **페이지 자신의 상하 여백**
+// (PAGE_INSET_PX_BY_TIER.y)만 뷰포트에서 덜어낸다.
 // FeedPage·LibraryPage·HomePage에 같은 리터럴이 세 벌 복제돼 있던 것을 하나로 모았다.
 // Tailwind arbitrary value 안에는 공백이 들어갈 수 없어 calc() 내부를 붙여 쓴다.
-// 364: md 이상에서 <main>이 사방에 두는 여백(SHELL_INSET_PX_BY_TIER)만큼 뷰포트에서 더 덜어낸다.
-// 이 값이 <main>의 content box 높이와 정확히 같아야 한다 — 크면 모든 페이지에 상시 스크롤바가
-// 생기고(359가 없앤 바로 그 현상), 작으면 페이지 아래가 비어 보인다.
+// ⚠️ 이 값이 실제 여백과 정확히 같아야 한다 — 크면 모든 페이지에 상시 스크롤바가 생기고
+// (359가 없앤 바로 그 현상), 작으면 페이지 아래가 비어 보인다. sm은 여백이 0이라 100dvh 그대로다
+// (예전에는 여기서 떠 있는 탭바 자리 5rem을 뺐는데, 탭바가 사라져 뺄 것이 없다).
 export const PAGE_MIN_HEIGHT_CLASS =
-  'min-h-[calc(100dvh-5rem-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-2rem)] xl:min-h-[calc(100dvh-3rem)]';
+  'min-h-[100dvh] md:min-h-[calc(100dvh-2rem)] xl:min-h-[calc(100dvh-3rem)]';
 
 /**
- * 364: 앱 셸(AppLayout `<main>`)이 컨텐츠 사방에 두는 여백.
+ * 364: 페이지가 컨텐츠 사방에 두는 여백. "요소가 화면 끝까지 퍼져 있다"는 피드백에서 나왔다.
  *
- * "요소가 화면 끝까지 퍼져 있다"는 피드백에서 나왔다. 페이지마다 여백을 주면 화면끼리 어긋나므로
- * 셸에서 한 번에 준다.
+ * ⚠️ 네비게이션 바를 지우면서 이 여백의 **소유자가 셸에서 페이지로 바뀌었다.** 예전에는
+ * `src/index.css`의 `.shell-main`이 갖고 있었는데, 그 규칙은 몰입도(--immersion)에 따라 여백을
+ * 0까지 줄이려고 만든 것이라 몰입 장치와 함께 사라졌다. 이제 여백이 필요한 페이지만
+ * PAGE_CONTAINER_CLASS와 이 값을 쓰고, 지면이 가장자리까지 차야 하는 종이 화면(홈·탐색)은
+ * 아무것도 쓰지 않는다 — 물러나는 전환 없이 처음부터 각자 자기 여백을 갖는다.
  *
- * ⚠️ AppLayout `<main>`의 Tailwind 리터럴과 **반드시 함께 움직인다.** 클래스 문자열엔 JS 상수를
- * 주입할 수 없어 같은 값이 두 곳에 있다(이 파일 전반의 다른 상수들과 같은 사정이다).
- * 한쪽만 고치면 카드 폭 예산이 실제 폭보다 커져 선반이 가로로 넘치고, 세로로는 상시 스크롤바가
- * 생긴다. 아래 두 소비처가 이 값을 반영한다:
+ * 아래 세 소비처가 이 값을 반영하며, 한쪽만 고치면 선반이 가로로 넘치거나 상시 스크롤바가 생긴다:
  *   - 가로: getPageContainerWidthPx
  *   - 세로: getPageContentBudgetPx의 overheadPx, 그리고 PAGE_MIN_HEIGHT_CLASS
  *
  * sm이 0인 이유 — 모바일은 가로가 이미 좁아 여백을 더 주면 카드가 읽히는 크기 아래로 떨어진다.
  * 피드백도 데스크탑·태블릿 한정이었다.
  */
-export const SHELL_INSET_PX_BY_TIER: Record<ShelfWidthTier, { x: number; y: number }> = {
+export const PAGE_INSET_PX_BY_TIER: Record<ShelfWidthTier, { x: number; y: number }> = {
   sm: { x: 0, y: 0 },
-  mdlg: { x: 16, y: 16 }, // AppLayout <main>의 md:pt-4/pr-4/pb-4 + pl에 더해진 1rem
-  xl: { x: 24, y: 24 }, // 같은 자리의 xl:pt-6/pr-6/pb-6 + pl에 더해진 1.5rem
+  mdlg: { x: 16, y: 16 }, // 페이지 루트의 md:p-4
+  xl: { x: 24, y: 24 }, // 같은 자리의 xl:p-6
 };
 
+/** 페이지 루트가 이 여백을 실제로 그리는 클래스. 위 표와 반드시 같은 값이다. */
+export const PAGE_INSET_CLASS = 'md:p-4 xl:p-6';
+
 /**
- * 뷰포트 폭 → 셸 여백. 경계값 768/1280은 useShelfBreakpoint의 tier 경계이자 Tailwind `md:`/`xl:`과
- * 같은 값이다. getPageContainerWidthPx는 tier를 받지 않고 폭만 받으므로 여기서 다시 판정한다
- * (getPageHorizontalPaddingPx가 같은 이유로 같은 형태를 쓴다).
+ * 뷰포트 폭 → 페이지 여백. 경계값 768/1280은 useShelfBreakpoint의 tier 경계이자 Tailwind
+ * `md:`/`xl:`과 같은 값이다. getPageContainerWidthPx는 tier를 받지 않고 폭만 받으므로 여기서 다시
+ * 판정한다(getPageHorizontalPaddingPx가 같은 이유로 같은 형태를 쓴다).
  */
-function getShellInsetPx(viewportWidthPx: number): { x: number; y: number } {
+function getPageInsetPx(viewportWidthPx: number): { x: number; y: number } {
   if (viewportWidthPx >= 1280) {
-    return SHELL_INSET_PX_BY_TIER.xl;
+    return PAGE_INSET_PX_BY_TIER.xl;
   }
   if (viewportWidthPx >= 768) {
-    return SHELL_INSET_PX_BY_TIER.mdlg;
+    return PAGE_INSET_PX_BY_TIER.mdlg;
   }
-  return SHELL_INSET_PX_BY_TIER.sm;
+  return PAGE_INSET_PX_BY_TIER.sm;
 }
 
 // --- Library 책등 크기 스케일(뷰포트 폭 기준 연속 스케일링) ---------------------------------------
@@ -198,12 +200,27 @@ export const LIBRARY_MAX_ROW_COUNT = 4;
  * floor((h + gap) / (tier + gap))이다.
  */
 export function getLibraryVisibleRowCount(cabinetHeightPx: number, shelfScale: number): number {
-  const rowsAreaPx =
+  return getShelfRowsFit(
     cabinetHeightPx -
-    LIBRARY_CABINET_CHROME_PX -
-    LIBRARY_COLUMN_CHROME_PX -
-    SHELF_SCROLL_TOP_PADDING_PX -
-    SHELF_SCROLL_BOTTOM_PADDING_PX;
+      LIBRARY_CABINET_CHROME_PX -
+      LIBRARY_COLUMN_CHROME_PX -
+      SHELF_SCROLL_TOP_PADDING_PX -
+      SHELF_SCROLL_BOTTOM_PADDING_PX,
+    shelfScale,
+  );
+}
+
+/**
+ * 종이 개편: **행이 실제로 놓이는 상자 높이**에서 곧장 행 수를 구한다.
+ *
+ * 위 getLibraryVisibleRowCount는 인자가 "캐비닛 바깥 높이"라 캐비닛 테두리·칸 padding·스크롤
+ * 박스 여백을 스스로 빼야 했다. 종이 지면에는 그 가구가 전부 없고(시안: 캐비닛도 오목한 칸도
+ * 걷어내고 판 위에 책만 세운다) 상자를 직접 실측하므로, 뺄 것이 남아 있지 않다 — 빼는 항을 계속
+ * 들고 다니면 없는 가구의 두께만큼 행이 하나 덜 들어간다.
+ *
+ * 두 함수가 같은 식을 공유하는 것이 요점이다. 하한·상한(2~4행)의 근거도 그대로다.
+ */
+export function getShelfRowsFit(rowsAreaPx: number, shelfScale: number): number {
   const tierPx = getLibraryTierHeightPx(shelfScale);
   const fitted = Math.floor((rowsAreaPx + SHELF_TIER_GAP_PX) / (tierPx + SHELF_TIER_GAP_PX));
   return Math.min(LIBRARY_MAX_ROW_COUNT, Math.max(LIBRARY_MIN_ROW_COUNT, fitted));
@@ -563,18 +580,14 @@ function getPageHorizontalPaddingPx(viewportWidthPx: number): number {
   return 16; // px-4
 }
 
-// reservedLeftPx: 좌측 사이드바가 먹는 폭(appChrome.ts의 getSidebarWidthPx). 330 이후 md부터 값이
-// 생기고 sm은 0이다. padding 구간 판단(getPageHorizontalPaddingPx)은 반드시
-// 원본 viewportWidthPx로 해야 한다 — px-4/sm:px-6/lg:px-8는 실제 브라우저 viewport 폭 media query에
-// 반응하는 것이지, 사이드바를 뺀 "가용 폭"에 반응하는 게 아니기 때문이다(sm:640px/lg:1024px 같은
-// CSS breakpoint는 사이드바 유무와 무관하게 항상 실제 window 폭 기준이다). 반면 max-w-6xl(1152) 캡은
-// AppLayout의 <main md:pl-…> 안에서 "사이드바를 뺀 나머지 폭"을 기준으로 걸리므로, reservedLeftPx는
-// Math.min보다 먼저 viewportWidthPx에서 빼야 한다 — min() 이후에 빼면(예: 1300px 창에서 1152로 이미
-// 캡된 뒤 240을 빼면 848) 실제 CSS가 만드는 값(240을 먼저 뺀 1060을 1152와 비교 → 1060)과 달라진다.
-// 314: 캐비닛이 사라지면서 여기서 빼던 chrome(border-[8px]×2=16 + body px-5×2=40, 좌우 각 28px)도
+// padding 구간 판단(getPageHorizontalPaddingPx)은 반드시 실제 브라우저 viewport 폭으로 한다 —
+// px-4/sm:px-6/lg:px-8는 뷰포트 media query에 반응하는 값이지 "가용 폭"에 반응하는 게 아니다.
+// 네비게이션 바 삭제: 좌측 사이드바가 없어지면서 여기서 빼던 reservedLeftPx(72/240)도 함께
+// 사라졌다. 이제 페이지가 쓸 수 있는 폭은 뷰포트에서 **페이지 자신의 여백**만 뺀 값이다.
+// 314: 캐비닛이 사라지면서 여기서 빼던 chrome(border-[8px]x2=16 + body px-5x2=40, 좌우 각 28px)도
 // 함께 사라졌다. 대신 같은 자리를 좌우 페이지 이동 버튼의 여유 폭으로 쓴다 — 오픈 책장에는 버튼이
 // 들어앉을 캐비닛 안쪽 여백이 없어서, 이 gutter를 확보하지 않으면 버튼이 양 끝 카드 위를 덮어
-// 카드 클릭을 가로챈다. 결과적으로 빼는 총량(56px)이 이전과 같아 카드 크기는 그대로다.
+// 카드 클릭을 가로챈다.
 export const FEED_SIDE_GUTTER_PX = 28; // 원형 버튼 h-7(28px)이 딱 들어가는 폭
 
 /**
@@ -627,19 +640,47 @@ export function getFeedShelfWidthPx(
  * 들어가는지가 "가로 스크롤바가 생기지 않는다"의 정의라, 테스트가 리터럴을 복제하지 않고 같은
  * 식을 부를 수 있어야 한다.
  */
-export function getPageContainerWidthPx(viewportWidthPx: number, reservedLeftPx = 0): number {
-  // 364: 셸 좌우 여백은 reservedLeftPx와 같은 성격이라 **Math.min보다 먼저** 뺀다. 뒤에서 빼면
-  // 1152 캡이 이미 걸린 넓은 창에서 CSS와 값이 어긋난다(바로 위 reservedLeftPx 주석의 함정과 동일).
-  const effectiveWidthPx =
-    viewportWidthPx - reservedLeftPx - 2 * getShellInsetPx(viewportWidthPx).x;
+export function getPageContainerWidthPx(viewportWidthPx: number): number {
+  // 364: 페이지 좌우 여백은 **Math.min보다 먼저** 뺀다. 뒤에서 빼면 1152 캡이 이미 걸린 넓은
+  // 창에서 CSS가 만드는 값과 어긋난다(캡은 여백 안쪽 폭에 걸리기 때문이다).
+  const effectiveWidthPx = viewportWidthPx - 2 * getPageInsetPx(viewportWidthPx).x;
   return Math.min(effectiveWidthPx, 1152) - 2 * getPageHorizontalPaddingPx(viewportWidthPx);
 }
 
-export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx = 0): number {
+export function getFeedGridAreaWidthPx(viewportWidthPx: number): number {
   return (
-    getPageContainerWidthPx(viewportWidthPx, reservedLeftPx) -
+    getPageContainerWidthPx(viewportWidthPx) -
     2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX)
   );
+}
+
+/**
+ * 종이 개편: 그리드 가용 폭(px) → tier.
+ *
+ * 탐색은 책장이 뷰포트가 아니라 **지면 안의 한 상자**에 놓인다(FeedList의 area). 그 상자는
+ * 조판·곁열에 자리를 내주느라 뷰포트보다 한참 좁으므로, 배치를 뷰포트 폭으로 정하면 넓은
+ * 화면에서 좁은 상자에 xl 배치를 밀어 넣게 된다 — "몇 칸을 놓을지"가 묻는 것은 언제나 "그 자리가
+ * 얼마나 넓은가"다.
+ *
+ * ⚠️ 경계값을 768/1280(뷰포트 기준, useShelfBreakpoint)으로 그대로 쓰면 안 된다. 그 숫자는
+ * **뷰포트** 폭이고, 같은 화면에서 그리드가 실제로 쓰는 폭은 사이드바·셸 여백·페이지 padding·
+ * 선반 gutter를 뺀 값이라 훨씬 작다 — 그대로 비교하면 모든 구간이 한 칸씩 아래로 밀린다.
+ * 그래서 그 두 경계 뷰포트에서 **기존 계산이 실제로 만들던 그리드 폭**을 경계값으로 삼는다.
+ * getFeedGridAreaWidthPx를 다시 부르므로, 셸 여백이나 gutter가 바뀌면 이 경계도 함께 움직인다.
+ */
+const TIER_MIN_GRID_WIDTH_PX = {
+  mdlg: getFeedGridAreaWidthPx(768),
+  xl: getFeedGridAreaWidthPx(1280),
+};
+
+export function getShelfTierForGridWidth(gridAreaWidthPx: number): ShelfWidthTier {
+  if (gridAreaWidthPx >= TIER_MIN_GRID_WIDTH_PX.xl) {
+    return 'xl';
+  }
+  if (gridAreaWidthPx >= TIER_MIN_GRID_WIDTH_PX.mdlg) {
+    return 'mdlg';
+  }
+  return 'sm';
 }
 
 // --- Feed: 책장 세로 예산(동적, 전 구간) -------------------------------------------------------------
@@ -672,10 +713,10 @@ const MOBILE_TITLE_HEIGHT_PX_FALLBACK = 56; // PageTitle 블록(제목+서브카
 // 책장은 선반 판과 카드만 있고 셸이 없다. sm·mdlg의 세로 예산이 그만큼 늘어난다.
 const MOBILE_SAFETY_MARGIN_PX = 8; // 브라우저별 폰트 지표 오차 등에 대비한 여유(요구사항의 "상하 최소 여백")
 
-// 330: navHeightPx → navChromeHeightPx. 이전 이름은 "상단 오프셋"을 뜻했는데, 네비게이션이 sm에서
-// 하단으로 내려가면서 위치와 무관한 "네비게이션이 세로에서 차지하는 높이"가 됐다.
+// 네비게이션 바 삭제: navChromeHeightPx가 사라졌다. 그 값은 sm 하단 탭바가 세로에서 먹는 높이를
+// 실측해 담던 것인데, 탭바가 없어져 언제나 0이다 — 항이 0으로 고정되면 계산에 남겨 둘 이유가 없고,
+// 남겨 두면 "네비게이션이 아직 세로를 먹는다"는 틀린 전제가 코드에 계속 남는다.
 export interface PageBudgetMeasured {
-  navChromeHeightPx: number | null;
   titleHeightPx: number | null;
 }
 
@@ -688,18 +729,12 @@ export function getPageContentBudgetPx(
   measured: PageBudgetMeasured,
   tier: ShelfWidthTier,
 ): number {
-  // 사이드바 구간은 네비게이션이 세로를 전혀 먹지 않는다(AppLayout의 탭바가 md:hidden) — 실측값도
-  // 0으로 들어오지만, 측정 전 첫 프레임의 폴백도 0이어야 예산이 그만큼 작게 잡히지 않는다.
-  // 330: 판단 기준이 "xl인가"에서 "네비게이션이 하단에 있는가"로 바뀌었다 — md부터 사이드바가
-  // 생기면서 mdlg도 더 이상 세로를 내주지 않는다.
-  const navFallbackPx = getNavPlacement(tier) === 'bottom' ? BOTTOM_NAV_HEIGHT_PX_FALLBACK : 0;
-  const navHeightPx = measured.navChromeHeightPx ?? navFallbackPx;
   const titleHeightPx = measured.titleHeightPx ?? MOBILE_TITLE_HEIGHT_PX_FALLBACK;
   const overheadPx =
-    navHeightPx +
-    // 364: 셸이 위아래로 두는 여백. 페이지 자신의 padding(PAGE_PADDING_PX_BY_TIER)과 별개로
-    // <main>이 먼저 먹는 몫이라 따로 더한다. 빠뜨리면 예산이 그만큼 커져 캐비닛이 넘친다.
-    SHELL_INSET_PX_BY_TIER[tier].y * 2 +
+    // 364: 페이지 루트가 위아래로 두는 여백(PAGE_INSET_CLASS). 그 안쪽 padding
+    // (PAGE_PADDING_PX_BY_TIER)과 별개로 먼저 먹는 몫이라 따로 더한다 — 빠뜨리면 예산이 그만큼
+    // 커져 책장이 넘친다.
+    PAGE_INSET_PX_BY_TIER[tier].y * 2 +
     PAGE_PADDING_PX_BY_TIER[tier] * 2 +
     titleHeightPx +
     TITLE_GAP_PX_BY_TIER[tier] +

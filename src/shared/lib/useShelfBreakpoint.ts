@@ -30,6 +30,19 @@ function getInitialWidthTier(): ShelfWidthTier {
   );
 }
 
+/**
+ * 폭(px) → tier. 위 훅이 미디어 쿼리로 하는 판단과 **같은 경계값**을 순수 함수로 쓴다
+ * (resolveWidthTier를 공유하므로 두 값이 어긋날 여지가 없다).
+ *
+ * ⚠️ 인자는 **뷰포트 폭**이다. 책장이 놓이는 상자 폭으로 부르면 안 된다 — 그쪽은 셸·페이지
+ * 여백을 이미 뺀 값이라 같은 화면에서 한 구간 아래로 떨어진다. 상자 폭에서 구간을 판정하는
+ * 함수는 shelfCabinetLayout.ts의 getShelfTierForGridWidth이고, 경계값도 거기서 이 경계값
+ * (768/1280)을 기준으로 파생시킨다.
+ */
+export function getShelfWidthTier(viewportWidthPx: number): ShelfWidthTier {
+  return resolveWidthTier(viewportWidthPx >= 768, viewportWidthPx >= 1280);
+}
+
 export function useShelfWidthTier(): ShelfWidthTier {
   const [tier, setTier] = useState<ShelfWidthTier>(getInitialWidthTier);
 

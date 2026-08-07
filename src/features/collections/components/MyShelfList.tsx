@@ -62,8 +62,15 @@ function averageSpineHeight(row: CollectionSummary[]): number {
  */
 export function MyShelfColumn({
   visibleRowCount = SHELF_DEFAULT_VISIBLE_ROW_COUNT,
+  showLabel = true,
 }: {
   visibleRowCount?: number;
+  /**
+   * 알약 라벨("내 컬렉션")을 그릴지. 종이 지면의 책장 화면은 단 머리(.lb-tier-h)가 이미 같은 말을
+   * 하므로 끈다 — 캐비닛을 걷어낸 지면에서는 알약이 "그 칸에 붙은 딱지"가 아니라 지면 위에 뜬
+   * 버튼처럼 보이기도 한다. 기본값이 true라 기존 호출부(/shelf 단독 화면)는 그대로다.
+   */
+  showLabel?: boolean;
 }) {
   const navigate = useNavigate();
   const myCollectionsQuery = useMyCollectionsQuery();
@@ -107,7 +114,7 @@ export function MyShelfColumn({
 
   return (
     <>
-      <ShelfLabel>내 컬렉션</ShelfLabel>
+      {showLabel && <ShelfLabel>내 컬렉션</ShelfLabel>}
 
       {collections.length === 0 && (
         <p className="text-xs text-ink-gray">아직 만든 컬렉션이 없어요.</p>

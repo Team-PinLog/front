@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { getCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
-import { getNavPlacement, getSidebarWidthPx } from '@/shared/lib/appChrome';
 import {
   FEED_COLUMNS_BY_KEY,
   FEED_MAX_ROWS_BY_KEY,
@@ -113,11 +112,11 @@ function cardWidthFor({ width, height, tier, isLandscape }: CardWidthCase): numb
     getPageContentBudgetPx(
       height,
       // 실측 전 폴백이 아니라 실제로 보고되는 값에 가깝게 둔다(하단 탭바는 sm에만 있다).
-      { navChromeHeightPx: getNavPlacement(tier) === 'bottom' ? 80 : 0, titleHeightPx: 56 },
+      { titleHeightPx: 56 },
       tier,
     ),
   );
-  const availableGridWidthPx = getFeedGridAreaWidthPx(width, getSidebarWidthPx(tier));
+  const availableGridWidthPx = getFeedGridAreaWidthPx(width);
   const rows = decideFeedRows({
     columns,
     maxRows: FEED_MAX_ROWS_BY_KEY[columnsKey],

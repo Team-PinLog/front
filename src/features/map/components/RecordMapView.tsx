@@ -27,6 +27,7 @@ import {
 } from '../lib/recordMapViewportLimits';
 import type { RecordMapBbox, RecordMapItem } from '../api/getRecordMapMarkers';
 import { useRecordMapMarkersQuery } from '../hooks/useRecordMapMarkersQuery';
+import { MapCollectionLegend } from './MapCollectionLegend';
 
 // 화면에 그릴 마커 크기(px). src/assets/color-markers/*.svg 원본(64x76)의 정확히 1/2이라
 // 비율이 어긋나지 않는다. 근거: Jira S15P11A705-307.
@@ -501,28 +502,37 @@ export function RecordMapView({
         </div>
       )}
 
-      {/* 최대 축소 캡 때문에 화면에 안 들어온 기록이 있을 때만 뜨는 안내 배지. "내 주변" 버튼
-          (bottom-10, 높이 44px)의 바로 위 bottom-24에 둬 서로 겹치지 않는다. 누르면 캡을 버리고
-          전체 fitBounds로 돌아가며, 그 시점부터 화면 밖 기록이 없으므로 배지 자체가 사라진다. */}
-      {sdkStatus === 'ready' && offscreenRecordCount > 0 && (
-        <button
-          type="button"
-          onClick={handleShowAllRecords}
-          className="absolute bottom-24 left-8 rounded-full border border-line-card bg-snow-white px-4 py-2 text-xs font-bold text-pin-navy shadow-lg transition-colors hover:border-log-mint hover:text-log-mint"
-        >
-          화면 밖 장소 {offscreenRecordCount}개
-        </button>
-      )}
-
+      {/* 좌하단 조작부. 예전에는 세 요소를 bottom-10 / bottom-24처럼 절대값으로 하나씩 앉혔는데,
+          그러면 위 요소의 높이가 바뀔 때마다 아래 값을 손으로 다시 맞춰야 한다(범례는 펼치면
+          높이가 변해서 그 방식으로는 아예 안 된다). 컨테이너 하나를 바닥에 앉히고 세로 flex로
+          쌓아 위로 자라게 한다 — 각 요소는 자기 높이만 알면 된다.
+          같은 종류의 높이 결합 문제를 docs/troubleshooting/2026-08-06-shelf-column-header-height-coupling.md에
+          기록해 둔 적이 있다. */}
       {sdkStatus === 'ready' && (
-        <button
-          type="button"
-          onClick={handleLocateMe}
-          disabled={locating}
-          className="absolute bottom-10 left-8 rounded-full border border-line-card bg-snow-white px-5 py-3 text-sm font-bold text-pin-navy shadow-lg transition-colors enabled:hover:border-log-mint enabled:hover:text-log-mint disabled:cursor-not-allowed"
-        >
-          {locating ? '위치 찾는 중…' : '내 주변'}
-        </button>
+        <div className="absolute bottom-10 left-8 flex flex-col items-start gap-3">
+          {data && <MapCollectionLegend items={data.items} />}
+
+          {/* 최대 축소 캡 때문에 화면에 안 들어온 기록이 있을 때만 뜨는 안내 배지. 누르면 캡을
+              버리고 전체 fitBounds로 돌아가며, 그 시점부터 화면 밖 기록이 없어 배지가 사라진다. */}
+          {offscreenRecordCount > 0 && (
+            <button
+              type="button"
+              onClick={handleShowAllRecords}
+              className="rounded-full border border-line-card bg-snow-white px-4 py-2 text-xs font-bold text-pin-navy shadow-lg transition-colors hover:border-log-mint hover:text-log-mint"
+            >
+              화면 밖 장소 {offscreenRecordCount}개
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleLocateMe}
+            disabled={locating}
+            className="rounded-full border border-line-card bg-snow-white px-5 py-3 text-sm font-bold text-pin-navy shadow-lg transition-colors enabled:hover:border-log-mint enabled:hover:text-log-mint disabled:cursor-not-allowed"
+          >
+            {locating ? '위치 찾는 중…' : '내 주변'}
+          </button>
+        </div>
       )}
 
       {sdkStatus === 'ready' && (
