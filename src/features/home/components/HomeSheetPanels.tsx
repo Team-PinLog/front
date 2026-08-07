@@ -17,10 +17,15 @@ function folioNo(recordId: number): string {
 export function HomeTopType() {
   return (
     <>
-      {/* <em>은 민트 하이라이트가 깔리는 자리다(paperAperture.css .pl-display em).
-          이 화면에서 브랜드 색이 가장 크게 나는 지점이라 브랜드 이름에 얹는다. */}
+      {/* 414: 두 곳에 서로 다른 강조를 얹는다(paperAperture.css .pl-display mark / em).
+          · <mark>기억</mark> — 형광펜으로 슥 그은 자국. 이 서비스가 다루는 것이 무엇인지
+            한 단어로 말하는 자리다. <mark>은 "참고하려고 표시해 둔 부분"이라는 뜻이라
+            형광펜과 의미가 정확히 겹친다 — <span>에 클래스를 붙이는 것보다 정직하다.
+          · <em>핀로그</em> — 자를 대고 그은 밑줄. 이 화면에서 브랜드 색이 가장 크게 나는
+            지점이라 이름에 얹는다.
+          손짓이 다른 두 강조를 쓰는 것이 핵심이다. 같은 모양을 두 번 쓰면 둘 다 장식이 된다. */}
       <h1 className="pl-display">
-        기억이 머무는 자리
+        <mark>기억</mark>이 머무는 자리
         <br />
         <em>핀로그</em>
       </h1>
