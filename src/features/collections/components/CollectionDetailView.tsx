@@ -27,6 +27,7 @@ import {
   binderTapeStyle,
 } from './collectionBinderSkin';
 import { CollectionIndexRail } from './CollectionIndexRail';
+import { CollectionRecordPhoto } from './CollectionRecordPhoto';
 import { CollectionOverlayCloseButton } from './CollectionOverlayShell';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
 import { RecordRemoveButton } from './RecordRemoveButton';
@@ -747,21 +748,32 @@ export function CollectionDetailView({
                               {currentRecord.place.address}
                             </p>
                           </div>
-                          {/* 시안에는 이 버튼이 보이지 않지만 기능은 유지한다(사용자 확정) — 특히 타인
-                          Collection의 "저장하기"는 Feed 유입 동선(142)이라 없애면 기능 회귀다. */}
-                          {ownedByMe ? (
-                            <RecordRemoveButton
-                              collectionId={collectionId}
-                              recordId={currentRecord.recordId}
+                          {/* 379: 오른쪽은 "버튼 + 그 아래 사진" 한 열이다. 버튼은 있던 자리(장 우상단)를
+                              그대로 지키고, 사진은 제목 옆 빈 오른쪽 여백을 쓴다 — 본문 흐름
+                              (제목·주소 → 키워드 → 포스트잇)의 왼쪽 열을 건드리지 않는 자리라
+                              Context가 많아져도 포스트잇과 겹치지 않는다(둘 다 일반 흐름이라
+                              겹침 자체가 생기지 않고, 넘치는 만큼은 332부터 있던 페이지 스크롤이 받는다). */}
+                          <div className="flex flex-none flex-col items-end gap-4">
+                            {/* 시안에는 이 버튼이 보이지 않지만 기능은 유지한다(사용자 확정) — 특히 타인
+                            Collection의 "저장하기"는 Feed 유입 동선(142)이라 없애면 기능 회귀다. */}
+                            {ownedByMe ? (
+                              <RecordRemoveButton
+                                collectionId={collectionId}
+                                recordId={currentRecord.recordId}
+                              />
+                            ) : (
+                              <RecordSaveButton
+                                place={currentRecord.place}
+                                collectionId={collectionId}
+                                feedRequestId={feedRequestId}
+                                feedPosition={feedPosition}
+                              />
+                            )}
+                            <CollectionRecordPhoto
+                              placeName={currentRecord.place.name}
+                              thumbnailUrl={currentRecord.place.thumbnailUrl}
                             />
-                          ) : (
-                            <RecordSaveButton
-                              place={currentRecord.place}
-                              collectionId={collectionId}
-                              feedRequestId={feedRequestId}
-                              feedPosition={feedPosition}
-                            />
-                          )}
+                          </div>
                         </div>
 
                         {/* keywords: []는 AI 분석 미완료의 정상 상태다(architecture.md 5장) — 뱃지 영역 자체를
