@@ -1,0 +1,157 @@
+/* ══════════════════════════════════════════════════════════════════════
+   지면 — 종이 화면들이 공유하는 바닥 한 장.
+
+   홈("종이에 오려낸 창")·탐색("펼쳐 놓은 종이 위의 책장")·책장이 같은 종이 위에 있어야
+   한 제품으로 읽힌다. 그래서 **질감과 눈금은 여기 한 곳에만** 있다 — 화면마다 복제하면
+   종이 색을 한 번 바꿀 때 세 곳이 어긋난다.
+
+   출처: origin/design-ver2. 다만 그쪽은 브랜드 토큰(`.pl-stage`)과 질감 세 겹(.pl-grain/
+   .pl-emboss/.pl-spot)을 `features/home/paperAperture.css`(900줄 규모의 홈 전용 파일)에 두고
+   이 파일이 그 위에 얹히는 구조였다. dev에는 그 홈 파일이 아직 없어 그대로 옮기면 무대가
+   토큰 없이 뜬다 — 그래서 **공유되는 부분만** 이 파일로 끌어왔다(값은 원본 그대로).
+
+   ⚠️ 후속 티켓(2/3 홈 이식)에서 paperAperture.css를 들일 때, 그 파일의 `.pl-stage`
+   토큰 블록과 `.pl-grain`/`.pl-emboss`/`.pl-spot`은 **가져오지 않는다.** 두 곳에 같은 규칙이
+   생기면 종이 색을 한 번 바꿀 때 어느 쪽이 이기는지가 import 순서로 정해진다. 홈 전용인
+   `.pl-sheet`·`.pl-deckle`·조판(`.pl-type`·`.pl-note` 계열)만 그쪽에 남는다.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 무대 루트. 브랜드 토큰과 좌표계가 전부 여기서 열린다. ───────────── */
+.pl-stage {
+  /* --open(0~1)이 종이·조판·도크·마커를 전부 구동한다. 홈이 검색어 길이로 넣는다.
+     홈 밖에서는 기본값 0으로 남아 개폐 transform이 전부 항등식이 된다 — 아무 일도 하지 않는다. */
+  --open: 0;
+  /* 커서 위치(%). 종이 결의 스포트라이트가 이걸 따른다. PaperStage가 rAF로 넣는다. */
+  --mx: 50;
+  --my: 50;
+
+  /* 확정 브랜드 4색(Team-PinLog/brand-resource). 이 파일에 브랜드 밖의 색을 새로 만들지 않는다 —
+     예전엔 진한 민트(#1F7467)를 지어내 썼는데 그건 브랜드에 없는 값이었다.
+
+     ⚠️ 종이(#FAF7F6) 위 대비 실측:
+       pin-navy  15.14:1  → 글자 가능
+       ink-gray   5.28:1  → 글자 가능
+       log-mint   2.32:1  → **글자 불가**(큰 글자 기준 3:1도 미달)
+     그래서 민트는 면·괘선·점·밑줄 같은 **그래픽 요소 전용**이고, 글자는 네이비/잉크그레이다.
+     민트를 배경으로 깔 때는 그 위 글자를 네이비로 둔다(6.2:1). */
+  --pl-paper: #faf7f6;
+  --pl-navy: #042142;
+  --pl-mint: #3bb7a2;
+  --pl-ink: #6d6663;
+  /* 아래 둘도 brand-resource에 있는 값이다(보조 잉크·괘선). */
+  --pl-ink-light: #a39c99;
+  --pl-line: #e8e2df;
+  /* 표지 전용 금박(tailwind.config.js cover-gold / cover-gold-soft). 브랜드 4색이 아니지만
+     **표지 안에서만** 쓰도록 이미 예외로 정해진 토큰이고, 곁열의 두 권은 실제로 표지다.
+     ⚠️ 표지 밖(종이 판·조판·도크)에서는 쓰지 않는다 — 그쪽은 브랜드 4색만이다. */
+  --pl-gold: #b68235;
+  --pl-gold-soft: #dcc7a0;
+  --pl-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 창이 쓸려 열리는 시간. 종이·도크가 모두 이 값을 쓴다 — 한 동작으로 읽혀야 해서
+     개별 duration을 두지 않는다. 빠르기를 바꾸려면 여기만 만진다. */
+  --pl-sweep: 1.8s;
+  /* 창이 열릴 때 좌·우 요소가 화면에 남기는 양. 완전히 내보내면 포스트잇·책에 다시 닿을
+     방법이 사라진다 — 이만큼이 손잡이다(호버하면 제자리로 돌아온다). */
+  --pl-peek: 56px;
+
+  /* 창의 네 변. 시안의 40vh/20vh/max(18vw,…)를 컨테이너 % 기준으로 옮긴 값이다.
+     최대 폭 1120px로 묶는 이유: %로만 잡으면 화면이 넓어질수록 창이 같이 늘어나
+     3:1 넘게 눌려 "창"이 아니라 "띠"가 된다. 넓어진 몫은 여백 기둥이 먹는다. */
+  --pl-sh-t: 40%;
+  --pl-sh-b: 20%;
+  --pl-sh-x: max(18%, calc((100% - 1120px) / 2));
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+
+  /* 판형 전환과 도크 이동을 **본문 폭·높이** 기준으로 재려고 컨테이너로 선언한다.
+     size(inline-size가 아니라)인 이유는 cqh(높이)까지 쓰기 때문이다 — inset:0이라
+     크기가 확정돼 있어 size containment를 걸어도 레이아웃이 무너지지 않는다.
+     뷰포트 기준(vw/@media)으로 두면 좌측 네비 카드가 접히고 펼쳐질 때 같은 화면 폭에서도
+     본문 폭이 달라지는데 판형은 그대로여서 창이 어긋난다. */
+  container-type: size;
+  container-name: pl-stage;
+}
+
+/* ── 종이 표면 세 겹. 전부 정적 레이어라 --open과 무관하다. ──────────── */
+/* 결.
+   ⚠️ multiply가 아니라 soft-light다. multiply는 어둡게만 할 수 있어서, 무엇을 곱하든 흰 종이가
+   회색으로 내려앉는다("홈에서 회색이 싫다"). soft-light는 0.5를 기준으로 양방향이라 밝은 결과
+   어두운 결이 같이 생기고, 평균 밝기는 종이색(#FAF7F6) 그대로 남는다.
+   세기는 여기 opacity로만 준다 — 필터 쪽 알파를 건드리면 다시 한쪽으로 편향된다. */
+.pl-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  mix-blend-mode: soft-light;
+  filter: url(#pl-grain);
+}
+/* 활판 눌린 자국. feDiffuseLighting이 실제 요철 음영을 만든다 — 평면 노이즈와 다른 점이 이것이고,
+   "인쇄물처럼 보인다"와 "인쇄된 물건이다"를 가르는 한 겹이다.
+   이쪽도 multiply에서 soft-light로 바꿨다(같은 이유). 결보다 굵은 요철이라 세기는 더 낮게 둔다. */
+.pl-emboss {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--pl-paper);
+  filter: url(#pl-deboss);
+  opacity: 0.55;
+  mix-blend-mode: soft-light;
+}
+.pl-spot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    420px circle at calc(var(--mx) * 1%) calc(var(--my) * 1%),
+    rgba(255, 255, 255, 0.72),
+    transparent 62%
+  );
+  mix-blend-mode: soft-light;
+}
+
+/* ── 지면 한 장 ──────────────────────────────────────────────────────── */
+.paper-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--pl-paper);
+}
+
+/* 접힌 자국 + 모눈.
+   ⚠️ 홈의 종이 판은 접지도를 세로로 두 번 접어 자국이 33.3%·66.6%에 있는데, 이 지면은 **가운데를
+   한 번 접어 펼친** 한 장이라 자국이 50% 하나다. 밝은 선 바로 옆에 어두운 선을 두어 능선을 만드는
+   방식과 명도차(3% 안쪽)는 홈과 같은 값이고, 모눈 눈금(109/110, 21/22)도 같다 — 같은 공책에서
+   뜯은 종이여야 한다. */
+.paper-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 3px),
+      rgba(255, 255, 255, 0.9) calc(50% - 3px) 50%,
+      rgba(4, 33, 66, 0.055) 50% calc(50% + 3px),
+      transparent calc(50% + 3px)
+    ),
+    repeating-linear-gradient(0deg, transparent 0 109px, rgba(4, 33, 66, 0.075) 109px 110px),
+    repeating-linear-gradient(90deg, transparent 0 109px, rgba(4, 33, 66, 0.075) 109px 110px),
+    repeating-linear-gradient(0deg, transparent 0 21px, rgba(4, 33, 66, 0.04) 21px 22px),
+    repeating-linear-gradient(90deg, transparent 0 21px, rgba(4, 33, 66, 0.04) 21px 22px);
+}
+
+/* 가장자리 그늘. 홈은 종이가 네 판으로 잘려 있어 잘린 면의 그림자가 두께를 만드는데, 화면을 꽉
+   채우는 이 지면에는 그 경계가 없어 배경색과 구분되지 않는다 — 안쪽으로 옅은 그늘을 둘러
+   "화면에 깔린 색"이 아니라 "놓여 있는 한 장"으로 읽히게 한다. */
+.paper-sheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 90px rgba(4, 33, 66, 0.07);
+}

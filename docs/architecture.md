@@ -56,16 +56,21 @@ src/
   contexts/     # UI 상태용 Context (아래 3장)
 ```
 
-현재 `features/`는 11개다 — `auth`, `collections`, `feed`, `follows`, `home`, `layout`, `map`, `me`, `places`, `records`, `search`.
+현재 `features/`는 12개다 — `auth`, `collections`, `feed`, `follows`, `home`, `layout`, `map`, `me`, `paper`, `places`, `records`, `search`.
 
 - 폴더 소유자를 나누지 않는다. 구현은 한 사람이 담당한다.
-- `layout`은 도메인이 아니라 AppShell(사이드바·헤더) 묶음이고, `home`·`me`는 화면 단위 묶음이다 — 나머지 8개가 실제 도메인이다.
+- `layout`은 도메인이 아니라 AppShell(네비 카드·설정 모달) 묶음이고, `home`·`me`는 화면 단위 묶음이다 — 실제 도메인은 8개다.
+- `paper`도 도메인이 아니라 **종이 지면의 공통 무대**다(409, design-ver2 이식 1/3). 홈·탐색·책장이 같은 종이 위에 있어야 한 제품으로 읽히므로, 지면 한 장(`.paper-sheet`)과 브랜드 토큰·질감 레이어(`.pl-stage` / `.pl-grain`·`.pl-emboss`·`.pl-spot`)와 그것들이 참조하는 SVG 필터(`PaperFilterDefs`)를 **여기 한 곳에만** 둔다. 화면은 이 무대 위에 자기 조판만 얹고 종이 자체를 만들지 않는다.
+  - `PaperStage`는 `position:absolute; inset:0`이라 부모가 크기를 확정해 줘야 하고, `PaperFilterDefs`는 id 참조 묶음이라 한 화면에 무대를 둘 이상 세우면 깨진다.
 
 ## 3. 상태 분리
 
 - **서버 상태 = TanStack Query.** 서버에서 온 데이터(Record, Collection, Feed, Follow, 검색 결과 등)는 Query로 관리한다. 캐시·무효화·재요청을 Query에 위임한다.
 - **UI 상태 = Context API.** 서버와 무관한 화면 상태(모달 열림, 지도 선택, 검색어 입력, 삭제 확인 단계 등)는 Context로 관리한다.
 - 두 상태를 한 store에 섞지 않는다. 서버 데이터를 Context에 복사해 들고 있지 않는다.
+- Context가 **상태가 아니라 동작 하나만** 나르는 경우도 있다. `SettingsTriggerContext`(409)가 그렇다 — 설정 패널의 열림 상태와 포커스·ESC 처리는 전부 `AppLayout`이 계속 갖고, Context로는 `openSettings` 함수 하나만 내려 종이 화면이 자기 조판 안에 설정 진입점을 놓을 수 있게 한다. 상태를 복제하지 않으므로 진입점이 몇 개든 사실은 한 곳에만 있다.
+  - 기본값은 no-op이다. 로그인·약관처럼 셸(Provider) 밖 경로에서 호출돼도 터지지 않아야 하고, 그쪽은 애초에 설정을 열 자리가 아니다.
+  - Provider value는 `useMemo`로 고정한다 — 매 렌더 새 객체가 되면 구독 화면이 전부 다시 그려진다.
 
 ## 4. Context 불변성 (참조: `docs/reference/05-1_파트간_요구사항.md` 1.1)
 
