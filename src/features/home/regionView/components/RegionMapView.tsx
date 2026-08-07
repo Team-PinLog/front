@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RecordMapItem } from '@/features/map/api/getRecordMapMarkers';
 import { PinStanding } from '@/shared/ui/PinSymbols';
+import { getMapToneRightFadeMask } from '@/features/map/lib/mapToneMask';
 import {
   getGeoBounds,
   getProjectionSize,
@@ -57,6 +58,11 @@ interface RegionMapViewProps {
    * 같은 개념이다(HomeMapSection).
    */
   topObstructionPx?: number;
+  /**
+   * 지도 오른쪽 끝을 그라데이션으로 지우는 폭(px). 지도 뷰(RecordMapView)와 같은 값을 받아야 두 탭의
+   * 오른쪽 경계가 같아 보인다. **마스크는 <svg>에만 건다** — 범례·칩까지 지워지면 안 된다.
+   */
+  rightFadePx?: number;
 }
 
 interface RegionBurst {
@@ -77,7 +83,12 @@ interface RegionBurst {
  * ② 카드가 지도 반대편(좌하단)에 떠서, 어느 지역을 가리키는 것인지 시선이 이어지지 않았다.
  * 지금은 누른 자리에서 바로 퍼지므로 둘 다 성립하지 않는다.
  */
-export function RegionMapView({ items, onSelectRecord, topObstructionPx = 0 }: RegionMapViewProps) {
+export function RegionMapView({
+  items,
+  onSelectRecord,
+  topObstructionPx = 0,
+  rightFadePx = 0,
+}: RegionMapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [burst, setBurst] = useState<RegionBurst | null>(null);
 
@@ -258,7 +269,15 @@ export function RegionMapView({ items, onSelectRecord, topObstructionPx = 0 }: R
         // 카드를 흐름에서 뺀 지금은 평소 걸리지 않지만, 검색 결과처럼 나중에 세로가 늘어나는 것이
         // 생겼을 때 지도가 따라 자라 다시 스크롤을 만드는 일을 막는다.
         className="h-full max-h-full w-auto max-w-full"
-        style={{ maxHeight: `calc(100dvh - ${topObstructionPx + 120}px)` }}
+        style={{
+          maxHeight: `calc(100dvh - ${topObstructionPx + 120}px)`,
+          ...(rightFadePx > 0
+            ? {
+                maskImage: getMapToneRightFadeMask(rightFadePx),
+                WebkitMaskImage: getMapToneRightFadeMask(rightFadePx),
+              }
+            : {}),
+        }}
         role="img"
         aria-label="시군구별 기록 지도"
       >

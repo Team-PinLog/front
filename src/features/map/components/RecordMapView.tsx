@@ -29,6 +29,8 @@ import {
 import {
   getMapToneBottomFadeMask,
   getMapToneFilterCss,
+  getMapToneEdgeMaskStyle,
+  getMapToneRightFadeMask,
   getMapToneTextureImage,
   getMapToneWashColorCss,
   getMarkerToneCompensationMatrix,
@@ -350,6 +352,15 @@ interface RecordMapViewProps {
    * Record를 가리킬 수도, 서로 다를 수도 있어 한 prop으로 합치지 않는다.
    */
   selectedRecordId?: number | null;
+  /**
+   * 377 후속: 지도 **오른쪽 끝을 이 폭만큼 그라데이션으로 지운다**(px). 홈에서 지도 폭을 줄여
+   * '최근의 장소' 카드 자리를 비웠는데, 단면이 직선이면 잘린 것처럼 보이기 때문이다.
+   *
+   * 왜 호출부(HomePage)가 아니라 여기서 거는가 — 바깥에서 컨테이너 전체에 마스크를 걸면 그 안의
+   * 줌·"내 주변" 버튼까지 함께 지워진다. 지워도 되는 것은 타일과 톤 레이어뿐이라, 그 셋을 아는
+   * 이 컴포넌트가 건다. 0이면 아무것도 하지 않아 다른 화면의 지도는 그대로다.
+   */
+  rightFadePx?: number;
 }
 
 /** 내 Record를 지도 마커로 조회하는 화면. 근거: docs/reference/08_API_명세.md 4.2. */
@@ -360,6 +371,7 @@ export function RecordMapView({
   onFocusRecordHandled,
   highlightRecordId = null,
   selectedRecordId = null,
+  rightFadePx = 0,
 }: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -719,7 +731,15 @@ export function RecordMapView({
       <div
         ref={containerRef}
         className="isolate h-full w-full"
-        style={{ filter: getMapToneFilterCss() }}
+        style={{
+          filter: getMapToneFilterCss(),
+          ...(rightFadePx > 0
+            ? {
+                maskImage: getMapToneRightFadeMask(rightFadePx),
+                WebkitMaskImage: getMapToneRightFadeMask(rightFadePx),
+              }
+            : {}),
+        }}
       />
 
       {/* 374: 마커 색 역보정 필터의 정의. 그리는 것이 없는 0x0 <svg>라 레이아웃에 영향을 주지 않는다.
@@ -744,8 +764,13 @@ export function RecordMapView({
         style={{
           backgroundColor: getMapToneWashColorCss(),
           mixBlendMode: MAP_TONE_WASH.blendMode,
-          maskImage: getMapToneBottomFadeMask(),
-          WebkitMaskImage: getMapToneBottomFadeMask(),
+          // 타일과 **같은 폭**으로 사라져야 경계가 두 겹으로 보이지 않는다.
+          ...(rightFadePx > 0
+            ? getMapToneEdgeMaskStyle(rightFadePx)
+            : {
+                maskImage: getMapToneBottomFadeMask(),
+                WebkitMaskImage: getMapToneBottomFadeMask(),
+              }),
         }}
       />
 
@@ -761,8 +786,12 @@ export function RecordMapView({
             backgroundSize: `${MAP_TONE_TEXTURE.tileSizePx}px ${MAP_TONE_TEXTURE.tileSizePx}px`,
             opacity: MAP_TONE_TEXTURE.alpha,
             mixBlendMode: 'multiply',
-            maskImage: getMapToneBottomFadeMask(),
-            WebkitMaskImage: getMapToneBottomFadeMask(),
+            ...(rightFadePx > 0
+              ? getMapToneEdgeMaskStyle(rightFadePx)
+              : {
+                  maskImage: getMapToneBottomFadeMask(),
+                  WebkitMaskImage: getMapToneBottomFadeMask(),
+                }),
           }}
         />
       )}

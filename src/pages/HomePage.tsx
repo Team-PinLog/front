@@ -15,6 +15,13 @@ import {
   HERO_OVERLAY_OPAQUE_PX,
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
+import { MAP_TONE_RIGHT_FADE_PX } from '@/features/map/lib/mapToneMask';
+
+/**
+ * 지도 오른쪽 페이드 폭(px). 톤 마스크 쪽 기본값을 그대로 쓴다 — 타일·워시·질감이 모두 같은 값으로
+ * 사라져야 경계가 한 겹으로 보인다. 더 부드럽게 하려면 mapToneMask.ts의 상수를 키운다.
+ */
+const MAP_RIGHT_FADE_PX = MAP_TONE_RIGHT_FADE_PX;
 
 // 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
 // src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
@@ -141,8 +148,10 @@ export function HomePage() {
                지웠다**(버튼은 right-8 = 32px 자리다). 마스크를 걷어내고, 잘린 단면은 라운드와
                그림자로 마감해 "잘렸다"가 아니라 "여기까지가 지도"로 읽히게 한다.
             지도 컨트롤은 이 좁아진 상자를 기준으로 배치되므로 자동으로 카드 왼쪽에 남는다.
-            fitBounds 여유와 "화면 밖" 배지도 컨테이너 실측값을 쓰므로 새 폭에 자동으로 맞는다. */}
-        <div className="isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] shadow-[8px_0_24px_-18px_rgba(4,33,66,0.5)] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 md:rounded-r-2xl lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0">
+            fitBounds 여유와 "화면 밖" 배지도 컨테이너 실측값을 쓰므로 새 폭에 자동으로 맞는다.
+            오른쪽 단면은 **RecordMapView·RegionMapView 안에서** 그라데이션으로 지운다 — 여기서
+            레이어 전체에 마스크를 걸면 그 안의 줌 버튼까지 함께 사라지기 때문이다(실제로 그랬다). */}
+        <div className="isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0">
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
           {isRegionView ? (
@@ -156,6 +165,7 @@ export function HomePage() {
               <RegionViewPanel
                 onSelectRecord={setOpenRecordId}
                 topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+                rightFadePx={MAP_RIGHT_FADE_PX}
               />
             </Suspense>
           ) : (
@@ -166,6 +176,7 @@ export function HomePage() {
               onFocusRecordHandled={handleSavedRecordFocused}
               highlightRecordId={activeRecentRecordId}
               selectedRecordId={openRecordId}
+              rightFadePx={MAP_RIGHT_FADE_PX}
             />
           )}
         </div>
