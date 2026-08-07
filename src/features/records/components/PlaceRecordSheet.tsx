@@ -19,7 +19,7 @@ import {
 } from './PlaceRecordResult';
 
 const CONTEXT_BODY_MAX_LENGTH = 500;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg']);
 const ANALYSIS_STEP_LABELS = ['대화 내용 확인', '장소 후보 검색 중', '메모 작성 중'];
 const ANALYSIS_STEP_DELAY_MS = 700;
@@ -299,7 +299,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageFileError('5MB 이하 이미지만 선택할 수 있습니다.');
+      setImageFileError('10MB 이하 이미지만 선택할 수 있습니다.');
       return;
     }
     if (imagePreviewUrl) {
@@ -711,7 +711,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                                 이미지를 드래그하거나 클릭하여 업로드
                               </strong>
                               <small className="mt-2 block text-xs text-[#8a857e]">
-                                JPG, PNG · 최대 1장(5MB 이하)
+                                JPG, PNG · 최대 1장(10MB 이하)
                               </small>
                             </span>
                           )}
