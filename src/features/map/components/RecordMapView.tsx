@@ -365,6 +365,18 @@ interface RecordMapViewProps {
    * 이 컴포넌트가 건다. 0이면 아무것도 하지 않아 다른 화면의 지도는 그대로다.
    */
   rightFadePx?: number;
+  /**
+   * 394: **화면 왼쪽 끝에서 이 x좌표까지는 다른 레이어가 덮고 있다**(px, 뷰포트 기준). 홈의 좌상단
+   * 플로팅 네비 카드가 유일한 출처다.
+   *
+   * 왜 "가려진 폭"이 아니라 "덮인 x좌표"를 받는가 — 이 지도의 컨테이너는 홈에서 종이 포스터 안에
+   * 들어가 있어(384) 화면 왼쪽 끝에서 여백·프레임만큼 들어와 있고, 그 여백은 구간마다 다르다.
+   * 호출부가 "카드 폭 − 포스터 여백 − 프레임"을 계산하려면 지도의 내부 사정을 알아야 하는데, 그건
+   * 갈아끼울 때마다 어긋난다. 카드의 화면상 위치는 호출부가 확실히 알고, 컨테이너의 화면상 위치는
+   * 이 컴포넌트가 실측으로 확실히 안다 — 각자 아는 것만 주고받으면 중간 값이 낡을 일이 없다.
+   * 0이면 아무것도 덮이지 않은 것으로 계산해 다른 화면의 지도는 기존 동작 그대로다.
+   */
+  leftObstructionEdgeXPx?: number;
 }
 
 /** 내 Record를 지도 마커로 조회하는 화면. 근거: docs/reference/08_API_명세.md 4.2. */
@@ -376,6 +388,7 @@ export function RecordMapView({
   highlightRecordId = null,
   selectedRecordId = null,
   rightFadePx = 0,
+  leftObstructionEdgeXPx = 0,
 }: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -401,17 +414,22 @@ export function RecordMapView({
    * 계산 시점의 컨테이너 크기를 함께 읽는다. 높이는 렌더 후에야 정해지고 창 크기에 따라 변해서
    * state로 들고 있기보다 쓰는 순간 실측하는 편이 어긋날 여지가 없다.
    */
-  const readInsets = useCallback(
-    (): MapViewInsets => ({
+  const readInsets = useCallback((): MapViewInsets => {
+    // 394: 카드가 덮는 x좌표를 **컨테이너 기준 폭**으로 여기서 환산한다. 실측(getBoundingClientRect)을
+    // 쓰는 이유는 위 prop 주석에 있다 — 컨테이너가 화면 어디에 놓였는지는 이 컴포넌트만 확실히 안다.
+    // 카드보다 오른쪽에서 시작하는 컨테이너(= 겹치지 않음)는 음수가 되므로 0으로 눌러 무시한다.
+    const containerLeftPx = containerRef.current?.getBoundingClientRect().left ?? 0;
+    const leftObstructionPx = Math.max(0, leftObstructionEdgeXPx - containerLeftPx);
+    return {
       topObstructionPx,
       containerHeightPx: containerRef.current?.clientHeight ?? 0,
       // 377 후속: 오른쪽 페이드 띠는 그려지지만 보이지 않는다 — 상단 오버레이와 똑같이 "가려진
       // 영역"으로 넘겨 fitBounds·센터링·"화면 밖" 배지가 모두 보이는 영역 기준으로 계산되게 한다.
       rightObstructionPx: rightFadePx,
+      leftObstructionPx,
       containerWidthPx: containerRef.current?.clientWidth ?? 0,
-    }),
-    [topObstructionPx, rightFadePx],
-  );
+    };
+  }, [topObstructionPx, rightFadePx, leftObstructionEdgeXPx]);
 
   /**
    * fitBounds에 쓸 기본 여유. insets와 마찬가지로 **쓰는 순간 실측한다** — 컨테이너 크기는 렌더 후에

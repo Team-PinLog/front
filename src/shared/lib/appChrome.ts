@@ -28,12 +28,18 @@ export function getNavPlacement(tier: ShelfWidthTier): NavPlacement {
 }
 
 /**
- * 좌측 사이드바가 가로에서 차지하는 폭(px). AppLayout <aside>의 Tailwind 리터럴
- * (`w-[4.5rem] xl:w-60`)과 반드시 함께 움직인다 — 클래스 문자열엔 JS 상수를 주입할 수 없다.
+ * 좌측 네비게이션 크롬이 가로에서 **예약하는 폭**(px). 본문(<main>)의 왼쪽 padding이 이 값에서
+ * 나오고, Feed 캐비닛·나의 책장의 가로 예산도 이 값을 그대로 뺀다.
  *
- * mdlg를 72px 아이콘 레일로 두는 이유: 240px을 그대로 쓰면 768px에서 Feed 그리드 가용폭이
- * 592 → 424px로 떨어져 3열 카드가 26% 작아지고, 나의 책장은 열 내부 폭이 166px까지 줄어 5권 행에
- * 가로 스크롤이 생긴다. 72px이면 두 문제가 모두 사라지면서 사이드바 일관성은 지킬 수 있다.
+ * 394 전에는 이 값이 곧 화면에 꽉 찬 사이드바 레일의 폭이었다. 지금은 레일이 **떠 있는 카드**로
+ * 바뀌어 실제로 그려지는 폭(NAV_CARD_*)은 이보다 작지만, **예약 폭은 그대로 둔다** —
+ *  ① 카드가 예약 구간 안에 얌전히 들어앉아 홈 이외의 화면은 배치가 1px도 바뀌지 않고,
+ *  ② 이 값에 물려 있는 캐비닛 계산(shelfCabinetLayout.ts)과 그 테스트가 그대로 유효하다.
+ * 즉 394는 "무엇이 그 자리를 차지하는가"만 바꿨고 "얼마를 비워 두는가"는 건드리지 않는다.
+ *
+ * mdlg를 72px로 두는 이유: 240px을 그대로 쓰면 768px에서 Feed 그리드 가용폭이 592 → 424px로
+ * 떨어져 3열 카드가 26% 작아지고, 나의 책장은 열 내부 폭이 166px까지 줄어 5권 행에 가로 스크롤이
+ * 생긴다. 72px이면 두 문제가 모두 사라지면서 좌측 네비 일관성은 지킬 수 있다.
  */
 export function getSidebarWidthPx(tier: ShelfWidthTier): number {
   if (tier === 'sm') {
@@ -42,10 +48,42 @@ export function getSidebarWidthPx(tier: ShelfWidthTier): number {
   return tier === 'xl' ? SIDEBAR_WIDE_WIDTH_PX : SIDEBAR_RAIL_WIDTH_PX;
 }
 
-/** 아이콘만 있는 좁은 레일(md~lg). AppLayout <aside>의 `w-[4.5rem]`과 쌍. */
+/** 좁은 구간(md~lg)이 좌측 네비에 예약하는 폭. AppLayout <main>의 `md:pl-[5.5rem]`(72+16)과 쌍. */
 export const SIDEBAR_RAIL_WIDTH_PX = 72;
-/** 라벨까지 있는 넓은 사이드바(xl). AppLayout <aside>의 `xl:w-60`과 쌍. */
+/** 넓은 구간(xl)이 좌측 네비에 예약하는 폭. AppLayout <main>의 `xl:pl-[16.5rem]`(240+24)과 쌍. */
 export const SIDEBAR_WIDE_WIDTH_PX = 240;
+
+/**
+ * 394: 좌상단에 떠 있는 네비게이션 카드가 **실제로 차지하는 자리**.
+ *
+ * 위 예약 폭과 뜻이 다르다 — 예약 폭은 "본문을 얼마나 밀어낼까"이고, 이쪽은 "화면 어디에 불투명한
+ * 카드가 떠 있나"다. 홈처럼 본문이 예약 구간 아래까지 풀블리드로 깔리는 화면은 후자를 알아야
+ * 지도가 카드에 가리는 만큼을 보정할 수 있다(getNavCardRightEdgePx).
+ *
+ * ⚠️ 값은 AppLayout <aside>의 Tailwind 리터럴과 쌍둥이다(클래스 문자열엔 JS 상수를 주입할 수 없다):
+ *   left-2(8px) / xl:left-6(24px), w-14(56px) / xl:w-52(208px), hover 시 w-52.
+ * 접힌 폭 + 좌측 여백이 예약 폭 안에 들어가는 것이 이 값들의 유일한 제약이다
+ * (8+56=64 ≤ 72, 24+208=232 ≤ 240).
+ */
+export const NAV_CARD_INSET_PX = { mdlg: 8, xl: 24 } as const;
+/** 평소(접힘) 카드 폭. md~lg는 아이콘만, xl은 라벨까지 보이는 폭이다. */
+export const NAV_CARD_WIDTH_PX = { mdlg: 56, xl: 208 } as const;
+
+/**
+ * 화면 왼쪽 끝에서 네비 카드의 오른쪽 끝까지의 거리(px). "여기까지는 불투명한 카드가 덮고 있다"는
+ * 한 줄짜리 사실이다.
+ *
+ * **호버로 펼쳐진 폭이 아니라 접힌 폭**을 쓴다. 펼침은 마우스를 올린 동안만이고 그때마다 지도가
+ * 다시 맞춰지면 화면이 출렁인다 — 예약 폭을 접힌 값으로 고정한 것(330)과 같은 판단이다.
+ * sm은 카드가 없다(하단 탭바가 대신한다).
+ */
+export function getNavCardRightEdgePx(tier: ShelfWidthTier): number {
+  if (tier === 'sm') {
+    return 0;
+  }
+  const key = tier === 'xl' ? 'xl' : 'mdlg';
+  return NAV_CARD_INSET_PX[key] + NAV_CARD_WIDTH_PX[key];
+}
 
 /**
  * 떠 있는 하단 탭바가 세로에서 차지하는 높이의 근사치(알약 + 위아래 여백 = 80px).

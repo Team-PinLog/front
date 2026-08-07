@@ -14,6 +14,12 @@ interface HomeMapSectionProps {
   selectedRecordId: number | null;
   /** 377: 지도 오른쪽 끝을 그라데이션으로 지우는 폭(px). 카드 자리와의 경계를 부드럽게 만든다. */
   rightFadePx?: number;
+  /**
+   * 394: 화면 왼쪽 끝에서 좌상단 플로팅 네비 카드의 오른쪽 끝까지의 거리(px). 지도가 풀블리드가
+   * 되면서 그 띠가 카드 뒤로 들어가므로, fitBounds·센터링이 그만큼을 빼고 계산한다.
+   * 그대로 RecordMapView에 넘기기만 한다(의미는 그쪽 prop 주석).
+   */
+  leftObstructionEdgeXPx?: number;
 }
 
 /**
@@ -31,6 +37,7 @@ export function HomeMapSection({
   highlightRecordId,
   selectedRecordId,
   rightFadePx,
+  leftObstructionEdgeXPx,
 }: HomeMapSectionProps) {
   return (
     <div className="h-full w-full">
@@ -42,6 +49,7 @@ export function HomeMapSection({
         highlightRecordId={highlightRecordId}
         selectedRecordId={selectedRecordId}
         rightFadePx={rightFadePx}
+        leftObstructionEdgeXPx={leftObstructionEdgeXPx}
       />
     </div>
   );

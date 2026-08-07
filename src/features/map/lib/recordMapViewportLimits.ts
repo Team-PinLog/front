@@ -101,6 +101,16 @@ export interface MapViewInsets {
    * 사라진 것처럼 보였다.
    */
   rightObstructionPx?: number;
+  /**
+   * 394: 컨테이너 **왼쪽 끝에서 다른 레이어에 덮여 보이지 않는 폭**(px). 홈의 좌상단 플로팅 네비
+   * 카드가 이 값의 출처다 — 사이드바 레일이 사라지면서 홈 지도가 진짜 풀블리드가 됐고, 그만큼
+   * 지도의 왼쪽 띠가 불투명한 카드 뒤로 들어갔다.
+   *
+   * 오른쪽 페이드(rightObstructionPx)와 성격이 같다 — "그려지긴 하지만 사용자에게는 없는 영역"이라
+   * fitBounds 여유·센터링·"화면 밖 N개" 배지가 모두 이 폭을 빼고 계산해야 한다. 반영하지 않으면
+   * 서쪽 끝 마커(예: 백령도·서해안)가 카드 뒤에 숨는다.
+   */
+  leftObstructionPx?: number;
   /** 지도 컨테이너 전체 폭(px). 픽셀 오프셋을 경도로 환산할 때 기준이 된다. */
   containerWidthPx?: number;
 }
@@ -112,6 +122,15 @@ function usableRightObstructionPx(insets: MapViewInsets): number {
     return 0;
   }
   return Math.min(rightObstructionPx, containerWidthPx);
+}
+
+/** 계산에 쓸 수 있는 왼쪽 가림 폭. 컨테이너를 벗어나거나 음수인 값은 무시한다. */
+function usableLeftObstructionPx(insets: MapViewInsets): number {
+  const { leftObstructionPx = 0, containerWidthPx = 0 } = insets;
+  if (!(leftObstructionPx > 0) || !(containerWidthPx > 0)) {
+    return 0;
+  }
+  return Math.min(leftObstructionPx, containerWidthPx);
 }
 
 /** 계산에 쓸 수 있는 가림 높이. 컨테이너를 벗어나거나 음수인 값은 무시한다. */
@@ -177,7 +196,9 @@ export function getFitPadding(basePaddingPx: number, insets: MapViewInsets): Map
     // "보이는 영역" 안에 담긴다. 이게 없으면 동쪽 끝 마커(예: 제주)가 페이드 속으로 들어간다.
     right: basePaddingPx + usableRightObstructionPx(insets),
     bottom: basePaddingPx,
-    left: basePaddingPx,
+    // 394: 왼쪽 플로팅 네비 카드도 같은 취급이다 — 카드가 덮는 폭만큼 여유를 더 줘야 마커가
+    // "보이는 영역" 안에 담긴다.
+    left: basePaddingPx + usableLeftObstructionPx(insets),
   };
 }
 
@@ -193,7 +214,8 @@ export function getFitPadding(basePaddingPx: number, insets: MapViewInsets): Map
 export function shrinkViewportFromTop(viewport: LatLngBox, insets: MapViewInsets): LatLngBox {
   const topObstruction = usableObstructionPx(insets);
   const rightObstruction = usableRightObstructionPx(insets);
-  if (topObstruction === 0 && rightObstruction === 0) {
+  const leftObstruction = usableLeftObstructionPx(insets);
+  if (topObstruction === 0 && rightObstruction === 0 && leftObstruction === 0) {
     return viewport;
   }
   let result = viewport;
@@ -206,6 +228,11 @@ export function shrinkViewportFromTop(viewport: LatLngBox, insets: MapViewInsets
     // 눈에 보이는 것과 일치하려면 이 축소가 필요하다.
     const lngPerPx = (viewport.neLng - viewport.swLng) / (insets.containerWidthPx ?? 0);
     result = { ...result, neLng: result.neLng - lngPerPx * rightObstruction };
+  }
+  if (leftObstruction > 0) {
+    // 394: 왼쪽이 가려지면 **서쪽 경계**가 그만큼 안으로 들어온다.
+    const lngPerPx = (viewport.neLng - viewport.swLng) / (insets.containerWidthPx ?? 0);
+    result = { ...result, swLng: result.swLng + lngPerPx * leftObstruction };
   }
   return result;
 }
@@ -220,16 +247,27 @@ export function shrinkViewportFromTop(viewport: LatLngBox, insets: MapViewInsets
  * 중앙에 놓여 오버레이 높이의 절반만큼 위로 밀려 보인다.
  */
 /**
- * 377 후속: 오른쪽이 가려졌을 때 지도 중심을 **서쪽으로** 얼마나 옮겨야 목표 지점이 보이는 영역의
- * 가로 한가운데에 오는지(도 단위). 위 위도 보정과 같은 논리의 가로판이다.
+ * 377 후속 / 394: 좌우가 가려졌을 때 지도 중심을 얼마나 옮겨야 목표 지점이 **보이는 영역의 가로
+ * 한가운데**에 오는지(도 단위). 위 위도 보정과 같은 논리의 가로판이다.
+ *
+ * 부호를 유도해 두는 편이 안전하다. 목표 지점 P는 화면 x = W/2 + (P.lng - C.lng)/lngPerPx에
+ * 그려지고, 왼쪽 L·오른쪽 R이 가려졌을 때 보이는 영역의 중앙은 (L + (W - R)) / 2다. 둘을 같게 두면
+ *   C.lng = P.lng + lngPerPx * (R - L) / 2
+ * 즉 오른쪽이 가려지면 중심을 **동쪽으로**(그래야 P가 왼쪽 = 보이는 쪽으로 밀린다), 왼쪽이 가려지면
+ * **서쪽으로** 옮긴다. 좌우가 같은 폭만큼 가려지면 서로 상쇄돼 0이다.
+ *
+ * ⚠️ 394 이전에는 오른쪽 항의 부호가 반대(서쪽)였다 — P를 오히려 가려진 쪽으로 밀어넣는 값이다.
+ * 위도 보정(아래)과 대칭이 맞지 않아 여기서 함께 바로잡았다. 실화면 영향은 없다: 오른쪽 페이드는
+ * 384(포스터 구도)에서 폭 0이 되어 지금 이 항은 항상 0이다.
  */
 export function getVisibleCenterLngOffset(viewport: LatLngBox, insets: MapViewInsets): number {
-  const obstruction = usableRightObstructionPx(insets);
-  if (obstruction === 0) {
+  const rightObstruction = usableRightObstructionPx(insets);
+  const leftObstruction = usableLeftObstructionPx(insets);
+  if (rightObstruction === 0 && leftObstruction === 0) {
     return 0;
   }
   const lngPerPx = (viewport.neLng - viewport.swLng) / (insets.containerWidthPx ?? 0);
-  return -(lngPerPx * obstruction) / 2;
+  return (lngPerPx * (rightObstruction - leftObstruction)) / 2;
 }
 
 export function getVisibleCenterLatOffset(viewport: LatLngBox, insets: MapViewInsets): number {
