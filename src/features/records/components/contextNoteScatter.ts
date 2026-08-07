@@ -76,12 +76,14 @@ export function contextNoteScatterStyle(index: number): CSSProperties {
 /**
  * 맥락 영역의 실사용 폭(px). 모달 1000 - 안쪽 여백 112 - 사진 열 300 - 열 간격 40 = 548에서
  * 마지막 안전 여유를 뺀 값이다.
+ *
+ * 418: 컬렉션 펼침면의 오른쪽 페이지는 폭이 다르다(≈470px) — 그래서 이 값은 **기본값**이 되고,
+ * 호출부가 `areaWidthPx`로 자기 폭을 넘길 수 있다. 나머지 규칙(밀도 사다리·폭 역산·줄 계산)은
+ * 두 화면이 그대로 공유한다.
  */
 const COLLAGE_AREA_PX = 540;
 /** 두 열 사이 간격. */
 const COLLAGE_COLUMN_GAP_PX = 24;
-/** 한 열의 폭(px). 카드는 이 폭을 넘지 않는다. */
-const COLLAGE_COLUMN_PX = (COLLAGE_AREA_PX - COLLAGE_COLUMN_GAP_PX) / 2;
 /** 콜라주 상자의 위아래 여백(테이프가 위로 튀어나오는 자리 + 마지막 줄 기울임 여유). */
 const COLLAGE_PADDING_Y_PX = 40;
 /**
@@ -89,6 +91,13 @@ const COLLAGE_PADDING_Y_PX = 40;
  * 낙관적이다. 실렌더에서 맥락 6~9장이 6~17px씩 넘쳤고, 이 여유를 두자 한 단계 더 조여 들어갔다.
  */
 const COLLAGE_FIT_SAFETY_PX = 22;
+/**
+ * 418: 위 여유는 **줄 수와 무관한 상수**였는데, 오차는 줄마다 쌓인다(줄 하나가 그 줄에서 가장 높은
+ * 카드로 정해지고, 그 카드의 어림이 몇 px씩 낙관적이다). 컬렉션 펼침면에서 맥락 9장(5줄)을
+ * 실렌더했을 때 마지막 줄이 30px쯤 잘렸고, 줄당 이만큼을 더 빼자 한 단계 더 조여 들어가 담겼다.
+ * Record 상세(415)에도 같은 규칙이 적용된다 — 맥락이 적어 줄이 1~2줄인 흔한 경우에는 영향이 없다.
+ */
+const COLLAGE_ROW_SAFETY_PX = 6;
 /**
  * 높이를 아직 재지 못했을 때 쓰는 기본값(px). 1000x760 모달에서 실측한 맥락 영역 높이다.
  * 첫 페인트부터 맞는 단계가 나오게 하려는 값이고, 실측이 들어오면 그 값으로 대체된다.
@@ -223,6 +232,14 @@ export interface ContextNoteCell {
   style: CSSProperties;
 }
 
+/** 418: 화면마다 다른 것(폭·추가 자리 유무)만 받는다. 밀도 사다리와 배치 규칙은 공유한다. */
+export interface ContextNoteCollageOptions {
+  /** 2열이 들어앉을 전체 폭(px). 기본은 Record 상세(1000px 모달)의 540px. */
+  areaWidthPx?: number;
+  /** '새로운 맥락 추가' 고정 칸을 둘지. 기본 true(Record 상세). */
+  includeComposerSlot?: boolean;
+}
+
 export interface ContextNoteCollage {
   /** 읽는 순서(좌→우, 위→아래)의 칸 목록. COMPOSER_SLOT_CELL_INDEX 자리가 슬롯이다. */
   cells: ContextNoteCell[];
@@ -286,9 +303,17 @@ function noteHeightPx(bodyLength: number, widthPx: number, density: CollageDensi
 }
 
 /** 한 밀도 단계에서 칸을 채우고, 전체 높이를 함께 낸다. */
-function planCells(bodyLengths: number[], density: CollageDensity) {
+function planCells(
+  bodyLengths: number[],
+  density: CollageDensity,
+  columnPx: number,
+  slotCellIndex: number | null,
+) {
   // 슬롯이 네 번째 칸을 잡고 있으므로 칸은 최소 4개다(맥락이 0~2개여도 두 줄을 유지한다).
-  const cellCount = Math.max(COMPOSER_SLOT_CELL_INDEX + 1, bodyLengths.length + 1);
+  // 418: 슬롯이 없는 화면(컬렉션 펼침면)은 그 하한도 없다 — 맥락 수만큼만 칸을 만든다.
+  const noteCellCount = bodyLengths.length + (slotCellIndex === null ? 0 : 1);
+  const cellCount =
+    slotCellIndex === null ? noteCellCount : Math.max(slotCellIndex + 1, noteCellCount);
   const cells: ContextNoteCell[] = [];
   const heights: number[] = [];
   let nextNote = 0;
@@ -302,7 +327,7 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
       top: Math.round(base.top * scale),
       rotate: base.rotate,
     };
-    const isSlot = cellIndex === COMPOSER_SLOT_CELL_INDEX;
+    const isSlot = cellIndex === slotCellIndex;
     const noteIndex = isSlot ? null : bodyLengths[nextNote] === undefined ? null : nextNote;
 
     if (noteIndex === null) {
@@ -312,7 +337,7 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
         index: null,
         style: isSlot
           ? {
-              width: COLLAGE_COLUMN_PX - offset.left,
+              width: columnPx - offset.left,
               marginLeft: offset.left,
               marginTop: offset.top,
               transform: `rotate(${offset.rotate}deg)`,
@@ -324,7 +349,7 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
     }
 
     const length = bodyLengths[noteIndex];
-    const width = noteWidthPx(length, density, COLLAGE_COLUMN_PX - offset.left);
+    const width = noteWidthPx(length, density, columnPx - offset.left);
     cells.push({
       index: noteIndex,
       style: {
@@ -340,13 +365,15 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
 
   // 줄 높이는 그 줄에서 가장 높은 칸이 정한다(2열).
   let totalHeight = 0;
+  let rowCount = 0;
   for (let rowStart = 0; rowStart < heights.length; rowStart += 2) {
     totalHeight +=
       Math.max(heights[rowStart], heights[rowStart + 1] ?? 0) +
       (rowStart > 0 ? density.rowGapPx : 0);
+    rowCount += 1;
   }
 
-  return { cells, totalHeight };
+  return { cells, totalHeight: totalHeight + rowCount * COLLAGE_ROW_SAFETY_PX };
 }
 
 /**
@@ -361,14 +388,21 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
 export function planContextNoteCollage(
   bodyLengths: number[],
   availableHeightPx?: number | null,
+  options?: ContextNoteCollageOptions,
 ): ContextNoteCollage {
+  const areaWidthPx = options?.areaWidthPx ?? COLLAGE_AREA_PX;
+  const columnPx = (areaWidthPx - COLLAGE_COLUMN_GAP_PX) / 2;
+  // 418: 컬렉션 펼침면에는 '새로운 맥락 추가' 자리가 없다 — 컬렉션 상세는 맥락을 **읽는** 화면이고,
+  // 맥락 추가 진입점은 Record 상세(389)에만 있다. 없는 진입점의 자리를 비워 두면 그 칸이 왜 비어
+  // 있는지 설명할 수 없다.
+  const slotCellIndex = options?.includeComposerSlot === false ? null : COMPOSER_SLOT_CELL_INDEX;
   const usableHeight =
     (availableHeightPx && availableHeightPx > 0 ? availableHeightPx : DEFAULT_AVAILABLE_HEIGHT_PX) -
     COLLAGE_PADDING_Y_PX -
     COLLAGE_FIT_SAFETY_PX;
 
   for (const density of COLLAGE_DENSITIES) {
-    const { cells, totalHeight } = planCells(bodyLengths, density);
+    const { cells, totalHeight } = planCells(bodyLengths, density, columnPx, slotCellIndex);
     if (totalHeight <= usableHeight) {
       return {
         cells,
@@ -384,7 +418,7 @@ export function planContextNoteCollage(
   // 가장 조인 단계로도 넘치면 그 단계로 그리고 스크롤을 허용한다. 글자를 줄이거나 가리지 않는다.
   const densest = COLLAGE_DENSITIES[COLLAGE_DENSITIES.length - 1];
   return {
-    cells: planCells(bodyLengths, densest).cells,
+    cells: planCells(bodyLengths, densest, columnPx, slotCellIndex).cells,
     metrics: densest,
     slotMinHeightPx: densest.slotMinHeightPx,
     columnGapPx: COLLAGE_COLUMN_GAP_PX,

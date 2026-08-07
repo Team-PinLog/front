@@ -60,7 +60,10 @@ export function CollectionDetailPage() {
     </CollectionDeleteConfirmProvider>
   );
 
-  // 내부 진입은 원래 보던 화면을 흐리게 깔고 그 위에 띄운다. 직접 URL·공유 링크는 뒤에 깔 화면이
-  // 없으므로 그대로 페이지로 둔다.
-  return hasOverlayState ? <CollectionOverlayShell>{content}</CollectionOverlayShell> : content;
+  // 418: **어느 경로로 들어와도 책 펼침면 모달이다**(코멘트 2의 3번). 332에서는 내부 진입만
+  // 오버레이였고 직접 URL은 풀페이지였는데, 그러면 같은 컬렉션이 진입 경로에 따라 다른 화면으로
+  // 보인다. 남는 차이는 "돌아갈 앱 내 지점이 있는가"뿐이라(hasOverlayState) 그것만 onClose로
+  // 갈라 셸에 넘긴다 — 직접 URL·공유 링크 진입에는 ✕도 ESC 닫기도 걸리지 않는다.
+  // URL은 그대로 유지한다(사용자 확정 (a)안) — 라우트가 모달을 렌더하는 형태다.
+  return <CollectionOverlayShell onClose={handleClose}>{content}</CollectionOverlayShell>;
 }
