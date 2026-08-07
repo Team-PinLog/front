@@ -18,7 +18,11 @@ import {
   getRegionShadeLevel,
   groupRecordsByRegion,
 } from '../lib/regionRecords';
-import { clampBurstOrigin, getRadialBurstPositions } from '../lib/radialBurst';
+import {
+  clampBurstOrigin,
+  getRadialBurstPositions,
+  pullOriginTowardCenter,
+} from '../lib/radialBurst';
 
 /** SVG 좌표계의 높이. 화면 크기와 무관한 내부 단위이고, viewBox가 실제 크기로 늘려 준다. */
 const MAP_VIEW_HEIGHT = 600;
@@ -34,6 +38,15 @@ const REGION_HIT_RADIUS = 11;
 
 /** 한 번에 띄우는 최대 칩 수. 넘치면 마지막 칩이 "+N"이 된다. */
 const MAX_BURST_ITEMS = 12;
+
+/**
+ * 팝업 칩의 크기·글자 — **취향 조정 지점**이다. 존재감이 약하면 여기서 `text-[11px]`와 `px-3 py-1.5`,
+ * `max-w-[11rem]`를 키운다(퍼지는 거리·간격은 lib/radialBurst.ts의 상수들이다).
+ * ⚠️ Tailwind는 소스를 원시 텍스트로 스캔하므로 이 문자열은 **완성된 리터럴**이어야 한다 —
+ * 조각을 조립하면 클래스가 산출되지 않는다(conventions 2장).
+ */
+const REGION_BURST_CHIP_CLASS =
+  'absolute z-20 flex max-w-[11rem] animate-pin-pop-in items-center gap-1.5 rounded-full border border-line-card bg-snow-white px-3 py-1.5 text-[11px] font-bold text-pin-navy shadow-lg transition-colors hover:border-log-mint hover:text-log-mint motion-reduce:animate-none';
 
 /**
  * 제주 인셋 박스가 본토 지도 폭에서 차지하는 비율과 여백(SVG 단위).
@@ -171,11 +184,12 @@ export function RegionMapView({
       yPx: point.clientY - (rect?.top ?? 0),
     };
     const nextPositions = getRadialBurstPositions(Math.min(itemCount, MAX_BURST_ITEMS));
-    const clamped = container
-      ? clampBurstOrigin(rawOrigin, nextPositions, {
-          width: container.clientWidth,
-          height: container.clientHeight,
-        })
+    const bounds = container
+      ? { width: container.clientWidth, height: container.clientHeight }
+      : null;
+    // 가운데로 당긴 **뒤에** 화면 밖으로 나가는지 확인한다(순서가 바뀌면 당기다 다시 밖으로 나간다).
+    const clamped = bounds
+      ? clampBurstOrigin(pullOriginTowardCenter(rawOrigin, bounds), nextPositions, bounds)
       : rawOrigin;
     setBurst((current) =>
       current?.regionCode === regionCode
@@ -356,7 +370,7 @@ export function RegionMapView({
                 onClick={() => onSelectRecord(item.recordId)}
                 // animate-pin-pop-in이 스태거의 본체다. transform에 translate(-50%,-50%)가 들어
                 // 있는 키프레임이라 여기서 별도 translate 클래스를 주면 서로 덮어쓴다.
-                className="absolute z-20 flex max-w-[11rem] animate-pin-pop-in items-center gap-1.5 rounded-full border border-line-card bg-snow-white px-3 py-1.5 text-[11px] font-bold text-pin-navy shadow-lg transition-colors hover:border-log-mint hover:text-log-mint motion-reduce:animate-none"
+                className={REGION_BURST_CHIP_CLASS}
                 style={{
                   left: origin.xPx + position.xPx,
                   top: origin.yPx + position.yPx,

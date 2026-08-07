@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { clampBurstOrigin, getRadialBurstPositions } from './radialBurst';
+import {
+  BURST_ORIGIN_CENTER_PULL_RATIO,
+  clampBurstOrigin,
+  getRadialBurstPositions,
+  pullOriginTowardCenter,
+} from './radialBurst';
 
 describe('getRadialBurstPositions', () => {
   it('첫 항목이 클릭 지점 바로 위에 뜬다', () => {
@@ -86,5 +91,27 @@ describe('clampBurstOrigin', () => {
 
   it('항목이 없으면 원점을 그대로 둔다', () => {
     expect(clampBurstOrigin({ xPx: 3, yPx: 4 }, [], bounds)).toEqual({ xPx: 3, yPx: 4 });
+  });
+});
+
+describe('pullOriginTowardCenter', () => {
+  const bounds = { width: 800, height: 600 };
+
+  it('기본값은 당기지 않는다 — 누른 자리에서 퍼져야 "이 지역의 것"이라는 연결이 유지된다', () => {
+    expect(BURST_ORIGIN_CENTER_PULL_RATIO).toBe(0);
+    expect(pullOriginTowardCenter({ xPx: 100, yPx: 100 }, bounds)).toEqual({ xPx: 100, yPx: 100 });
+  });
+
+  it('비율만큼 가운데로 당긴다 — 가장자리 지역의 존재감을 키우는 손잡이다', () => {
+    expect(pullOriginTowardCenter({ xPx: 0, yPx: 0 }, bounds, 0.5)).toEqual({ xPx: 200, yPx: 150 });
+  });
+
+  it('1이면 정중앙이다', () => {
+    expect(pullOriginTowardCenter({ xPx: 0, yPx: 0 }, bounds, 1)).toEqual({ xPx: 400, yPx: 300 });
+  });
+
+  it('범위 밖 비율은 0~1로 접는다', () => {
+    expect(pullOriginTowardCenter({ xPx: 10, yPx: 10 }, bounds, -2)).toEqual({ xPx: 10, yPx: 10 });
+    expect(pullOriginTowardCenter({ xPx: 10, yPx: 10 }, bounds, 5)).toEqual({ xPx: 400, yPx: 300 });
   });
 });
