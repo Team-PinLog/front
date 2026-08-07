@@ -220,6 +220,7 @@ Record·Context 생성 및 수정 응답은 Keyword·Embedding 생성을 기다�
 | POST | `/records` | 카카오 Place와 첫 Context로 Record 생성 |
 | GET | `/records/{recordId}` | 내 Record 상세 조회 |
 | GET | `/records/by-place` | kakaoPlaceId로 이 장소의 내 활성 Record 조회 |
+| GET | `/records/recent` | 최근 7일 안에 만든 내 Record 목록 (홈 화면 최근 기록) |
 | DELETE | `/records/{recordId}` | Record 소프트 삭제. 마지막 Record인 Collection이 있으면 409 거절 |
 | DELETE | `/records/{recordId}/force` | 안내 확인 후 Record 강제 삭제. 연쇄 Collection 삭제 포함 |
 | POST | `/records/{recordId}/contexts` | Context 추가 |
@@ -815,6 +816,48 @@ DELETE /api/core/v1/records/{recordId}/force
 - Record·활성 Context 전체 소프트 삭제, Collection 연결 소프트 삭제, **마지막 Record였던 Collection 소프트 삭제**, AI 파생 데이터 무효화(State `CANCELLED` + Embedding `is_deleted`)를 한 트랜잭션으로 수행한다.
 - 204.
 - 연쇄 삭제 대상이 없어도 정상 수행한다(일반 삭제와 동일 결과).
+
+## 5.9 최근 Record 목록
+
+```http
+GET /api/core/v1/records/recent?cursor=&size=1
+```
+
+홈 화면의 "최근 기록" 영역이 쓴다. 최근 7일 안에 만든 **내** Record만 최신순으로 반환한다.
+
+> 조회 API이지만 5.4~5.8 뒤에 붙인 것은 번호를 밀지 않기 위해서다. 5.4~5.8은 본문 여러 곳과 백엔드 주석이 번호로 참조하고 있다.
+
+Query:
+
+| 이름 | 필수 | 설명 |
+|---|---:|---|
+| `cursor` | X | 1.4의 불투명 커서. 없으면 첫 페이지 |
+| `size` | X | **기본 1**. 0 이하는 1로, 100 초과는 100으로 접힌다 |
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "recordId": 8801,
+        "place": { },
+        "keywords": ["조용한", "디저트"],
+        "createdAt": "2026-08-06T11:20:31Z"
+      }
+    ],
+    "nextCursor": "MjAyNi0wOC0wNlQxMToyMDozMVosODgwMQ",
+    "hasNext": true
+  }
+}
+```
+
+- **기간은 서버가 7일로 고정한다.** 기간 파라미터가 없다.
+- **정렬은 `createdAt` 내림차순 고정이다.** 정렬 파라미터가 없다 — "최근"이 곧 정렬이다. 같은 시각은 `recordId` 내림차순으로 끊는다.
+- 카드에 **Context 본문이 없다.** 본문이 필요하면 `recordId`로 5.2를 호출한다.
+- `keywords`는 소유자 범위(`PUBLIC` + `PRIVATE_ONLY`) 집계이며, 없으면 `null`이 아니라 빈 배열이다. **AI 판정 전과 "키워드 0건"을 구분하지 않는다** — 6.1의 `keywordStatus`를 여기서는 제공하지 않으므로, 갓 만든 Record는 화면에 키워드 없이 그려진다.
+- 7일 안에 Record가 없으면 `items: []`인 200이다. 404가 아니다.
+- 페이징 도중 7일 경계는 요청마다 다시 계산된다. 커서를 오래 쥐고 있다가 다음 페이지를 부르면 경계에 걸친 항목이 빠질 수 있으나, 최신순이라 **이미 받은 항목이 다시 오지는 않는다.**
 
 ---
 
@@ -1623,6 +1666,19 @@ type CursorPage<T> = {
 };
 ```
 
+## 11.5 `RecentRecordCard`
+
+```typescript
+type RecentRecordCard = {
+  recordId: number;
+  place: PlaceSummary;
+  keywords: string[];   // 없으면 [] — null이 아니다
+  createdAt: string;
+};
+```
+
+5.9 전용이다. `RecordDetail`(11.1)과 달리 `contexts` 필드 자체가 없다 — 본문을 담을 자리를 두지 않는다.
+
 ---
 
 # 12. 접근 권한표
@@ -1763,6 +1819,18 @@ POST /collections { title, recordIds } (7.1)   -- 즉시 생성, coverImageUrl: 
 ```
 
 생성 완료 화면은 표지 자리에 스켈레톤을 먼저 그리고, 후보가 `done`이 되는 대로 채운다. 사용자가 화풍 선택 전에 떠나도 Collection은 이미 생성되어 있다(7.7).
+
+## 13.13 홈 화면 최근 기록
+
+```text
+GET /records/recent                              -- 최초 진입: 최신 1건
+GET /records/recent?cursor={nextCursor}          -- 카드를 넘길 때마다
+→ hasNext가 false면 더 넘기지 않는다
+```
+
+카드를 여러 장 미리 받아 두려면 `size`를 올린다. 카드에 Context 본문이 없으므로, 사용자가 카드를 눌러 상세로 들어가는 시점에 `recordId`로 5.2를 호출한다.
+
+최근 7일 안에 기록이 없으면 `items: []`가 온다. 오류가 아니므로 빈 화면 안내로 처리한다.
 
 ---
 
