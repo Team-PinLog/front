@@ -132,8 +132,9 @@ describe('RegionMapView — 색칠된 지역 클릭', () => {
     const hitTarget = container.querySelector('circle[role="button"]')!;
     expect(hitTarget).not.toBeNull();
     expect(hitTarget.getAttribute('aria-label')).toContain('제주');
-    // 인셋 그룹 안에 있어야 한다 — 본토 좌표계에 남아 있으면 엉뚱한 자리에 그려진다.
-    expect(hitTarget.closest('g')).not.toBeNull();
+    // 383: 인셋은 본토와 **다른 <svg>** 다. 같은 <svg> 안에 있으면 오른쪽 페이드 마스크에 함께
+    // 잘린다("여전히 그라데이션에 잘린다"는 피드백의 원인이었다).
+    expect(hitTarget.closest('svg')?.getAttribute('aria-label')).toBe('제주 지역 기록 지도');
     // 반지름이 본토와 같아야 조작감이 다르지 않다.
     expect(Number(hitTarget.getAttribute('r'))).toBeGreaterThan(6);
 
@@ -141,10 +142,18 @@ describe('RegionMapView — 색칠된 지역 클릭', () => {
     expect(container.textContent).toContain('한라산 근처 카페');
   });
 
-  it('본토 지역은 인셋 밖에 그려진다', () => {
+  it('본토 지역은 본토 <svg>에 그려진다 — 인셋과 섞이지 않는다', () => {
     render([makeItem(1, '시청 앞 카페', SEOUL.lng, SEOUL.lat)]);
     const hitTarget = container.querySelector('circle[role="button"]')!;
-    expect(hitTarget.closest('g')).toBeNull();
+    expect(hitTarget.closest('svg')?.getAttribute('aria-label')).toBe('시군구별 기록 지도');
+  });
+
+  it('제주 인셋은 본토와 분리된 별도 <svg>다 — 페이드 마스크 영향권 밖에 둔다', () => {
+    render([]);
+    const svgs = Array.from(container.querySelectorAll('svg'));
+    const labels = svgs.map((svg) => svg.getAttribute('aria-label'));
+    expect(labels).toContain('시군구별 기록 지도');
+    expect(labels).toContain('제주 지역 기록 지도');
   });
 
   it('기록이 하나도 없으면 누를 대상이 없다', () => {

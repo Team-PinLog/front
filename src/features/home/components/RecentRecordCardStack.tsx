@@ -49,8 +49,8 @@ export function RecentRecordCardStack({
     // 빈 상태에 점선 핀(pin-outline)을 쓰는 것은 목업의 "아직 꽂힌 핀이 없어요" 규칙이다 —
     // 빈 자리를 회색 상자가 아니라 "꽂을 자리"로 보이게 한다.
     return (
-      <section aria-label="최근의 장소" className="w-full max-w-[19rem] text-center">
-        <p className="text-sm font-bold text-pin-navy">최근의 장소</p>
+      <section aria-label="최근에 저장한 장소" className="w-full max-w-[19rem] text-center">
+        <p className="text-sm font-bold text-pin-navy">최근</p>
         <span className="mt-3 flex justify-center text-pin-navy/25">
           <PinOutline height={34} />
         </span>
@@ -71,8 +71,8 @@ export function RecentRecordCardStack({
     // 377 정정: 별도 색의 보드 패널을 두지 않는다. 카드는 **페이지 배경(paper-white) 위에 직접**
     // 압정으로 꽂힌 모양이다. 대신 이 영역이 지도와 겹치지 않도록 배경 레이어(지도) 쪽 폭을 줄이고
     // 오른쪽 가장자리를 페이드했다(HomePage) — 판을 깔아 가리는 대신 지도를 비켜 세우는 방식이다.
-    <section aria-label="최근의 장소" className="w-full max-w-[19rem]">
-      <p className="mb-3 text-xs font-bold tracking-[0.12em] text-pin-navy/70">최근의 장소</p>
+    <section aria-label="최근에 저장한 장소" className="w-full max-w-[19rem]">
+      <p className="mb-3 text-xs font-bold tracking-[0.12em] text-pin-navy/70">최근</p>
 
       {/* 행 사이 간격이 넉넉해야 위 카드의 압정이 아래 카드에 닿지 않는다(압정이 카드 위로 30px
           가까이 튀어나온다). overflow를 숨기지 않는 것도 같은 이유다. */}
@@ -100,7 +100,10 @@ export function RecentRecordCardStack({
         })}
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-2">
+      {/* 383: 넘김 버튼을 카드 **바로 아래 가운데**로 모은다. 이전에는 justify-between이라 좌우
+          끝으로 벌어져 "카드에 딸린 컨트롤"이 아니라 별개 요소처럼 보였고, mt-4라 카드와도 떨어져
+          있었다. 간격을 좁혀 한 덩어리로 읽히게 한다. */}
+      <div className="mt-2 flex items-center justify-center gap-1.5">
         <button
           type="button"
           onClick={() => handleStep(-1)}
