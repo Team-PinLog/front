@@ -5,9 +5,6 @@ import type { ApiError } from '@/shared/http/types';
 /**
  * ⭐ 표준 패턴: 화면 → Hook → API 함수(여기) → httpClient.
  * 근거: 08_API_명세 5.9 최근 Record 목록 / 11.5 RecentRecordCard.
- * ⚠️ 이 절 번호는 **Team-PinLog/docs PR #50 기준이며 아직 머지 전**이다 — 지금 docs/reference/에
- * 받아둔 사본에는 이 절이 없다. 머지되면 doc-syncer가 reference와 api-contract.md를 갱신하고,
- * 그때 절 번호가 밀리면 이 주석도 함께 맞춘다(직접 고치지 않는다).
  * 봉투({ success, data })는 httpClient 인터셉터가 벗긴다. 여기서는 언랩된 data만 파싱한다.
  *
  * 기간(7일)·정렬(createdAt 내림차순)은 **서버가 고정**한다 — 파라미터가 없으므로 프론트가 넘기지 않는다.
