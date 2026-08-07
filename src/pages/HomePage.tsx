@@ -16,12 +16,17 @@ import {
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
 import { MAP_TONE_RIGHT_FADE_PX } from '@/features/map/lib/mapToneMask';
+// 384 — 롤백 지점 ①: 이 import와 아래 <DeskSurface />·<MapPosterFrame> 두 곳이 전부다
+// (자세한 안내는 features/home/deskPoster/deskPoster.ts 주석).
+import { DeskSurface, HOME_DESK_POSTER_ENABLED, MapPosterFrame } from '@/features/home/deskPoster';
 
 /**
  * 지도 오른쪽 페이드 폭(px). 톤 마스크 쪽 기본값을 그대로 쓴다 — 타일·워시·질감이 모두 같은 값으로
  * 사라져야 경계가 한 겹으로 보인다. 더 부드럽게 하려면 mapToneMask.ts의 상수를 키운다.
  */
-const MAP_RIGHT_FADE_PX = MAP_TONE_RIGHT_FADE_PX;
+// 384: 포스터 구도에서는 **페이드를 쓰지 않는다.** 포스터는 가장자리가 분명해 배경으로 녹일 이유가
+// 없고, 지도-카드 겹침도 종이 폭 자체로 해결된다. 스위치를 끄면 예전 페이드가 그대로 돌아온다.
+const MAP_RIGHT_FADE_PX = HOME_DESK_POSTER_ENABLED ? 0 : MAP_TONE_RIGHT_FADE_PX;
 
 // 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
 // src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
@@ -116,6 +121,8 @@ export function HomePage() {
   return (
     <PlaceRecordSheetProvider>
       <main className={`relative ${PAGE_MIN_HEIGHT_CLASS}`}>
+        {/* 384 — 롤백 지점 ②: 책상 면(아주 옅은 종이 결). 스위치가 꺼져 있으면 아무것도 그리지 않는다. */}
+        <DeskSurface />
         {/* 배경 레이어: 사이드바를 제외한 남은 영역 전체를 풀블리드로 채우는 지도. CSS 페인트 순서상
             position:absolute 요소(z-index:auto)는 아래 일반 흐름 컨텐츠보다 항상 위에 그려지므로,
             이 레이어를 배경으로 두려면 컨텐츠 레이어 쪽에 별도로 relative+z-10을 줘 쌓임 순서를
@@ -154,30 +161,36 @@ export function HomePage() {
         <div className="isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0">
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
+          {/* 384 — 롤백 지점 ③: 지도·지역 뷰를 종이 포스터 안에 넣는다. 두 뷰가 같은 "책상 위
+              종이" 문법을 쓰도록 **같은 프레임**을 공유한다. 래퍼를 지우면 원래 화면이 된다. */}
           {isRegionView ? (
-            <Suspense
-              fallback={
-                <div className="flex h-full w-full items-center justify-center bg-paper-white text-sm text-ink-gray">
-                  지역 뷰를 불러오는 중입니다…
-                </div>
-              }
-            >
-              <RegionViewPanel
-                onSelectRecord={setOpenRecordId}
+            <MapPosterFrame variant="svg">
+              <Suspense
+                fallback={
+                  <div className="flex h-full w-full items-center justify-center bg-paper-white text-sm text-ink-gray">
+                    지역 뷰를 불러오는 중입니다…
+                  </div>
+                }
+              >
+                <RegionViewPanel
+                  onSelectRecord={setOpenRecordId}
+                  topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+                  rightFadePx={MAP_RIGHT_FADE_PX}
+                />
+              </Suspense>
+            </MapPosterFrame>
+          ) : (
+            <MapPosterFrame variant="kakao">
+              <HomeMapSection
+                onMarkerClick={setOpenRecordId}
                 topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+                focusRecordId={savedRecordId}
+                onFocusRecordHandled={handleSavedRecordFocused}
+                highlightRecordId={activeRecentRecordId}
+                selectedRecordId={openRecordId}
                 rightFadePx={MAP_RIGHT_FADE_PX}
               />
-            </Suspense>
-          ) : (
-            <HomeMapSection
-              onMarkerClick={setOpenRecordId}
-              topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
-              focusRecordId={savedRecordId}
-              onFocusRecordHandled={handleSavedRecordFocused}
-              highlightRecordId={activeRecentRecordId}
-              selectedRecordId={openRecordId}
-              rightFadePx={MAP_RIGHT_FADE_PX}
-            />
+            </MapPosterFrame>
           )}
         </div>
 
