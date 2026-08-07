@@ -56,9 +56,11 @@
   font-display: swap;
 }
 
-/* 358 후속(디자인 피드백 — "너무 팍 하고 바뀐다"): 설정 패널의 등장·퇴장 모션.
-   지속시간·이징(200ms ease-out)은 AppLayout 사이드바의 폭 transition과 같은 값이다. 둘이 동시에
-   움직이므로 어긋나면 바로 눈에 띈다 — 값을 바꿀 땐 반드시 함께 바꾼다.
+/* 358 후속(디자인 피드백 — "너무 팍 하고 바뀐다"): 설정 모달의 등장·퇴장 모션.
+   지속시간·이징(200ms ease-out)은 원래 AppLayout 사이드바의 폭 transition과 맞춘 값이었다 —
+   서랍이 열리는 동안 사이드바도 함께 펼쳐졌기 때문이다. 385에서 중앙 모달이 되면서 사이드바는
+   더 이상 함께 움직이지 않으므로, 이제 이 값이 맞춰야 할 상대는 아래 배경막(settings-scrim-*)
+   하나다.
 
    transition이 아니라 @keyframes인 이유: transition은 "마운트된 뒤 한 프레임 있다가 클래스를
    바꾼다"는 2단계가 있어야 발동하는데(rAF 두 번), 애니메이션은 클래스가 붙은 첫 프레임부터 그냥
@@ -66,25 +68,31 @@
 
    퇴장에 forwards가 필요한 이유: 애니메이션이 끝나도 실제 unmount까지 남은 프레임 동안 원래
    스타일(불투명)로 되돌아가 깜빡이는 것을 막는다. */
-@keyframes settings-panel-in {
+/* 385: 설정이 사이드바 옆 서랍에서 **중앙 모달**로 바뀌면서 모션도 함께 바뀐다. 서랍일 때는
+   translateX(-100%)로 사이드바 뒤에서 밀려 나왔지만, 화면 한가운데 뜨는 카드가 가로로 미끄러져
+   들어오면 어디서 왔는지 알 수 없는 움직임이 된다. 제자리에서 살짝 커지며 떠오르는 편이 "위에
+   덮이는 층"이라는 사실을 그대로 보여준다.
+   지속시간(200ms)과 이징은 그대로다 — 358 후속 피드백("너무 팍 하고 바뀐다")에서 정한 값이고,
+   배경막(settings-scrim-*)과 반드시 같은 길이여야 둘이 따로 노는 것처럼 보이지 않는다. */
+@keyframes settings-modal-in {
   from {
     opacity: 0;
-    transform: translateX(-100%);
+    transform: translateY(8px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0) scale(1);
   }
 }
 
-@keyframes settings-panel-out {
+@keyframes settings-modal-out {
   from {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateX(-100%);
+    transform: translateY(8px) scale(0.97);
   }
 }
 
@@ -147,12 +155,12 @@
      CSS로 확인하고 되돌렸다. 선택자를 건드릴 땐 이 계산을 다시 하라.
 
      아래 [tabindex='-1']만 (0,2,0)으로 올려 예외를 만든다. 스크롤 대상이나 다이얼로그
-     컨테이너처럼 **코드가 직접 포커스를 옮기는** 자리다(예: AppLayout 설정 패널). 사용자가 탭으로
+     컨테이너처럼 **코드가 직접 포커스를 옮기는** 자리다(예: AppLayout 설정 모달). 사용자가 탭으로
      도달한 것이 아니므로 링을 그리면 "여기 눌러라"로 잘못 읽힌다. 여기서도 outline을 none으로
      지우지 않고 색만 투명하게 둔다 — 강제 색상 모드에서 아웃라인 자리가 남아야 한다.
 
      offset을 음수(-2px)가 아니라 양수 2px로 둔 이유 — 안쪽으로 그리면 짧은 텍스트 버튼
-     (예: 설정 패널의 밑줄 친 「탈퇴하기」)에서 아웃라인이 글자를 가로지른다. 바깥으로 빼면 잘릴
+     (예: 설정 모달의 밑줄 친 「탈퇴하기」)에서 아웃라인이 글자를 가로지른다. 바깥으로 빼면 잘릴
      걱정이 있지만, 실제로 클리핑 조상이 있는 자리(사이드바 레일, 책장 판)를 확인해 보니 요소가
      좌우 padding 안쪽에 있어 2px 여유가 남는다.
 
