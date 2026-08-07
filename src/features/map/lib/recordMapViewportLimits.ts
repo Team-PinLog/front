@@ -103,6 +103,41 @@ function usableObstructionPx(insets: MapViewInsets): number {
   return Math.min(topObstructionPx, containerHeightPx);
 }
 
+/**
+ * 최초 진입 fitBounds의 기본 여유(px)를 정하는 값들.
+ *
+ * ⚠️ **조정 가능한 값이다.** 사용자 피드백("마커 핀의 fitBounds가 너무 타이트하다 — 줌을 조금 더
+ * 풀어 달라")으로 완화한 자리다. 더 넓게 보고 싶으면 RATIO를, 작은 화면에서의 최소 여유를 바꾸려면
+ * MIN을 조정한다.
+ *
+ * 고정 px 하나(이전 48)로 두지 않는 이유 — 같은 48px이라도 1440x900 화면에서는 거의 여백이 없고
+ * 좁은 화면에서는 지도의 상당 부분을 차지한다. 마커가 가장자리에 붙어 보이는지는 **화면 크기 대비**
+ * 여백이 결정하므로 짧은 변의 비율로 잡고, 아주 작은/큰 화면을 위해 상·하한을 둔다.
+ */
+export const FIT_BOUNDS_PADDING_RATIO = 0.14;
+export const FIT_BOUNDS_PADDING_MIN_PX = 48;
+export const FIT_BOUNDS_PADDING_MAX_PX = 180;
+
+/**
+ * 컨테이너 크기에 맞춘 fitBounds 기본 여유(px).
+ *
+ * 짧은 변을 기준으로 삼는 이유: 긴 변을 쓰면 세로로 긴 화면(모바일)에서 좌우 여백이 과해져 지도가
+ * 실제보다 훨씬 축소된다. 짧은 변 기준이면 어느 방향에서도 "가장자리에서 이만큼 떨어져 보인다"가
+ * 일정하다.
+ *
+ * 크기를 아직 모르면(첫 렌더 등) 최소값으로 물러난다 — 0을 쓰면 마커가 화면 끝에 딱 붙는다.
+ */
+export function getFitBoundsBasePaddingPx(containerWidthPx: number, containerHeightPx: number) {
+  const shorterSide = Math.min(containerWidthPx, containerHeightPx);
+  if (!(shorterSide > 0)) {
+    return FIT_BOUNDS_PADDING_MIN_PX;
+  }
+  return Math.min(
+    FIT_BOUNDS_PADDING_MAX_PX,
+    Math.max(FIT_BOUNDS_PADDING_MIN_PX, Math.round(shorterSide * FIT_BOUNDS_PADDING_RATIO)),
+  );
+}
+
 /** setBounds에 넘길 사방 여유(px). */
 export interface MapFitPadding {
   top: number;

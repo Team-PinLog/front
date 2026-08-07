@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   clampPointToBox,
   countPointsOutsideViewport,
+  FIT_BOUNDS_PADDING_MAX_PX,
+  FIT_BOUNDS_PADDING_MIN_PX,
+  getFitBoundsBasePaddingPx,
   getFitPadding,
   getMedianPoint,
   getVisibleCenterLatOffset,
@@ -193,5 +196,36 @@ describe('getVisibleCenterLatOffset', () => {
 
   it('가림이 없으면 보정하지 않는다', () => {
     expect(getVisibleCenterLatOffset(VIEWPORT, UNCOVERED)).toBe(0);
+  });
+});
+
+describe('getFitBoundsBasePaddingPx', () => {
+  it('화면이 클수록 여유도 커진다 — 마커가 가장자리에 붙어 보이지 않게 한 완화 조치다', () => {
+    // 사용자 피드백: "fitBounds가 너무 타이트하다". 이전에는 크기와 무관하게 48px 고정이었다.
+    const small = getFitBoundsBasePaddingPx(390, 640);
+    const large = getFitBoundsBasePaddingPx(1440, 900);
+    expect(large).toBeGreaterThan(small);
+    expect(small).toBeGreaterThanOrEqual(FIT_BOUNDS_PADDING_MIN_PX);
+  });
+
+  it('짧은 변을 기준으로 삼는다 — 세로로 긴 화면에서 좌우 여백이 과해지지 않게', () => {
+    // 폭이 아무리 넓어도 높이가 같으면 같은 값이어야 한다.
+    expect(getFitBoundsBasePaddingPx(4000, 800)).toBe(getFitBoundsBasePaddingPx(1000, 800));
+  });
+
+  it('상한을 넘지 않는다 — 초대형 화면에서 지도가 과하게 축소되지 않게', () => {
+    expect(getFitBoundsBasePaddingPx(6000, 6000)).toBe(FIT_BOUNDS_PADDING_MAX_PX);
+  });
+
+  it('크기를 아직 모르면 최소값으로 물러난다 — 0이면 마커가 화면 끝에 붙는다', () => {
+    expect(getFitBoundsBasePaddingPx(0, 0)).toBe(FIT_BOUNDS_PADDING_MIN_PX);
+    expect(getFitBoundsBasePaddingPx(-100, 500)).toBe(FIT_BOUNDS_PADDING_MIN_PX);
+  });
+
+  it('상단 가림 높이는 그 위에 더해진다 — 오버레이 뒤로 마커가 숨지 않는다', () => {
+    const base = getFitBoundsBasePaddingPx(1440, 900);
+    const padding = getFitPadding(base, { topObstructionPx: 215, containerHeightPx: 900 });
+    expect(padding.top).toBe(base + 215);
+    expect(padding.bottom).toBe(base);
   });
 });

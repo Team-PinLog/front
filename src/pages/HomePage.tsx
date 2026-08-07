@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
@@ -15,6 +15,16 @@ import {
   HERO_OVERLAY_OPAQUE_PX,
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
+
+// 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
+// src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
+// lazy인 이유는 코드 분할이다 — 경계 데이터(약 64KB)와 지역 뷰 코드가 별도 청크로 빠져, 기본값인
+// 기존 지도만 쓰는 사용자는 내려받지 않는다.
+const RegionViewPanel = lazy(() =>
+  import('@/features/home/regionView/RegionViewPanel').then((module) => ({
+    default: module.RegionViewPanel,
+  })),
+);
 
 /**
  * 홈 화면: 스마트 검색(149)과 지도(150)를 한 화면에서 함께 보여준다.
@@ -83,6 +93,9 @@ export function HomePage() {
 
   // 저장한 기록을 앞장으로 세운다. 새 Record면 목록 맨 앞에, CONTEXT_ADDED면 원래 자리에 있는데
   // id로 따라가므로 두 경우 모두 같은 코드로 맞는다. 지도 이동은 기존 focusRecordId 경로가 담당한다.
+  // 376: 기본값은 **기존 지도**다. 지역 뷰는 팀원 피드백으로 롤백될 수 있어 대체가 아니라 토글이다.
+  const [isRegionView, setIsRegionView] = useState(false);
+
   const handleRecordSaved = useCallback((recordId: number) => {
     setSavedRecordId(recordId);
     setFrontRecentRecordId(recordId);
@@ -120,13 +133,30 @@ export function HomePage() {
             영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
             "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
         <div className="isolate absolute inset-0 mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mr-4 md:-mt-4 xl:-mb-6 xl:-ml-6 xl:-mr-6 xl:-mt-6">
-          <HomeMapSection
-            onMarkerClick={setOpenRecordId}
-            topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
-            focusRecordId={savedRecordId}
-            onFocusRecordHandled={handleSavedRecordFocused}
-            highlightRecordId={activeRecentRecordId}
-          />
+          {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
+              이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
+          {isRegionView ? (
+            <Suspense
+              fallback={
+                <div className="flex h-full w-full items-center justify-center bg-paper-white text-sm text-ink-gray">
+                  지역 뷰를 불러오는 중입니다…
+                </div>
+              }
+            >
+              <RegionViewPanel
+                onSelectRecord={setOpenRecordId}
+                topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+              />
+            </Suspense>
+          ) : (
+            <HomeMapSection
+              onMarkerClick={setOpenRecordId}
+              topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+              focusRecordId={savedRecordId}
+              onFocusRecordHandled={handleSavedRecordFocused}
+              highlightRecordId={activeRecentRecordId}
+            />
+          )}
         </div>
 
         {/* 히어로 쪽으로 갈수록 지도가 흐려지는 오버레이. 클릭은 지도로 통과시켜야 해서
@@ -156,6 +186,37 @@ export function HomePage() {
 
         {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다. */}
         <div className={`relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}>
+          {/* 376 — 롤백 지점 ②: 지도 ↔ 지역 뷰 토글. 이 블록과 위 lazy import, 그리고 아래 배경
+              레이어의 삼항만 지우면 기능이 사라진다.
+              세그먼트 두 칸으로 둔 이유는 "지금 무엇을 보고 있는지"와 "무엇으로 갈 수 있는지"가 한
+              번에 보여야 하기 때문이다 — 단일 토글 버튼은 라벨이 현재 상태인지 목적지인지 늘 헷갈린다. */}
+          <div className="flex justify-end">
+            <div
+              role="group"
+              aria-label="홈 배경 보기 방식"
+              className="inline-flex items-center gap-1 rounded-full border border-line-card bg-snow-white/90 p-1 shadow-sm backdrop-blur"
+            >
+              {[
+                { label: '지도', active: !isRegionView, next: false },
+                { label: '지역', active: isRegionView, next: true },
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => setIsRegionView(option.next)}
+                  aria-pressed={option.active}
+                  className={
+                    option.active
+                      ? 'rounded-full bg-log-mint px-3.5 py-1 text-xs font-bold text-paper-white'
+                      : 'rounded-full px-3.5 py-1 text-xs font-semibold text-ink-gray transition-colors hover:text-log-mint'
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <SmartSearchPanel
             onSubmit={(query) => searchMutation.mutate(query)}
             isPending={searchMutation.isPending}

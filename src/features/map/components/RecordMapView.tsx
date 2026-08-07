@@ -15,6 +15,7 @@ import {
 import {
   clampPointToBox,
   countPointsOutsideViewport,
+  getFitBoundsBasePaddingPx,
   getFitPadding,
   getMedianPoint,
   getVisibleCenterLatOffset,
@@ -121,7 +122,10 @@ const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 // 경계에 걸친 마커 아이콘이 뷰포트 가장자리에서 잘리지 않도록 사방에 동일하게 적용한다.
 // 상단만은 topObstructionPx만큼 더 키운다(getFitPadding) — 그 구간은 오버레이에 가려 있어
 // 여유를 줘도 마커가 보이지 않는다. 근거: Jira S15P11A705-325.
-const FIT_BOUNDS_PADDING = 48;
+//
+// 값은 더 이상 고정 48px이 아니라 컨테이너 크기에서 계산한다(getFitBoundsBasePaddingPx).
+// 사용자 피드백 "마커 핀의 fitBounds가 너무 타이트하다 — 줌을 조금 더 풀어 달라"로 완화한 자리이며,
+// 조정 상수(비율·상하한)는 recordMapViewportLimits.ts에 모여 있다.
 
 // 지도 생성 직후(fitBounds 적용 전)와 bounds가 null(저장된 기록 없음)일 때 유지되는 고정 줌 레벨.
 // 카카오맵 레벨 6 ≈ 반경 500m. 근거: Jira S15P11A705-237 — 기존 레벨 7(약 1km 반경)이 초기
@@ -207,10 +211,11 @@ function fitMapToRecords(
   items: readonly RecordMapItem[],
   recenterOnMedian: boolean,
   insets: MapViewInsets,
+  basePaddingPx: number,
 ): number {
   const sw = new kakao.maps.LatLng(bounds.swLat, bounds.swLng);
   const ne = new kakao.maps.LatLng(bounds.neLat, bounds.neLng);
-  const padding = getFitPadding(FIT_BOUNDS_PADDING, insets);
+  const padding = getFitPadding(basePaddingPx, insets);
   map.setBounds(
     new kakao.maps.LatLngBounds(sw, ne),
     padding.top,
@@ -316,6 +321,19 @@ export function RecordMapView({
       containerHeightPx: containerRef.current?.clientHeight ?? 0,
     }),
     [topObstructionPx],
+  );
+
+  /**
+   * fitBounds에 쓸 기본 여유. insets와 마찬가지로 **쓰는 순간 실측한다** — 컨테이너 크기는 렌더 후에
+   * 정해지고 창 크기에 따라 변해서, state로 들고 있으면 어긋날 여지가 생긴다.
+   */
+  const readFitBasePadding = useCallback(
+    () =>
+      getFitBoundsBasePaddingPx(
+        containerRef.current?.clientWidth ?? 0,
+        containerRef.current?.clientHeight ?? 0,
+      ),
+    [],
   );
 
   const [sdkStatus, setSdkStatus] = useState<SdkStatus>(() =>
@@ -470,9 +488,19 @@ export function RecordMapView({
     // fitBounds가 다시 걸린다. 0은 마운트 초기값과 같아 이 경우 화면상 변화가 없다.
     hasFitInitialBoundsRef.current = true;
     setOffscreenRecordCount(
-      data.bounds ? fitMapToRecords(kakao, map, data.bounds, data.items, true, readInsets()) : 0,
+      data.bounds
+        ? fitMapToRecords(
+            kakao,
+            map,
+            data.bounds,
+            data.items,
+            true,
+            readInsets(),
+            readFitBasePadding(),
+          )
+        : 0,
     );
-  }, [data, map, readInsets]);
+  }, [data, map, readInsets, readFitBasePadding]);
 
   /**
    * 새로 저장한 Record로 이동. 최초 진입 fitBounds(hasFitInitialBoundsRef)와 섞이지 않게 별도
@@ -546,7 +574,7 @@ export function RecordMapView({
     if (!map || !kakao || !data?.bounds) {
       return;
     }
-    fitMapToRecords(kakao, map, data.bounds, data.items, false, readInsets());
+    fitMapToRecords(kakao, map, data.bounds, data.items, false, readInsets(), readFitBasePadding());
     setOffscreenRecordCount(0);
   }
 
