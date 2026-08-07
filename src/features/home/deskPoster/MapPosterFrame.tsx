@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { PinTack, PIN_TACK_SHADOW } from '@/shared/ui/PinSymbols';
+import { PinPush, PIN_PUSH_SHADOW } from '@/shared/ui/PinSymbols';
 import {
   getPaperGrainImage,
   HOME_DESK_POSTER_ENABLED,
@@ -21,7 +21,10 @@ interface MapPosterFrameProps {
   variant: 'kakao' | 'svg';
 }
 
-/** 네 모서리에 박힌 압정. 종이 위로 올라와야 하므로 프레임보다 위층이다. */
+/**
+ * 네 모서리에 꽂힌 핀. 종이 위로 올라와야 하므로 프레임보다 위층이다.
+ * 386에서 압정 → 시안 푸시핀으로 교체했다(같은 자리, 심볼만 갈아끼움).
+ */
 function PosterCornerTacks() {
   const positions = [
     { top: POSTER_TACK.insetPx, left: POSTER_TACK.insetPx },
@@ -36,9 +39,9 @@ function PosterCornerTacks() {
           key={index}
           aria-hidden="true"
           className="pointer-events-none absolute z-20 text-log-mint"
-          style={{ ...position, filter: PIN_TACK_SHADOW }}
+          style={{ ...position, filter: PIN_PUSH_SHADOW }}
         >
-          <PinTack height={POSTER_TACK.heightPx} />
+          <PinPush height={POSTER_TACK.heightPx} />
         </span>
       ))}
     </>
