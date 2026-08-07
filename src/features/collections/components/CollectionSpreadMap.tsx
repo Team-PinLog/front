@@ -6,6 +6,10 @@ import {
   RECORD_MARKER_TIP_Y_RATIO,
 } from '@/shared/lib/getRecordMarkerAsset';
 import { loadKakaoMaps, type KakaoCustomOverlay, type KakaoMap } from '@/shared/lib/kakaoMaps';
+import {
+  applyRecordMarkerPinState,
+  createRecordMarkerImage,
+} from '@/shared/lib/recordMarkerElement';
 
 // 332 디자인 피드백: 카카오 기본 마커(빨간 핀) 대신 홈 지도와 같은 핀 SVG를 쓴다.
 // 색은 이 Collection의 배정색 하나로 통일한다 — 이 지도에 찍히는 핀은 전부 같은 Collection의
@@ -18,13 +22,16 @@ const ACTIVE_MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
 // 핀이 지워진 것처럼 보였고, 두 번의 피드백을 거쳐 여기까지 올렸다. 활성과의 대비는 크기로도
 // 주고 있어서 불투명도를 이 이상 올려도 구분은 유지된다.
 const IDLE_MARKER_SCALE = 0.9;
-const IDLE_MARKER_OPACITY = '0.85';
+const IDLE_MARKER_OPACITY = 0.85;
 
 /**
- * CustomOverlay에 올릴 핀 엘리먼트. RecordMapView.createRecordMarkerElement와 같은 이유로 인라인
- * SVG가 아니라 <img src>로 불러온다 — asset 20개가 모두 같은 `<filter id="shadow">`를 쓰기 때문에
- * 인라인으로 심으면 문서 전체에서 id가 충돌해 마커 전부가 첫 번째 필터를 공유한다.
- * (그 함수는 features/map 내부 전용이라 export되어 있지 않아 여기서 같은 방식으로 다시 만든다.)
+ * CustomOverlay에 올릴 핀 엘리먼트.
+ *
+ * 417: 핀 <img>를 만드는 일은 shared/lib/recordMarkerElement가 맡는다 — 예전에는 이 함수가
+ * RecordMapView의 것을 손으로 베껴 왔고(그쪽 함수가 export되지 않아서), 그 과정에서 Tailwind
+ * preflight 함정 같은 것이 한 번 더 재현된 이력이 있다. 호버 반응도 여기에만 있었다(불투명도
+ * 100%). 이제 커서·호버·포커스는 공유 규칙(.record-map-pin)이 정하고, 이 함수에 남은 것은 이
+ * 화면 고유의 크기·불투명도 결정뿐이다.
  */
 function createSpreadMarkerElement(
   assetUrl: string,
@@ -33,44 +40,18 @@ function createSpreadMarkerElement(
   onSelect: (() => void) | null,
 ) {
   const scale = isActive ? 1 : IDLE_MARKER_SCALE;
-  const width = Math.round(ACTIVE_MARKER_WIDTH * scale);
-  const height = Math.round(ACTIVE_MARKER_HEIGHT * scale);
-
-  const image = document.createElement('img');
-  image.src = assetUrl;
-  // 마커 이름은 title로 노출되므로 alt는 비워 중복을 피한다.
-  image.alt = '';
-  image.title = title;
-  image.width = width;
-  image.height = height;
-  image.draggable = false;
-  image.style.display = 'block';
-  // ⚠️ width/height 속성만으로는 그려지지 않는다. Tailwind preflight의 `img { max-width: 100%;
-  // height: auto }`가 살아 있는데 CustomOverlay가 content를 감싸는 래퍼 div는 폭이 0이라
-  // max-width:100%가 0으로 계산돼 마커가 0x0으로 찌그러진다(핀이 아예 안 보인다). max-width를 풀고
-  // 크기를 인라인 스타일로 못박아야 한다 — RecordMapView.createRecordMarkerElement가 같은 이유로
-  // 같은 처리를 하고 있고, 그 주석을 옮겨오지 않아 이 화면에서 한 번 더 재현됐다.
-  image.style.maxWidth = 'none';
-  image.style.width = `${width}px`;
-  image.style.height = `${height}px`;
-  const baseOpacity = isActive ? '1' : IDLE_MARKER_OPACITY;
-  image.style.opacity = baseOpacity;
-
-  if (onSelect) {
-    // 핀을 눌러 그 record 장으로 넘어간다. 호버하면 불투명도를 100%로 올려 "누를 수 있는 핀"임을
-    // 알린다 — 비활성 핀은 평소 옅게 깔려 있어 그대로면 클릭 대상으로 읽히지 않는다.
-    // CustomOverlay content는 React 트리 밖의 DOM이라 이벤트를 직접 붙인다(RecordMapView와 동일).
-    image.style.cursor = 'pointer';
-    image.style.transition = 'opacity 0.15s ease-out';
-    image.addEventListener('mouseenter', () => {
-      image.style.opacity = '1';
-    });
-    image.addEventListener('mouseleave', () => {
-      image.style.opacity = baseOpacity;
-    });
-    image.addEventListener('click', onSelect);
-  }
-
+  const image = createRecordMarkerImage({
+    assetUrl,
+    title,
+    widthPx: Math.round(ACTIVE_MARKER_WIDTH * scale),
+    heightPx: Math.round(ACTIVE_MARKER_HEIGHT * scale),
+    onSelect: onSelect ?? undefined,
+  });
+  // 비활성 핀은 평소 옅게 깔려 배경으로 물러난다. 호버·포커스에서 1로 올라오는 것은 공유 규칙이
+  // 담당한다 — 눌러 갈 수 있는 핀이라는 신호다.
+  applyRecordMarkerPinState(image, {
+    opacity: isActive ? 1 : IDLE_MARKER_OPACITY,
+  });
   return image;
 }
 
