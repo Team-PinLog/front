@@ -462,8 +462,21 @@
      위젯"으로 보인다. 이 책은 칸에 담긴 UI가 아니라 종이 옆에 놓인 물건이라, 레일과 창의
      경계를 넘어 걸쳐야 그렇게 읽힌다. 화면 밖으로 나가는 부분은 .pl-stage의 overflow:hidden이
      잘라 준다 — 판면 밖으로 걸친 책의 인상이 그대로 남는다.
-     크기 기준도 레일이 아니라 무대 폭(cqw)이다. */
-  width: min(288px, 27cqw);
+     크기 기준도 레일이 아니라 무대 폭(cqw)이다.
+
+     414(사용자 지시 — "우측 이동 표지를 줄여라"): 288px/27cqw → **240px/22.5cqw**.
+     · 두 값을 같은 비율(0.833)로 낮춰 min()의 교차점(무대 폭 약 1067px)을 그대로 둔다. 한쪽만
+       건드리면 좁은 폭과 넓은 폭에서 줄어드는 정도가 달라져 책이 구간마다 다른 크기로 읽힌다.
+     · aspect-ratio는 손대지 않는다 — 높이가 폭에서 따라오므로 종횡비(196:282)가 자동으로
+       유지된다(288×414 → 240×345). 표지 안 조판도 전부 %·cqw라 함께 비례해 줄어든다. 고정 px는
+       .pl-cover-label의 9.5px 하나뿐이고, 그건 가독 하한이라 의도적으로 남긴다.
+     · 0.833에서 멈추는 이유: 레일 폭은 `max(18%, (100% - 1120px)/2)`이라 무대 1100~1440px
+       구간에서 198~259px다. 240px이면 그 구간에서 책이 여전히 레일 밖으로 걸쳐(위 문단의
+       "종이 옆에 놓인 물건") 인상이 유지된다. 여기서 더 줄이면(예: 220px) 걸침이 거의 사라져
+       책이 다시 "오른쪽 칸에 든 위젯"으로 읽힌다.
+     · 414에서 셸의 좌측 예약 폭이 0이 되면서 무대가 88~264px 넓어졌다 — 같은 화면에서 레일이
+       그만큼 넓어지므로 책이 상대적으로도 한 번 더 작아진다. */
+  width: min(240px, 22.5cqw);
   /* 실제 하드커버 판형(레퍼런스 사진)에 가까운 비율. 높이를 따로 주지 않고 폭에서 따라오게 한다. */
   aspect-ratio: 196 / 282;
 }
@@ -484,6 +497,32 @@
     transform 0.36s var(--pl-ease),
     box-shadow 0.36s var(--pl-ease);
 }
+/* 414(사용자 피드백 — "책 모양이 허전하다") ①: **제본된 쪽의 책등**.
+   위에서 내려다본 하드커버에서 가장 먼저 눈에 들어오는 것이 표지가 아니라 제본된 왼쪽 모서리의
+   접힘이다. 지금까지 그 자리가 평평한 색면이라 표지가 "색칠한 사각형"으로 읽혔다.
+   폭은 %라 책 크기를 바꿔도 비율이 유지되고, 그림자 색은 검정이 아니라 네이비다 — 민트 표지에
+   검정을 얹으면 색이 탁해진다(브랜드 4색 안에서 어둠을 만든다는 이 파일의 규칙).
+   오른쪽 끝의 밝은 1px이 접힘의 능선이다. 종이 판의 접힌 자국(.pl-sheet::before)이 쓰는
+   "밝은 선 + 어두운 선 = 능선" 문법을 그대로 가져온다. */
+.pl-pile-book::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  /* 6%: 금박 프레임의 왼쪽 선(.pl-cover-frame, inset 6.5%)보다 안쪽에서 끝난다. 더 넓으면 그
+     선이 책등 위에 올라타 "프레임이 표지를 벗어난" 그림이 된다. */
+  width: 6%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(4, 33, 66, 0.22),
+    rgba(4, 33, 66, 0.06) 62%,
+    rgba(255, 255, 255, 0.16)
+  );
+  pointer-events: none;
+}
+
 /* 표지 리넨 결. 종이 판에 쓰는 결 필터를 그대로 재사용한다 — 같은 종이 세계라 질감이 맞는다. */
 .pl-pile-book::after {
   content: '';
@@ -551,40 +590,84 @@
   line-height: 1.06;
   letter-spacing: 0.02em;
   text-align: center;
-  opacity: 0;
+  /* 414(사용자 피드백 — "책 모양이 허전하다") ②: **표제를 평소에도 보인다.**
+     허전함의 8할이 여기였다. 금선 두 줄 사이가 비어 있고 표제는 opacity 0이라, 쉬는 상태의
+     표지에 남는 글자가 하단 라벨(PINLOG) 하나뿐이었다 — 조판이 아니라 빈 액자였다.
+     0.62는 "인쇄된 것이 거기 있다"는 사실은 주면서 호버의 또렷해짐(1)은 남기는 값이다. 감췄다가
+     드러내는 원래 의도(등장의 놀라움)를 완전히 버리지 않고 **연함 → 또렷함**으로 바꿨다.
+     덤으로 접근성이 좋아진다: 마우스를 올리지 않아도 어느 책이 어디로 가는지 읽을 수 있다. */
+  opacity: 0.62;
   transition: opacity 0.26s ease;
 }
 
-/* "이동하기" — 호버·포커스에서 표제와 함께 드러나며 깜빡인다.
-   평소 opacity 0이고, 드러날 때는 transition이 아니라 **애니메이션**이 값을 잡는다
-   (애니메이션이 일반 선언보다 우선하므로 둘이 다투지 않는다). */
+/* "이동하기" — 414(사용자 피드백 — "반짝임을 더 예쁘고 가독성 있게").
+   이전에는 무한 opacity 깜빡임(pl-cover-blink, 1s 루프)이었다. 두 가지가 문제였다:
+   ① 글자가 0.12까지 내려가는 구간이 절반이라 **읽으려는 순간 사라진다** — 읽으라고 띄운 줄이
+      읽기를 방해했다. ② 끝나지 않는 루프는 시선을 계속 잡아둔다. 표지는 이미 호버로 펼쳐지고
+      들리는 중이라, 그 위에서 또 하나가 계속 깜빡이면 움직임이 겹쳐 시끄럽다.
+
+   대신 **띠지(band)가 제본 쪽에서 한 번 풀려 나오고 그대로 멎는다.** 실제 책에 두르는 띠지의
+   문법이고, 이 표지가 이미 갖고 있는 조판(금선·프레임·하단 라벨)과 같은 계열이라 새 언어를
+   들이지 않는다. 도착하면 정지하므로 글자는 100% 불투명으로 가만히 있는다 — 가독성이 목적이다.
+
+   clip-path로 펼치는 이유: width 애니메이션은 매 프레임 레이아웃을 다시 잡고 글자를 재배치해
+   텍스트가 눌렸다 펴진다. clip-path는 다 그려 둔 것을 잘라 보여줄 뿐이라 글자가 제자리에서
+   드러난다.
+   reduced-motion은 이 파일 하단의 `.pl-stage *` 블록이 transition-duration을 0.001ms로 만들어
+   이미 처리한다 — 띠지는 즉시 제자리에 나타난다(사라지는 것이 아니라 즉시 완성된다). */
 .pl-cover-go {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  /* 표지 폭 기준(.pl-pile-book이 container). 책 크기를 바꿔도 비율이 유지된다. */
-  font-size: 7.5cqw;
+  z-index: 1;
+  left: 9.6%;
+  right: 9.6%;
+  top: 57%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5em 0;
+  /* 표지 폭 기준(.pl-pile-book이 container). 책 크기를 바꿔도 비율이 유지된다.
+     414에서 표지가 288 → 240px으로 작아져 7.5cqw는 18px이 되는데, 자간 0.18em까지 붙으면 띠지가
+     표지 폭을 넘는다. 6.4cqw(15px)가 240px 표지에서 띠지 안에 들어가는 상한이다. */
+  font-size: 6.4cqw;
   letter-spacing: 0.18em;
   /* ⚠️ letter-spacing은 **마지막 글자 뒤에도** 붙는다. 보정하지 않으면 그만큼 시각 중심이
      왼쪽으로 밀려 가운데로 안 보인다 — 자간 한 칸만큼 들여쓰기로 되돌린다. */
   text-indent: 0.18em;
   white-space: nowrap;
   opacity: 0;
+  /* 제본 쪽(왼쪽)에서 풀린다. 오른쪽에서 오면 책배 쪽에서 띠지가 자라는 셈이라 방향이 거꾸로다. */
+  clip-path: inset(0 100% 0 0);
+  transition:
+    opacity 0.18s ease,
+    clip-path 0.42s var(--pl-ease);
 }
-@keyframes pl-cover-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.12;
-  }
+/* 띠지의 종이면. 글자와 같은 잉크를 아주 옅게 깔아 표지 색이 무엇이든 저절로 맞는다 —
+   두 권(민트·네이비)에 각각 배경색을 지정하면 색이 두 벌로 늘어난다. */
+.pl-cover-go::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: currentColor;
+  opacity: 0.16;
+}
+
+/* 414(사용자 피드백 — "책 모양이 허전하다") ③: **빛바램·손때**.
+   단색 면 하나로는 천 표지가 아니라 색종이로 읽힌다. 위쪽에서 비스듬히 드는 빛(밝은 쪽)과
+   책배 바깥 모서리의 그늘(어두운 쪽)을 아주 얕게 겹쳐 면에 굴곡을 준다.
+   ⚠️ 새 요소를 만들지 않고 background-image 층으로만 얹는다 — 아래 두 권이 background(색)를
+   따로 선언하므로, shorthand가 아니라 색은 background-color, 이 층은 background-image다.
+   순서가 중요하다: background-image가 background-color 위에 그려지고, 그 위를 ::after의 결이
+   soft-light로 덮는다. 세 층이 아래에서 위로 색 → 빛 → 결이다. */
+.pl-pile-book {
+  background-image:
+    radial-gradient(118% 82% at 22% 6%, rgba(255, 255, 255, 0.18), transparent 56%),
+    radial-gradient(96% 74% at 96% 100%, rgba(4, 33, 66, 0.16), transparent 62%);
 }
 
 /* 아래 깔린 권 — 네이비. 살짝 틀어 왼쪽·아래로 삐져나온다(레퍼런스 사진의 남색 책). */
 .pl-pile-under {
-  background: var(--pl-navy);
+  background-color: var(--pl-navy);
   transform: rotate(-4.5deg) translate(-12px, 12px);
   box-shadow: 0 12px 24px rgba(4, 33, 66, 0.28);
 }
@@ -607,7 +690,7 @@
    옅은 금박도 1.50:1이라 사실상 보이지 않는다(실측). 네이비는 6.52:1로 또렷하다.
    두 권이 서로 다른 잉크를 쓰는 셈인데, 실제 시리즈 장정에서도 지색에 따라 박 색을 바꾼다. */
 .pl-pile-over {
-  background: var(--pl-mint);
+  background-color: var(--pl-mint);
   border: 1px solid rgba(4, 33, 66, 0.14);
   transform: rotate(1.5deg);
   box-shadow: 0 14px 28px rgba(4, 33, 66, 0.2);
@@ -654,7 +737,8 @@
 }
 .pl-pile:hover .pl-cover-go,
 .pl-pile:focus-within .pl-cover-go {
-  animation: pl-cover-blink 1s ease-in-out infinite;
+  opacity: 1;
+  clip-path: inset(0 0 0 0);
 }
 
 /* ══════════════════════════════════════════════════════════════════════
