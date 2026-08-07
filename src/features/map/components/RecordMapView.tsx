@@ -25,8 +25,27 @@ import {
   type MapPoint,
   type MapViewInsets,
 } from '../lib/recordMapViewportLimits';
+import {
+  getMapToneBottomFadeMask,
+  getMapToneFilterCss,
+  getMapToneTextureImage,
+  getMapToneWashColorCss,
+  getMarkerToneCompensationMatrix,
+  MAP_TONE_TEXTURE,
+  MAP_TONE_WASH,
+  MARKER_TONE_FILTER_ID,
+} from '../lib/mapToneMask';
 import type { RecordMapBbox, RecordMapItem } from '../api/getRecordMapMarkers';
 import { useRecordMapMarkersQuery } from '../hooks/useRecordMapMarkersQuery';
+
+/**
+ * 374: 마커에 걸 색 역보정 필터. 컨테이너 필터가 마커까지 물들이므로 미리 반대로 틀어 둔다 —
+ * 자세한 근거는 mapToneMask.ts의 "마커 색 역보정" 절에 있다.
+ * 모듈 로드 시점에 한 번만 계산한다(상수에서 나오는 값이라 렌더마다 다시 구할 이유가 없다).
+ * 되돌릴 수 없는 톤 설정이면 null이고, 그때는 보정을 포기하고 마커를 그대로 둔다.
+ */
+const MARKER_TONE_COMPENSATION_MATRIX = getMarkerToneCompensationMatrix();
+const MARKER_BASE_FILTER = MARKER_TONE_COMPENSATION_MATRIX ? `url(#${MARKER_TONE_FILTER_ID})` : '';
 
 // 화면에 그릴 마커 크기(px). src/assets/color-markers/*.svg 원본(64x76)의 정확히 1/2이라
 // 비율이 어긋나지 않는다. 근거: Jira S15P11A705-307.
@@ -60,6 +79,9 @@ function createRecordMarkerElement(assetUrl: string, title: string): HTMLImageEl
   image.style.maxWidth = 'none';
   image.style.width = `${MARKER_WIDTH}px`;
   image.style.height = `${MARKER_HEIGHT}px`;
+  // 374: 지도 톤 마스크가 이 마커도 물들이므로 미리 역보정을 걸어 둔다. 강조 상태에서도 이 값은
+  // 유지돼야 해서(applyMarkerHighlight가 뒤에 drop-shadow를 이어 붙인다) 여기서 한 번만 세운다.
+  image.style.filter = MARKER_BASE_FILTER;
   return image;
 }
 
@@ -82,7 +104,11 @@ function applyMarkerHighlight(element: HTMLImageElement, highlighted: boolean): 
   element.style.transform = highlighted ? `scale(${MARKER_HIGHLIGHT_SCALE})` : 'scale(1)';
   // 강조된 핀이 이웃 핀에 가리지 않게 같은 오버레이 층 안에서 위로 올린다. CustomOverlay의 zIndex
   // 옵션은 생성 시점 값이라, 이미 만든 마커의 순서를 바꾸려면 content 엘리먼트 쪽을 쓴다.
-  element.style.filter = highlighted ? 'drop-shadow(0 6px 10px rgba(4,33,66,0.45))' : '';
+  // 374: filter를 덮어쓰지 않고 **이어 붙인다.** 그냥 대입하면 지도 톤 역보정(MARKER_BASE_FILTER)이
+  // 지워져, 강조하는 순간 그 마커만 누렇게 뜬다.
+  element.style.filter = highlighted
+    ? `${MARKER_BASE_FILTER} drop-shadow(0 6px 10px rgba(4,33,66,0.45))`.trim()
+    : MARKER_BASE_FILTER;
   element.style.zIndex = highlighted ? '2' : '';
   element.style.position = 'relative';
 }
@@ -566,7 +592,61 @@ export function RecordMapView({
           그려지는 순간 사라지는 "깜빡임"으로 관측됐다), ② HomePage가 이 컴포넌트 위에 얹는
           그라데이션+블러 오버레이도 지도에 덮여 전혀 나타나지 않았다. isolate로 SDK 내부
           z-index를 이 컨테이너 안에 가둬 두 증상을 함께 없앤다. 근거: Jira S15P11A705-307. */}
-      <div ref={containerRef} className="isolate h-full w-full" />
+      {/* 374: 브랜드 톤 마스크 ① 타일 필터. 컨테이너에 걸어 카카오 타일의 채도·색온도를 낮춘다.
+          강도는 mapToneMask.ts의 MAP_TONE_FILTER 하나로 조정한다(취향 조정 지점).
+          ⚠️ filter는 이 요소를 고정 위치 자식의 containing block으로 만든다. 지금 이 안에는 SDK가
+          만드는 절대 위치 레이어만 있어 문제가 없지만, 나중에 여기 fixed 요소를 넣으면 화면이 아니라
+          이 상자를 기준으로 붙는다. */}
+      <div
+        ref={containerRef}
+        className="isolate h-full w-full"
+        style={{ filter: getMapToneFilterCss() }}
+      />
+
+      {/* 374: 마커 색 역보정 필터의 정의. 그리는 것이 없는 0x0 <svg>라 레이아웃에 영향을 주지 않는다.
+          color-interpolation-filters="sRGB"가 **반드시 있어야 한다** — SVG 필터의 기본값은
+          linearRGB라, 그대로 두면 CSS filter(sRGB에서 동작)로 계산한 역행렬과 색 공간이 어긋나
+          보정이 오히려 색을 틀어 놓는다. */}
+      {MARKER_TONE_COMPENSATION_MATRIX && (
+        <svg aria-hidden="true" width="0" height="0" className="absolute">
+          <filter id={MARKER_TONE_FILTER_ID} colorInterpolationFilters="sRGB">
+            <feColorMatrix type="matrix" values={MARKER_TONE_COMPENSATION_MATRIX} />
+          </filter>
+        </svg>
+      )}
+
+      {/* 374: 브랜드 톤 마스크 ② 컬러 워시. 크림색 막을 soft-light로 얹어 페이지의 종이 톤으로
+          끌어온다. 지도 조작을 막지 않도록 pointer-events-none이다.
+          mask로 아래쪽을 비우는 것은 취향이 아니라 **약관 요구**다 — 카카오 로고·저작권 표기 위에는
+          막이 닿으면 안 된다(mapToneMask.ts의 MAP_TONE_BOTTOM_SAFE_PX). */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundColor: getMapToneWashColorCss(),
+          mixBlendMode: MAP_TONE_WASH.blendMode,
+          maskImage: getMapToneBottomFadeMask(),
+          WebkitMaskImage: getMapToneBottomFadeMask(),
+        }}
+      />
+
+      {/* 374: 브랜드 톤 마스크 ③ 종이 질감. 세 겹 중 가장 비싼 레이어라, 드래그·줌이 버벅이면
+          MAP_TONE_TEXTURE.enabled를 false로 두어 이것부터 뺀다(톤 자체는 ①②로 유지된다). */}
+      {MAP_TONE_TEXTURE.enabled && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: getMapToneTextureImage(),
+            backgroundRepeat: 'repeat',
+            backgroundSize: `${MAP_TONE_TEXTURE.tileSizePx}px ${MAP_TONE_TEXTURE.tileSizePx}px`,
+            opacity: MAP_TONE_TEXTURE.alpha,
+            mixBlendMode: 'multiply',
+            maskImage: getMapToneBottomFadeMask(),
+            WebkitMaskImage: getMapToneBottomFadeMask(),
+          }}
+        />
+      )}
 
       {sdkStatus === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center bg-paper-white/90 text-sm text-ink-gray">
