@@ -5,6 +5,7 @@ import { myCollectionsQueryKey } from '@/features/collections/hooks/useMyCollect
 import { recordMapMarkersQueryKey } from '@/features/map/hooks/useRecordMapMarkersQuery';
 import { forceDeleteRecord } from '../api/forceDeleteRecord';
 import { recordDetailQueryKey } from './useRecordDetailQuery';
+import { recentRecordsQueryKeyPrefix } from './useRecentRecordsQuery';
 
 export interface ForceDeleteRecordVariables {
   recordId: number;
@@ -32,6 +33,9 @@ export function useForceDeleteRecordMutation() {
 
       // 지도 마커 쿼리는 Record 상세와 별도 캐시라 위 처리로 갱신되지 않는다 — 연쇄 Collection 유무와 무관하게 항상 무효화한다.
       queryClient.invalidateQueries({ queryKey: recordMapMarkersQueryKey() });
+      // 371: 삭제된 Record가 홈의 "요즘 붙여둔 것"에 남아 있으면 안 된다. 상세 쿼리처럼 remove하지
+      // 않고 invalidate하는 이유는, 이건 그 Record 하나의 캐시가 아니라 목록이라 재조회가 정답이다.
+      queryClient.invalidateQueries({ queryKey: recentRecordsQueryKeyPrefix });
     },
   });
 }

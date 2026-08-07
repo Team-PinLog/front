@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ApiError } from '@/shared/http/types';
 import { recordMapMarkersQueryKey } from '@/features/map/hooks/useRecordMapMarkersQuery';
 import { myRecordListQueryKey } from '@/features/map/hooks/useMyRecordListQuery';
+import { recentRecordsQueryKeyPrefix } from './useRecentRecordsQuery';
 import {
   createRecord,
   type CreateRecordRequest,
@@ -21,6 +22,9 @@ export function useCreateRecordMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: recordMapMarkersQueryKey() });
       queryClient.invalidateQueries({ queryKey: myRecordListQueryKey() });
+      // 371: 홈의 "요즘 붙여둔 것"은 방금 만든 Record가 맨 앞에 와야 한다(createdAt 내림차순 고정).
+      // size가 키에 들어 있어 접두 키로 무효화한다.
+      queryClient.invalidateQueries({ queryKey: recentRecordsQueryKeyPrefix });
     },
   });
 }

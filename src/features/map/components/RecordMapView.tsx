@@ -63,6 +63,30 @@ function createRecordMarkerElement(assetUrl: string, title: string): HTMLImageEl
   return image;
 }
 
+/**
+ * 371: 강조된 마커를 키운다. 확대 기준점이 엘리먼트 아래쪽(50% 100%)이 아니라 핀의 뾰족한 끝
+ * (RECORD_MARKER_TIP_Y_RATIO)이어야 한다 — asset 아래 여백은 내장 그림자 자리라, 바닥을 기준으로
+ * 키우면 커진 만큼 핀 끝이 실제 좌표에서 아래로 밀린다.
+ */
+const MARKER_HIGHLIGHT_ORIGIN = `50% ${RECORD_MARKER_TIP_Y_RATIO * 100}%`;
+const MARKER_HIGHLIGHT_SCALE = 1.35;
+
+/**
+ * 마커 하나의 강조 여부를 반영한다. **엘리먼트를 다시 만들지 않고 스타일만 바꾸는 것이 핵심이다** —
+ * CustomOverlay를 새로 만들면 <img>가 다시 로드돼 강조를 옮길 때마다 지도 전체 마커가 깜빡인다
+ * (근거: Jira S15P11A705-371).
+ */
+function applyMarkerHighlight(element: HTMLImageElement, highlighted: boolean): void {
+  element.style.transformOrigin = MARKER_HIGHLIGHT_ORIGIN;
+  element.style.transition = 'transform 160ms ease-out, filter 160ms ease-out';
+  element.style.transform = highlighted ? `scale(${MARKER_HIGHLIGHT_SCALE})` : 'scale(1)';
+  // 강조된 핀이 이웃 핀에 가리지 않게 같은 오버레이 층 안에서 위로 올린다. CustomOverlay의 zIndex
+  // 옵션은 생성 시점 값이라, 이미 만든 마커의 순서를 바꾸려면 content 엘리먼트 쪽을 쓴다.
+  element.style.filter = highlighted ? 'drop-shadow(0 6px 10px rgba(4,33,66,0.45))' : '';
+  element.style.zIndex = highlighted ? '2' : '';
+  element.style.position = 'relative';
+}
+
 // 마커가 없을 때(최초 SDK 로드 등) 지도 기본 중심(서울시청). KakaoPlaceMap.tsx와 동일 기본값.
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 
@@ -216,6 +240,16 @@ interface RecordMapViewProps {
    */
   focusRecordId?: number | null;
   onFocusRecordHandled?: () => void;
+  /**
+   * 371: 홈의 최근 기록 카드 스택에서 지금 앞장인 Record. 해당 마커를 키워 강조하고, **값이 바뀔
+   * 때** 그 좌표로 지도를 옮긴다.
+   *
+   * focusRecordId와 뜻이 다르다 — focusRecordId는 "방금 저장했으니 한 번 데려다 달라"는 일회성
+   * 요청이고(처리 후 호출부가 비운다), 이쪽은 "지금 앞장은 이것"이라는 지속 상태다. 그래서 처리
+   * 완료 콜백이 없고, 대신 첫 적용에서는 지도를 옮기지 않는다(최초 진입 fitBounds를 밀어내지 않기
+   * 위해서다 — 아래 effect 주석).
+   */
+  highlightRecordId?: number | null;
 }
 
 /** 내 Record를 지도 마커로 조회하는 화면. 근거: docs/reference/08_API_명세.md 4.2. */
@@ -224,12 +258,27 @@ export function RecordMapView({
   topObstructionPx = 0,
   focusRecordId = null,
   onFocusRecordHandled,
+  highlightRecordId = null,
 }: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const createdMapRef = useRef<KakaoMap | null>(null);
-  const markersRef = useRef<KakaoCustomOverlay[]>([]);
+  /**
+   * 371: 배열에서 recordId 키의 Map으로 바꿨다. 강조 대상 하나만 찾아 스타일을 고치려면 배열을
+   * 매번 훑어야 하고, 그러다 보면 "전부 지우고 다시 만든다"는 손쉬운 길로 빠진다 — 그 순간 지도
+   * 마커가 통째로 깜빡인다. content 엘리먼트를 함께 들고 있는 이유도 같다(오버레이만으로는 스타일을
+   * 만질 손잡이가 없다).
+   */
+  const markersRef = useRef<
+    Map<number, { overlay: KakaoCustomOverlay; element: HTMLImageElement }>
+  >(new Map());
   const hasFitInitialBoundsRef = useRef(false);
+  /**
+   * 강조 대상이 "한 번이라도 적용된 적 있는지". 최초 적용에서는 지도를 옮기지 않기 위한 래치다 —
+   * 홈에 들어오자마자 카드 스택의 앞장으로 지도가 끌려가면 최초 fitBounds(전체가 한눈에 보이는
+   * 화면)가 즉시 밀려난다. 사용자가 화살표를 눌러 앞장을 **바꿨을 때부터** 따라간다.
+   */
+  const hasAppliedHighlightRef = useRef(false);
 
   /**
    * 계산 시점의 컨테이너 크기를 함께 읽는다. 높이는 렌더 후에야 정해지고 창 크기에 따라 변해서
@@ -312,8 +361,12 @@ export function RecordMapView({
       return;
     }
 
-    markersRef.current.forEach((marker) => marker.setMap(null));
-    markersRef.current = data.items.map((item) => {
+    markersRef.current.forEach(({ overlay }) => overlay.setMap(null));
+    const nextMarkers = new Map<
+      number,
+      { overlay: KakaoCustomOverlay; element: HTMLImageElement }
+    >();
+    data.items.forEach((item) => {
       const element = createRecordMarkerElement(
         getRecordMarkerAsset(item.latestCollectionId ?? null),
         item.name,
@@ -325,7 +378,7 @@ export function RecordMapView({
           navigate({ to: '/records/$recordId', params: { recordId: item.recordId } });
         }
       });
-      return new kakao.maps.CustomOverlay({
+      const overlay = new kakao.maps.CustomOverlay({
         map,
         position: new kakao.maps.LatLng(item.lat, item.lng),
         content: element,
@@ -334,8 +387,44 @@ export function RecordMapView({
         xAnchor: 0.5,
         yAnchor: RECORD_MARKER_TIP_Y_RATIO,
       });
+      nextMarkers.set(item.recordId, { overlay, element });
     });
+    markersRef.current = nextMarkers;
   }, [data, map, navigate, onMarkerClick, readInsets]);
+
+  /**
+   * 371: 강조 표시. 마커를 다시 만들지 않고 이미 붙어 있는 엘리먼트의 스타일만 바꾼다.
+   *
+   * deps에 data가 있는 것이 중요하다 — 위 생성 effect가 마커를 새로 만들면 스타일이 초기화되므로,
+   * 같은 렌더에서 이 effect가 이어 돌아 강조를 다시 입혀야 한다(선언 순서상 생성이 먼저다).
+   */
+  useEffect(() => {
+    markersRef.current.forEach(({ element }, recordId) => {
+      applyMarkerHighlight(element, recordId === highlightRecordId);
+    });
+  }, [data, highlightRecordId]);
+
+  /**
+   * 371: 앞장이 바뀌면 그 좌표로 지도를 옮긴다. 위 focusRecordId effect와 이동 로직(가시 영역 기준
+   * 센터링)은 같고, **언제 도는지**만 다르다 — 그쪽은 일회성 요청이라 처리 후 콜백으로 값을 비우고,
+   * 이쪽은 지속 상태라 값이 바뀔 때만 반응하며 첫 적용은 건너뛴다(hasAppliedHighlightRef).
+   * 첫 적용을 건너뛰지 않으면 홈 진입 즉시 최초 fitBounds가 앞장 센터링에 밀려난다.
+   */
+  useEffect(() => {
+    const kakao = window.kakao;
+    if (!map || !kakao || !data || highlightRecordId === null) {
+      return;
+    }
+    const target = data.items.find((item) => item.recordId === highlightRecordId);
+    if (!target) {
+      return;
+    }
+    if (!hasAppliedHighlightRef.current) {
+      hasAppliedHighlightRef.current = true;
+      return;
+    }
+    centerOnVisibleArea(kakao, map, target, readInsets(), true);
+  }, [data, map, highlightRecordId, readInsets]);
 
   /**
    * 최초 응답에만 bounds로 fitBounds 적용. 이후 재검색 결과에는 사용자가 이미 맞춰둔 화면을 유지한다.
