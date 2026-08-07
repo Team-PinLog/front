@@ -4,24 +4,14 @@ import { AddToCollectionButton } from '@/features/collections/components/AddToCo
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
 import { useAddRecordContextMutation } from '../hooks/useAddRecordContextMutation';
 import { ContextStickyNoteCard } from './ContextStickyNoteCard';
+// 378: 컬렉션 펼침 화면도 같은 손붙임 배치를 쓰게 되어 오프셋 표를 모듈로 뽑았다(문법 공유).
+import { contextNoteScatterStyle } from './contextNoteScatter';
 import { RecordNotebookPage } from './RecordNotebookPage';
 import { RecordPolaroidStack } from './RecordPolaroidStack';
 
 // docs/api-contract.md Context 계약. 시안도 입력 시 500자에서 잘라낸다(maxLength로 사전 차단).
 const CONTEXT_BODY_MAX_LENGTH = 500;
 
-// 373 피드백 3: 균일 격자가 아니라 "손으로 붙인" 배치로 보이게 하는 오프셋 표.
-// 목록 순서(index)로 순환해서 고르므로 리렌더돼도 배치가 흔들리지 않는다. 세로 오프셋이
-// 열마다 어긋나면서 masonry 같은 리듬이 생기고, 회전은 포스트잇 자체 회전 위에 한 겹 더 얹힌다.
-// 값은 잘림 방지를 위해 스크롤 영역 여백(pt-6/px-3/pb-4) 안에서 감당되는 범위로 제한했다.
-const NOTE_SCATTER = [
-  { top: 0, left: 0, rotate: '0deg' },
-  { top: 22, left: 6, rotate: '-0.9deg' },
-  { top: 8, left: -4, rotate: '0.7deg' },
-  { top: 30, left: 9, rotate: '-0.5deg' },
-  { top: 14, left: 2, rotate: '1deg' },
-] as const;
-const NOTE_SCATTER_BOTTOM_GAP = 20;
 // 이 개수 이하면 "비어 보이는" 배치라 괘선·큰 포스트잇·다음 자리 실루엣으로 페이지를 채운다.
 const SPARSE_CONTEXT_THRESHOLD = 2;
 
@@ -176,12 +166,7 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
                   // 균일 격자로 보이지 않게 손으로 붙인 듯한 오프셋을 준다(373 피드백 3).
                   // index 기준이라 목록 순서가 같으면 항상 같은 배치이고, 회전은 여기서 한 겹 더
                   // 얹어 ContextStickyNote의 contextId 회전과 합성된다(각도 편차가 커진다).
-                  style={{
-                    marginTop: NOTE_SCATTER[index % NOTE_SCATTER.length].top,
-                    marginLeft: NOTE_SCATTER[index % NOTE_SCATTER.length].left,
-                    marginBottom: NOTE_SCATTER_BOTTOM_GAP,
-                    transform: `rotate(${NOTE_SCATTER[index % NOTE_SCATTER.length].rotate})`,
-                  }}
+                  style={contextNoteScatterStyle(index)}
                 >
                   <ContextStickyNoteCard
                     recordId={recordId}
@@ -200,12 +185,7 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
               {isSparse && (
                 <div
                   className="w-[300px] max-w-full"
-                  style={{
-                    marginTop: NOTE_SCATTER[contexts.length % NOTE_SCATTER.length].top,
-                    marginLeft: NOTE_SCATTER[contexts.length % NOTE_SCATTER.length].left,
-                    marginBottom: NOTE_SCATTER_BOTTOM_GAP,
-                    transform: `rotate(${NOTE_SCATTER[contexts.length % NOTE_SCATTER.length].rotate})`,
-                  }}
+                  style={contextNoteScatterStyle(contexts.length)}
                 >
                   <div className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-sm border-2 border-dashed border-[#ded8cd] bg-white/45 px-6 py-8 text-center">
                     <span className="text-2xl leading-none text-[#c9c2b6]" aria-hidden="true">

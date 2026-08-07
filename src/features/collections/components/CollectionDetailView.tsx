@@ -6,6 +6,8 @@ import { useDeleteConfirm } from '@/contexts/useDeleteConfirm';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { ShelfExploreSection } from '@/features/feed/components/ShelfExploreSection';
 import { ContextStickyNoteCard } from '@/features/records/components/ContextStickyNoteCard';
+// 378: 핀 상세(373)와 같은 손붙임 배치 문법을 쓴다 — 두 화면의 포스트잇 인상이 갈리면 안 된다.
+import { contextNoteScatterStyle } from '@/features/records/components/contextNoteScatter';
 import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
 import type { CollectionDetail } from '../api/getCollectionDetail';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
@@ -782,16 +784,15 @@ export function CollectionDetailView({
                         {ownedByMe && currentRecord.contexts && (
                           // 353: 포스트잇 면은 버튼이 아니지만 조작 대상(연필·× 버튼이 그 위에 있고,
                           // 겹쳐 쌓여 빗맞기 쉽다)이라 통째로 넘김에서 제외한다.
-                          <div data-page-turn="ignore" className="relative flex flex-col pt-2">
+                          <div
+                            data-page-turn="ignore"
+                            className="relative flex flex-wrap content-start gap-x-7 px-3 pb-4 pt-6"
+                          >
                             {/* 378 롤백 지점 (3/3): 포스트잇 뒤에 깔리는 "찢어낸 종이" 받침.
-                                포스트잇 자체(shared/ui/ContextStickyNote)는 손대지 않았다 — 색·회전·
-                                테이프는 332에서 확정한 3색 해시 그대로다. 이 aria-hidden 레이어와
-                                감싸는 div의 `relative`만 지우면 원래대로 돌아간다.
+                                이 aria-hidden 레이어와 감싸는 div의 `relative`만 지우면 원래대로 돌아간다.
                                 받침은 포스트잇의 **부모가 아니라 형제**여야 한다: 마스크는 자식까지
                                 함께 잘라내므로, 부모로 감싸면 포스트잇 아랫부분이 톱니에 물린다.
-                                z-index는 주지 않는다 — 포스트잇도 position:relative라 DOM에서 뒤에 오는
-                                쪽이 위에 그려지고, 호버 시 z-20으로 앞서 나오는 332 동작도 그대로 산다
-                                (여기에 z-10 래퍼를 씌우면 쌓임 맥락이 갇혀 그 동작이 죽는다). */}
+                                z-index는 주지 않는다 — 뒤에 오는 포스트잇들이 DOM 순서대로 이 위에 그려진다. */}
                             {currentRecord.contexts.length > 0 && (
                               <span
                                 aria-hidden="true"
@@ -804,14 +805,26 @@ export function CollectionDetailView({
                                 아직 기록된 맥락이 없어요.
                               </p>
                             ) : (
+                              /* 378 피드백(사용자가 332의 포스트잇 표현 확정을 직접 해제):
+                                 - 페이지 전폭으로 늘어나 "띠"로 보이던 것을 260px 종이 조각 비례로 고정한다.
+                                 - 세로로 겹쳐 쌓던 배치(stackIndex=index)를 끄고(=0) 373의 손붙임 스캐터로
+                                   어긋나게 놓는다. 겹치면 위 장의 마스킹 테이프가 아래 장 글자를 덮었다.
+                                 - 감싸는 div의 pt-6/px-3/pb-4 여백은 테이프(위로 12px)·스캐터·호버 들림이
+                                   잘리지 않게 하기 위한 것이다(373과 같은 값). */
                               currentRecord.contexts.map((context, index) => (
-                                <ContextStickyNoteCard
+                                <div
                                   key={context.contextId}
-                                  recordId={currentRecord.recordId}
-                                  context={context}
-                                  ownedByMe={ownedByMe}
-                                  stackIndex={index}
-                                />
+                                  className="w-[260px] max-w-full"
+                                  style={contextNoteScatterStyle(index)}
+                                >
+                                  <ContextStickyNoteCard
+                                    recordId={currentRecord.recordId}
+                                    context={context}
+                                    ownedByMe={ownedByMe}
+                                    stackIndex={0}
+                                    attachment="flat"
+                                  />
+                                </div>
                               ))
                             )}
                           </div>

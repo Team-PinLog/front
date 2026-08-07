@@ -125,7 +125,7 @@ export function ContextStickyNote({
   return (
     <div
       ref={ref}
-      className={`context-sticky-note relative rounded-sm px-5 pb-6 pt-7${
+      className={`context-sticky-note relative rounded-sm px-5 pb-6 pt-9${
         isFlat ? ' context-sticky-note--flat' : ''
       }`}
       style={style}
