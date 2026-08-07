@@ -1,18 +1,15 @@
-import { useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { AddToCollectionButton } from '@/features/collections/components/AddToCollectionButton';
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
-import { useAddRecordContextMutation } from '../hooks/useAddRecordContextMutation';
+import { ContextComposerSlot } from './ContextComposerSlot';
 import { ContextStickyNoteCard } from './ContextStickyNoteCard';
 // 378: 컬렉션 펼침 화면도 같은 손붙임 배치를 쓰게 되어 오프셋 표를 모듈로 뽑았다(문법 공유).
 import { contextNoteScatterStyle } from './contextNoteScatter';
 import { RecordNotebookPage } from './RecordNotebookPage';
 import { RecordPolaroidStack } from './RecordPolaroidStack';
 
-// docs/api-contract.md Context 계약. 시안도 입력 시 500자에서 잘라낸다(maxLength로 사전 차단).
-const CONTEXT_BODY_MAX_LENGTH = 500;
-
-// 이 개수 이하면 "비어 보이는" 배치라 괘선·큰 포스트잇·다음 자리 실루엣으로 페이지를 채운다.
+// 이 개수 이하면 "비어 보이는" 배치라 포스트잇과 작성 자리를 크게 써서 페이지를 채운다
+// (괘선은 387에서 뺐다 — 방향성 있는 줄무늬가 미세 종이결 방향과 어긋났다).
 const SPARSE_CONTEXT_THRESHOLD = 2;
 
 interface RecordDetailViewProps {
@@ -33,19 +30,7 @@ interface RecordDetailViewProps {
  * 토큰 추가는 조율 세션 보고 대상이기도 하다.)
  */
 export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
-  const [contextBody, setContextBody] = useState('');
   const detailQuery = useRecordDetailQuery(recordId);
-  const addContextMutation = useAddRecordContextMutation(recordId);
-
-  const handleAddContext = () => {
-    const body = contextBody.trim();
-    if (!body) {
-      return;
-    }
-    addContextMutation.mutate(body, {
-      onSuccess: () => setContextBody(''),
-    });
-  };
 
   if (detailQuery.isPending) {
     return (
@@ -79,7 +64,6 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
   // 항상 배열이지만, 타인 응답과 같은 DTO(RecordDetail)를 쓰는 만큼 문서의 표준 분기 방식을 그대로 따른다.
   const isOwner = record.contexts !== null;
   const contexts = record.contexts ?? [];
-  const canSave = Boolean(contextBody.trim()) && !addContextMutation.isPending;
   const isSparse = contexts.length <= SPARSE_CONTEXT_THRESHOLD;
 
   return (
@@ -173,79 +157,31 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
                 </div>
               ))}
 
-              {/* 다음 포스트잇 자리. 맥락이 0~2개일 때만 둬서 페이지가 "아직 채울 곳이 있다"로
-                  읽히게 한다 — 빈 상태의 밋밋한 한 줄 안내를 대신한다.
+              {/* 389: 다음 포스트잇 자리가 곧 작성 입구다(ContextComposerSlot). 373에서는 맥락이
+                  0~2개일 때만 두는 안내판이었지만, 이제 **맥락이 몇 개든 목록 끝에 항상** 둔다 —
+                  이 자리가 유일한 추가 진입점이라 사라지면 기능이 사라진다.
                   font-hand는 포스트잇 전용 서체지만(tailwind.config 주석) 이 자리는 포스트잇의
                   빈 실루엣 자체라 같은 서체를 쓴다. */}
-              {isSparse && (
-                <div
-                  className="w-[300px] max-w-full"
-                  style={contextNoteScatterStyle(contexts.length)}
-                >
-                  <div className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-sm border-2 border-dashed border-[#ded8cd] bg-white/45 px-6 py-8 text-center">
-                    <span className="text-2xl leading-none text-[#c9c2b6]" aria-hidden="true">
-                      ＋
-                    </span>
-                    <p className="whitespace-pre-line font-hand text-xl leading-6 text-[#a29d95]">
-                      {contexts.length === 0
-                        ? '이 장소의 첫 기억을\n오른쪽에 적어 붙여보세요'
-                        : '이 장소의 기억이\n더 쌓이길 기다려요'}
-                    </p>
-                  </div>
-                </div>
-              )}
+              <div
+                className={isSparse ? 'w-[300px] max-w-full' : 'w-[268px] max-w-full'}
+                style={contextNoteScatterStyle(contexts.length)}
+              >
+                <ContextComposerSlot recordId={recordId} isFirst={contexts.length === 0} />
+              </div>
             </div>
           )}
         </div>
 
-        <div className="flex w-full flex-none flex-col lg:w-[280px] lg:pt-8">
+        {/* 389: 여기 있던 '맥락 추가' 섹션(라벨+textarea+저장 버튼)은 점선 실루엣으로 흡수돼 사라졌다.
+            남은 폭은 그대로 두고 폴라로이드를 세로 가운데로 옮긴다 — 위로 몰아 두면 아래가 빈 상자로
+            읽히지만, 가운데에 두면 사진이 페이지 여백에 붙은 것처럼 보인다. */}
+        <div className="flex w-full flex-none flex-col lg:w-[280px] lg:justify-center">
           <RecordPolaroidStack
             lat={record.place.lat}
             lng={record.place.lng}
             placeName={record.place.name}
             thumbnailUrl={record.place.thumbnailUrl}
           />
-
-          {/* 373 피드백 2: 폴라로이드와 붙어 보여서 사이를 확실히 띄우고, 옅은 구분선으로
-              "사진 영역"과 "쓰는 영역"을 나눈다. */}
-          {isOwner && (
-            <div className="mt-8 flex-none border-t border-[#efece8] pt-5">
-              <label
-                htmlFor="record-context-body"
-                className="text-[17px] font-extrabold tracking-[-0.01em] text-[#4f9b78]"
-              >
-                맥락 추가
-              </label>
-              <textarea
-                id="record-context-body"
-                value={contextBody}
-                onChange={(event) => setContextBody(event.target.value)}
-                maxLength={CONTEXT_BODY_MAX_LENGTH}
-                placeholder="이 장소에서 새로 기억하고 싶은 맥락을 적어보세요"
-                className="mt-3 h-[96px] w-full resize-none rounded-[14px] border-[1.5px] border-[#e5e2dd] bg-white p-3.5 text-[15px] leading-relaxed text-[#2c2a28] outline-none transition-colors placeholder:text-[#a29d95] focus:border-[#5faa84]"
-              />
-              <p className="mt-1 text-right text-xs text-[#a29d95]">
-                {contextBody.length}/{CONTEXT_BODY_MAX_LENGTH}
-              </p>
-
-              {addContextMutation.isError && (
-                <p className="mt-1 text-sm text-red-600">{addContextMutation.error.message}</p>
-              )}
-
-              <button
-                type="button"
-                onClick={handleAddContext}
-                disabled={!canSave}
-                className={`mt-3 w-full rounded-[14px] py-3.5 text-[17px] font-extrabold text-white transition-colors ${
-                  canSave
-                    ? 'bg-[#4f9b78] shadow-[0_8px_18px_-8px_rgba(79,155,120,0.7)]'
-                    : 'bg-[#bcd8c7]'
-                }`}
-              >
-                {addContextMutation.isPending ? '저장 중…' : '저장'}
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </RecordNotebookPage>
