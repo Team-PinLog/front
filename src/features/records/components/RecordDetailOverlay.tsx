@@ -17,19 +17,16 @@ export function RecordDetailOverlay({ recordId, onClose }: RecordDetailOverlayPr
       onClick={onClose}
       role="presentation"
     >
+      {/* 373: 흰 라운드 패널·별도 ✕는 노트 페이지(RecordNotebookPage)가 대신한다. 셸은 배경과 폭만
+          맡는다. 배경 클릭·✕로 닫는 기존 정책은 그대로다(324 선례 — ESC 핸들러는 원래 없었다). */}
       <div
-        className="relative max-h-[calc(100dvh-48px)] w-[min(720px,calc(100vw-48px))] overflow-y-auto rounded-2xl bg-paper-white shadow-xl"
+        className="relative w-[min(1120px,calc(100vw-48px))]"
         onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="기록 상세"
       >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="닫기"
-          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-pin-navy/10 text-pin-navy"
-        >
-          ×
-        </button>
-        <RecordDetailContent recordId={recordId} onRecordDeleted={onClose} />
+        <RecordDetailContent recordId={recordId} onRecordDeleted={onClose} onClose={onClose} />
       </div>
     </div>
   );
