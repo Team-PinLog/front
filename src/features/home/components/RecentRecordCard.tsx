@@ -1,6 +1,6 @@
 import { useRecordDetailQuery } from '@/features/records/hooks/useRecordDetailQuery';
 import type { RecentRecordCardItem } from '@/features/records/api/getRecentRecords';
-import { PinTackMount } from '@/shared/ui/PinSymbols';
+import { PinPushMount } from '@/shared/ui/PinSymbols';
 
 /**
  * 사진이 없을 때 쓰는 일러스트풍 폴백의 색 조합. 명세에 "thumbnailUrl은 당분간 대부분 null"이라고
@@ -92,22 +92,25 @@ export function RecentRecordCard({ item, relativeDay, isFront, onSelect }: Recen
 
   return (
     <div className="relative">
-      {/* 압정: 종이보다 **뒤**(z-0). 바늘이 종이에 가려지고 받침만 종이 위로 나온다. */}
-      <PinTackMount height={30} />
+      {/* 386: 압정 → 시안 푸시핀으로 교체. 배치 방식도 함께 바뀐다 — 압정은 "바늘이 종이 뒤"였지만
+          이 핀은 비스듬히 꽂힌 모양이라 **핀 전체가 종이 위**에 얹히고, 눌린 느낌은 아래 접촉
+          그림자로 낸다. 카드 왼쪽 위에 살짝 걸치게 두어 종이 모서리를 찝은 것처럼 보이게 한다. */}
+      <PinPushMount height={38} className="-left-1 -top-3" />
 
       <button
         type="button"
         onClick={() => onSelect(item.recordId)}
         className="relative z-10 flex w-full flex-col gap-2 rounded-[3px] bg-white p-2.5 pb-3 text-left shadow-[0_12px_30px_-14px_rgba(4,33,66,0.55)] transition-transform duration-200 ease-out hover:-translate-y-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-log-mint motion-reduce:transition-none"
       >
-        {/* 압정 받침이 종이에 드리우는 그림자. 압정이 종이에 "눌러 박혔다"는 인상을 만드는 부분이라
-            압정 자체가 아니라 종이 쪽에 그린다. */}
+        {/* 386: 바늘 끝이 종이에 박힌 자리의 접촉 그림자. 핀이 아니라 **종이 쪽**에 그린다 —
+            "핀이 종이를 누르고 있다"는 인상은 핀의 그림자가 아니라 종이에 생긴 그늘이 만든다.
+            핀이 왼쪽 위에 꽂혀 있으므로 그림자도 그 자리다. */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 h-6"
+          className="pointer-events-none absolute left-0 top-0 h-7 w-16"
           style={{
             background:
-              'radial-gradient(ellipse 18px 7px at 50% 0, rgba(4,33,66,.32), transparent 70%)',
+              'radial-gradient(ellipse 13px 8px at 22% 12%, rgba(4,33,66,.34), transparent 72%)',
           }}
         />
 

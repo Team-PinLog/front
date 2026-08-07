@@ -46,8 +46,12 @@ export const POSTER_ROTATE_KAKAO_ENABLED = false;
 export const POSTER_SHADOW =
   '0 18px 40px -22px rgba(4,33,66,0.45), 0 3px 10px -6px rgba(4,33,66,0.28)';
 
-/** 모서리 압정 크기(px)와 모서리에서의 거리(px). 377의 PinTack 자산을 그대로 쓴다. */
-export const POSTER_TACK = { heightPx: 26, insetPx: 6 } as const;
+/**
+ * 모서리 핀 크기(px)와 모서리에서의 거리(px).
+ * 386에서 압정(PinTack) → 시안 푸시핀(PinPush)으로 갈아끼웠다. 푸시핀은 기울어져 있어 같은 높이라도
+ * 더 커 보이므로 값을 조금 줄였다.
+ */
+export const POSTER_TACK = { heightPx: 24, insetPx: 4 } as const;
 
 /** 종이 결·책상 결의 진하기. 0.03~0.06이 "있는 듯 없는 듯"이고 0.1을 넘으면 지저분해진다. */
 export const POSTER_PAPER_GRAIN_ALPHA = 0.05;
