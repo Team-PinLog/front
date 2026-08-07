@@ -58,7 +58,23 @@ export function HomePage() {
         {/* isolate는 이 배경 레이어가 어떤 z-index도 바깥으로 새게 하지 않는다는 경계다. 실제
             누출원(카카오 SDK 내부 z-index)은 RecordMapView 컨테이너에서 이미 가두지만, 아래
             오버레이가 지도 위에 보이는 것은 이 레이어 구조 자체의 전제라 여기서도 명시한다. */}
-        <div className="isolate absolute inset-0">
+        {/* 368: `absolute inset-0`의 containing block은 AppLayout `<main>`의 **content box**라서,
+            330(하단 탭바)·364(셸 사방 여백)가 넣은 padding 영역을 지도가 덮지 못하고 그 자리에
+            셸 배경(bg-paper-white)이 띠처럼 드러났다. 음수 마진으로 그 padding을 **정확히 상쇄**해
+            padding box까지 넓힌다(HERO_MAP_FADE_MASK 오버레이도 같은 값을 쓴다 — 아래 참고).
+            ⚠️ 값은 AppLayout `<main>`의 padding 리터럴과 쌍둥이다. 한쪽만 고치면 띠가 다시 생기거나
+            (모자람) 스크롤이 생긴다(넘침). 아래 두 가지가 이 값 선택의 근거다:
+            ① **padding box까지만** 넓히고 그 밖으로는 절대 나가지 않는다. `<main>`은 앱의 유일한
+               스크롤 영역인데(359), abspos 자손이 padding box를 넘으면 그만큼이 scrollable overflow가
+               되어 sm에서 5rem짜리 헛스크롤이 생긴다. 정확히 상쇄하면 오버플로가 0이다.
+            ② md 이상 왼쪽은 셸 여백(1rem/1.5rem)만 상쇄하고 **사이드바 폭은 상쇄하지 않는다.**
+               지도가 불투명한 고정 사이드바 뒤로 들어가면 보이지도 않는 영역을 렌더해 지도의 시각적
+               중심이 왼쪽으로 밀린다. 이렇게 두면 지도 왼쪽 끝이 사이드바 오른쪽 끝과 정확히 만나
+               "사이드바를 제외한 영역을 꽉 채운다"(307)는 원래 전제가 그대로 유지된다.
+            `fixed inset-0`을 쓰지 않은 이유 — 뷰포트 전체를 덮으므로 위 ②가 성립하지 않고, 스크롤
+            영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
+            "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
+        <div className="isolate absolute inset-0 mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mr-4 md:-mt-4 xl:-mb-6 xl:-ml-6 xl:-mr-6 xl:-mt-6">
           <HomeMapSection
             onMarkerClick={setOpenRecordId}
             topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
@@ -81,9 +97,14 @@ export function HomePage() {
             않아 끊기는 경계가 원리적으로 생기지 않는다.
             Safari/구형 Chromium을 위해 -webkit-mask-image(WebkitMaskImage)를 함께 지정한다.
             근거: Jira S15P11A705-307 후속 디자인 피드백. */}
+        {/* 368: 좌·우·위 음수 마진이 위 지도 레이어와 **같은 값**이어야 한다. 좌우가 다르면 넓어진
+            지도의 가장자리만 블러 없이 선명하게 남고, 위가 다르면 지도와 오버레이의 시작점이 어긋나
+            RecordMapView에 넘기는 topObstructionPx(HERO_OVERLAY_OPAQUE_PX)가 틀린 값이 된다 —
+            둘을 같이 올리면 "지도 위 몇 px이 가려지는가"라는 관계는 그대로 보존된다.
+            아래쪽은 이 오버레이가 고정 높이로 끝나는 레이어라 상쇄할 padding이 없다. */}
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
+          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mr-4 md:-mt-4 xl:-ml-6 xl:-mr-6 xl:-mt-6 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
           style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 
