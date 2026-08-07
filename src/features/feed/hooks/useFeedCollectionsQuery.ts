@@ -33,8 +33,11 @@ import { getFeedCollections, type FeedCollectionsPage } from '../api/getFeedColl
  * 새 추천을 받는 경로는 새로고침(또는 명시적 invalidate)이다.
  * gcTime도 함께 늘린다 — 기본 5분이면 책을 오래 보다가 닫았을 때 캐시가 수거돼 스켈레톤이 다시
  * 뜬다. 페이지당 수십 KB짜리 목록이라 30분을 들고 있어도 메모리 부담은 없다.
+ *
+ * 412: 고정 노출 카드(usePinnedFeedCollectionsQuery)도 같은 수명을 써야 해서 export한다 — 값을 두
+ * 군데 복제하면 한쪽만 바뀌었을 때 고정 카드만 캐시가 먼저 수거돼 깜빡인다.
  */
-const FEED_SESSION_GC_TIME_MS = 30 * 60 * 1000;
+export const FEED_SESSION_GC_TIME_MS = 30 * 60 * 1000;
 
 export function useFeedCollectionsQuery(cursor: string | undefined, size: number) {
   return useQuery<FeedCollectionsPage, ApiError>({

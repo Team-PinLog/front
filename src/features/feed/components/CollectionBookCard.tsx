@@ -1,7 +1,7 @@
 import { useCollectionAccentColor } from '@/shared/lib/getCollectionAccentColor';
 import { CollectionCover } from './covers/CollectionCover';
 import { isCompactCoverWidth } from '../lib/collectionCoverVariant';
-import type { FeedCollectionItem } from '../api/getFeedCollections';
+import type { FeedCardItem } from '../lib/feedItems';
 
 /**
  * 315: Feed 카드 한 장. 314까지는 `표지(단색 div) + 정보 패널(고정 px)` 2단이라 책이 아니라 썸네일
@@ -35,7 +35,9 @@ const COVER_FONT_MAX_PX = 22;
 // 정하는 규칙은 전부 그 파일 하나가 갖는다.
 
 export interface CollectionBookCardProps {
-  item: FeedCollectionItem;
+  // 412: 카드는 position을 읽지 않는다 — position은 이벤트 전용 값이라 표시 계층 타입에서 뺀다
+  // (FeedCardItem). 덕분에 Feed 응답이 아닌 항목(고정 카드)도 가짜 position 없이 그릴 수 있다.
+  item: FeedCardItem;
   widthPx: number;
   heightPx: number;
   onClick: () => void;

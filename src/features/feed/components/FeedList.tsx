@@ -1,11 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQueries } from '@tanstack/react-query';
 import { ErrorState } from '@/shared/ui/ErrorState';
-import {
-  getCollectionDetail,
-  type CollectionDetail,
-} from '@/features/collections/api/getCollectionDetail';
 // 319: 선반 판은 Library 캐비닛(ShelfBoard)과 완전히 같은 판이라 shared/ui/Shelf.tsx로 옮겨 공유한다.
 import { ShelfPlank } from '@/shared/ui/Shelf';
 import {
@@ -31,8 +26,13 @@ import {
 } from '@/shared/lib/useShelfBreakpoint';
 import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
+import {
+  usePinnedFeedCollectionsQuery,
+  PINNED_FEED_COLLECTION_COUNT,
+} from '../hooks/usePinnedFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
 import { useFeedCoverPreload } from '../hooks/useFeedCoverPreload';
+import { isPinnedFeedItem, mergePinnedFeedItems, type FeedSlotItem } from '../lib/feedItems';
 import {
   FEED_LAYOUT,
   getBookstoreLayout,
@@ -42,7 +42,6 @@ import {
 import { recordRecentlyOpened } from '../lib/recentlyOpenedCollections';
 import { BookstoreFeed } from './bookstore/BookstoreFeed';
 import { CollectionBookCard } from './CollectionBookCard';
-import type { FeedCollectionItem } from '../api/getFeedCollections';
 
 // 279(→287-8→295 이산 배치→295 추가 수정에서 3:4 비율+동적 예산으로 재설계): 목업(Team-PinLog/
 // mockup 탐색 페이지)의 책장 레이아웃 — 한 행당 카드 수는 여전히 breakpoint(및 mdlg 구간의
@@ -70,15 +69,15 @@ import type { FeedCollectionItem } from '../api/getFeedCollections';
 // 마지막 페이지처럼 슬롯 수 미만일 때도 책장 전체 크기는 그대로 두고 왼쪽부터 채운 뒤 나머지는 빈
 // 선반으로 보여준다.
 function toShelfRows(
-  items: FeedCollectionItem[],
+  items: FeedSlotItem[],
   columns: number,
   pageSize: number,
-): (FeedCollectionItem | null)[][] {
-  const slots: (FeedCollectionItem | null)[] = Array.from(
+): (FeedSlotItem | null)[][] {
+  const slots: (FeedSlotItem | null)[] = Array.from(
     { length: pageSize },
     (_, index) => items[index] ?? null,
   );
-  const rows: (FeedCollectionItem | null)[][] = [];
+  const rows: (FeedSlotItem | null)[][] = [];
   for (let i = 0; i < slots.length; i += columns) {
     rows.push(slots.slice(i, i + columns));
   }
@@ -101,33 +100,6 @@ interface FeedPagePosition {
 }
 
 let lastFeedPagePosition: FeedPagePosition | null = null;
-
-// 임시(프론트엔드 전용) 고정: Feed 1페이지(cursor undefined, pageIndex 0) 맨 앞에 지정 Collection
-// 2권을 항상 노출한다. 서버 추천 알고리즘·Feed Session과 무관한 별도 출처라, 이 항목의 클릭은
-// feedRequestId/feedPosition을 물리지 않고 CLICK 이벤트도 큐잉하지 않는다(ShelfExploreSection.tsx의
-// "Feed 응답에 귀속되지 않은 카드" 패턴과 동일 — 재사용하면 SAVE 이벤트가 엉뚱한 슬롯에 붙는다).
-const PINNED_FEED_COLLECTION_IDS: readonly number[] = [11, 12];
-// useFeedCollectionsQuery.ts의 FEED_SESSION_GC_TIME_MS와 같은 값 — 고정 카드도 세션이 사는 동안(탭
-// 수명) 캐시를 붙들어 페이지를 오가도 다시 로딩 스켈레톤이 뜨지 않게 한다.
-const PINNED_COLLECTION_GC_TIME_MS = 30 * 60 * 1000;
-
-function toPinnedFeedItem(detail: CollectionDetail, index: number): FeedCollectionItem {
-  return {
-    // 실제 Feed 응답 position이 아니라 이 카드 내부 key/식별용 sentinel이다(음수라 실제 position과
-    // 절대 겹치지 않는다). 이벤트로는 절대 전송하지 않는다.
-    position: -1 - index,
-    collectionId: detail.collectionId,
-    title: detail.title,
-    // 7.3 상세 응답엔 총 저장 수가 없다 — recordSize를 최댓값(CursorPage.MAX_SIZE=100)으로 요청해
-    // 받은 records.items 길이로 갈음한다(고정 노출용 컬렉션은 100개를 넘지 않는다고 가정).
-    recordCount: detail.records.items.length,
-    // 7.3 상세 응답엔 Collection 단위 대표 키워드가 없다(Record별 키워드만 있음). keywords: []는
-    // AI 미완료 상태의 정상 응답으로 이미 처리되는 값이라 표지가 깨지지 않는다.
-    keywords: [],
-    coverImageUrl: detail.coverImageUrl ?? null,
-    createdAt: detail.createdAt,
-  };
-}
 
 /**
  * Feed(발행된 Collection 추천 목록) 목록. 근거: Jira S15P11A705-142, docs/reference/08_API_명세.md 10.1.
@@ -246,20 +218,22 @@ export function FeedList() {
   }
 
   const cursor = cursorHistory[pageIndex];
-  const feedQuery = useFeedCollectionsQuery(cursor, pageSize);
-
-  // 1페이지에서만 쓴다(아래 isFirstPage). 다른 페이지에서도 훅 자체는 항상 호출해 훅 순서를
-  // 지키되(React 규칙), enabled로 요청만 막아 불필요한 네트워크를 피한다.
   const isFirstPage = pageIndex === 0;
-  const pinnedQueries = useQueries({
-    queries: PINNED_FEED_COLLECTION_IDS.map((collectionId) => ({
-      queryKey: ['collections', collectionId, 'detail', 'feedPin'] as const,
-      queryFn: () => getCollectionDetail(collectionId, { recordSize: 100 }),
-      enabled: isFirstPage,
-      staleTime: Infinity,
-      gcTime: PINNED_COLLECTION_GC_TIME_MS,
-    })),
-  });
+  // 412(PR #177 리뷰 Blocker): 1페이지는 고정 카드가 앞자리를 가져가므로 **서버에 그만큼 덜
+  // 요청한다** — 받아 놓고 잘라 버리면(#177의 slice) 그 항목의 IMPRESSION은 이미 기록됐는데 화면에는
+  // 뜨지 않고, cursor 체인상 다음 페이지에도 다시 나오지 않는다. 요청 크기를 줄이면 서버가 애초에
+  // 그 슬롯을 만들지 않아 집계가 화면과 일치한다.
+  // 고정 쿼리 결과를 기다리지 않고 상수(고정 카드 수)로 빼는 것이 핵심이다 — 결과를 기다리면 두
+  // 요청이 직렬(워터폴)이 된다. 고정 카드가 실패하거나 서버 추천과 겹쳐 빠지면 그 자리는 빈 슬롯이
+  // 되고(책장 크기는 그대로), 서버 항목을 버리는 일은 어느 경우에도 없다.
+  const feedRequestSize = isFirstPage
+    ? Math.max(1, pageSize - PINNED_FEED_COLLECTION_COUNT)
+    : pageSize;
+  const feedQuery = useFeedCollectionsQuery(cursor, feedRequestSize);
+
+  // 1페이지에서만 쓴다. 다른 페이지에서도 훅 자체는 항상 호출해 훅 순서를 지키되(React 규칙),
+  // enabled로 요청만 막아 불필요한 네트워크를 피한다.
+  const pinned = usePinnedFeedCollectionsQuery(isFirstPage);
 
   // 다음 마운트가 이어받을 위치를 기록한다. 렌더 중이 아니라 커밋 후에 쓴다 — 위 pageSize 리셋처럼
   // 렌더 중 state가 바뀌는 경로가 있어서, 렌더 중에 쓰면 버려질 값을 기록할 수 있다.
@@ -272,7 +246,7 @@ export function FeedList() {
   // 이유로 함께 워밍한다 — 아니면 1페이지 맨 앞 두 칸만 깜빡임이 남는다.
   useFeedCoverPreload([
     ...(feedQuery.data?.items ?? []).map((item) => item.coverImageUrl),
-    ...(isFirstPage ? pinnedQueries.map((query) => query.data?.coverImageUrl) : []),
+    ...pinned.items.map((item) => item.coverImageUrl),
   ]);
 
   const emptyShelfLayout: EmptyShelfLayout = {
@@ -288,7 +262,11 @@ export function FeedList() {
     boardHeight: dims.boardHeight,
   };
 
-  if (feedQuery.isPending) {
+  // 412(리뷰 Major 4): 고정 쿼리가 아직 정착하지 않았으면 함께 스켈레톤에 묶는다 — 먼저 도착한
+  // 서버 목록을 그려 놓고 뒤늦게 고정 2권이 앞에 끼어들면 카드가 통째로 한 칸씩 밀린다.
+  // 고정 쿼리가 **실패**한 경우는 기다리지 않는다(isError는 isPending을 풀어 준다) — 그때는 "고정
+  // 없이 서버 목록만" 그리는 폴백이다(고정 자리는 빈 슬롯).
+  if (feedQuery.isPending || pinned.isPending) {
     return isBookstore ? (
       <BookstoreShell
         layout={bookstoreLayout}
@@ -321,20 +299,10 @@ export function FeedList() {
   }
 
   const page = feedQuery.data;
-  // 1페이지에서만 고정 항목을 맨 앞에 끼워 넣는다 — 실제 알고리즘 항목 중 같은 collectionId가
-  // 있으면 중복 노출을 피해 걸러내고, 슬롯 예산(pageSize)은 그대로 유지한다.
-  const pinnedItems = isFirstPage
-    ? pinnedQueries
-        .filter((query) => query.data !== undefined)
-        .map((query, index) => toPinnedFeedItem(query.data as CollectionDetail, index))
-    : [];
-  const pinnedCollectionIds = new Set(pinnedItems.map((item) => item.collectionId));
-  const items = isFirstPage
-    ? [
-        ...pinnedItems,
-        ...page.items.filter((item) => !pinnedCollectionIds.has(item.collectionId)),
-      ].slice(0, pageSize)
-    : page.items;
+  // 1페이지에서만 고정 항목을 맨 앞에 끼워 넣는다. 중복은 서버 항목을 살리고, 서버 항목은 하나도
+  // 버리지 않는다(mergePinnedFeedItems 주석 — 집계 왜곡 방지). 슬롯 예산은 위 feedRequestSize가
+  // 이미 맞춰 뒀으므로 여기서 자르지 않는다.
+  const items: FeedSlotItem[] = mergePinnedFeedItems(pinned.items, page.items);
   const canGoPrevious = pageIndex > 0;
   const canGoNext = page.hasNext;
 
@@ -356,7 +324,7 @@ export function FeedList() {
     setPageIndex(nextIndex);
   };
 
-  const handleItemClick = (item: FeedCollectionItem) => {
+  const handleItemClick = (item: FeedSlotItem) => {
     // 382 보조 카드 2: "최근 열어본 책"의 로컬 기록. 서버로 아무것도 보내지 않고 이 브라우저의
     // localStorage에만 남긴다(recentlyOpenedCollections.ts). 아래 이벤트 큐잉과는 무관하며,
     // 저장이 실패해도 그쪽 경로에 영향이 없다(그 안에서 try/catch로 삼킨다). 고정 카드 클릭에도
@@ -364,8 +332,10 @@ export function FeedList() {
     recordRecentlyOpened({ collectionId: item.collectionId, title: item.title });
 
     // 고정 카드는 실제 Feed 응답에 속하지 않는다 — CLICK 이벤트도, feedRequestId/feedPosition도
-    // 물리지 않는다(ShelfExploreSection.tsx와 동일 패턴, 위 PINNED_FEED_COLLECTION_IDS 주석 참고).
-    if (isFirstPage && pinnedCollectionIds.has(item.collectionId)) {
+    // 물리지 않는다(ShelfExploreSection.tsx와 동일 패턴, usePinnedFeedCollectionsQuery 주석 참고).
+    // 412: 판별을 collectionId 집합이 아니라 항목 자신의 `pinned` 필드로 한다 — 아래 분기가 지나면
+    // 타입상으로도 position을 가진 서버 항목만 남는다.
+    if (isPinnedFeedItem(item)) {
       void navigate({
         to: '/collections/$collectionId',
         params: { collectionId: item.collectionId },
@@ -455,10 +425,11 @@ export function FeedList() {
                   // 354: key에서 requestId를 뺐다. 이 목록이 어떤 이유로든 다시 받아지면(명시적
                   // invalidate 등) requestId가 바뀌는데, 그게 key에 섞여 있으면 같은 자리에 같은
                   // 책이 있어도 카드가 전부 재마운트돼 표지 <img>까지 다시 그려진다 — 사용자
-                  // 눈에는 "책장이 처음부터 다시 로딩되는" 장면이다. 한 페이지 안에서 슬롯을
-                  // 식별하는 값은 collectionId + position이면 충분하다(position은 응답 값 그대로).
+                  // 눈에는 "책장이 처음부터 다시 로딩되는" 장면이다.
+                  // 412: key도 collectionId 하나로 줄였다 — 한 페이지 안에 같은 Collection이 두 번
+                  // 들어오지 않는다(mergePinnedFeedItems가 중복을 떨어뜨린다).
                   <CollectionBookCard
-                    key={`${item.collectionId}-${item.position}`}
+                    key={item.collectionId}
                     item={item}
                     widthPx={dims.cardWidth}
                     heightPx={dims.cardHeight}
@@ -509,14 +480,14 @@ function BookstoreShell({
 }: {
   layout: BookstoreLayout;
   widthPx: number;
-  items: FeedCollectionItem[];
+  items: FeedSlotItem[];
   slotClassName?: string;
   overlay?: ReactNode;
   canGoPrevious?: boolean;
   canGoNext?: boolean;
   onPrevious?: () => void;
   onNext?: () => void;
-  onItemClick?: (item: FeedCollectionItem) => void;
+  onItemClick?: (item: FeedSlotItem) => void;
 }) {
   return (
     <div

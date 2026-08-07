@@ -3,7 +3,7 @@ import { ShelfPlank } from '@/shared/ui/Shelf';
 import { CollectionBookCard } from '../CollectionBookCard';
 import { getWeeklyKeywords, type BookstoreLayout } from '../../lib/feedLayout';
 import { readRecentlyOpened } from '../../lib/recentlyOpenedCollections';
-import type { FeedCollectionItem } from '../../api/getFeedCollections';
+import type { FeedSlotItem } from '../../lib/feedItems';
 
 /**
  * 382: 서점 매대 레이아웃(레퍼런스: 북스토어 앱). 위쪽 히어로 선반에 대표 책 한 권을 크게 세우고
@@ -26,11 +26,11 @@ const WEEKLY_KEYWORD_LIMIT = 3;
 const RECENT_LIMIT = 3;
 
 export interface BookstoreFeedProps {
-  items: FeedCollectionItem[];
+  items: FeedSlotItem[];
   layout: BookstoreLayout;
   /** 선반 덩어리 폭. 좌우 페이지 버튼이 놓이는 gutter를 포함한 값이라 FeedList가 정한다. */
   widthPx: number;
-  onItemClick: (item: FeedCollectionItem) => void;
+  onItemClick: (item: FeedSlotItem) => void;
   /** 로딩 스켈레톤 칠. 빈 자리에만 붙는다. */
   slotClassName?: string;
   /** 선반 위 정중앙에 얹는 안내(빈 목록·에러). */
@@ -128,9 +128,11 @@ export function BookstoreFeed({
             }
             // 354: key에 requestId를 넣지 않는다 — 목록이 다시 받아지면 같은 자리 같은 책인데도
             // 카드가 전부 재마운트돼 표지가 다시 로딩되는 것처럼 보인다.
+            // 412: position도 뺐다 — 고정 카드는 position 자체가 없고, 한 페이지 안에 같은
+            // Collection이 두 번 들어오지 않아 collectionId만으로 슬롯이 구분된다.
             return (
               <CollectionBookCard
-                key={`${item.collectionId}-${item.position}`}
+                key={item.collectionId}
                 item={item}
                 widthPx={layout.shelfCardWidth}
                 heightPx={layout.shelfCardHeight}
