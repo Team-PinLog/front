@@ -16,6 +16,14 @@ import {
   COLLECTION_DANGER_ACTION_CLASS,
   COLLECTION_FOCUS_RING_CLASS,
 } from './collectionActionStyles';
+// 378 바인더 질감 스킨. 이 화면의 질감·테이프·찢은 종이 표현은 전부 이 모듈에 모여 있다(롤백 지점).
+import {
+  BINDER_PAGE_SURFACE,
+  BINDER_PHOTO_FRAME_CLASS,
+  BINDER_TAPE_CLASS,
+  BINDER_TORN_PAPER_STYLE,
+  binderTapeStyle,
+} from './collectionBinderSkin';
 import { CollectionIndexRail } from './CollectionIndexRail';
 import { CollectionOverlayCloseButton } from './CollectionOverlayShell';
 import { CollectionSpreadMap } from './CollectionSpreadMap';
@@ -591,6 +599,9 @@ export function CollectionDetailView({
 
               <div
                 className={`relative z-10 flex flex-col overflow-hidden rounded-[14px] bg-snow-white shadow-[0_2px_6px_rgba(4,33,66,0.12)] md:flex-row ${BOOK_HEIGHT_CLASS}`}
+                // 378 롤백 지점 (1/3): 페이지 종이 질감·괘선. 배경색 클래스는 그대로 두고
+                // backgroundImage만 얹으므로, 이 style 한 줄을 지우면 원래 면으로 돌아간다.
+                style={BINDER_PAGE_SURFACE}
               >
                 {/* 좌·우 종이 단면 */}
                 <div
@@ -661,14 +672,34 @@ export function CollectionDetailView({
                       넘길 때마다 Kakao Map 인스턴스가 재생성된다. 바뀌는 건 감싸는 상자뿐이다. */}
                   <div
                     data-page-turn="ignore"
-                    className={`cursor-default ${
+                    className={`relative cursor-default ${
                       isTocOpen
                         ? // 피드백 1번: 액자가 작아 페이지가 비어 보였다. 남는 세로 공간을 전부
                           // 받도록 flex-1로 바꾸고(min-h는 짧은 화면 하한) 가로도 페이지 폭을 채운다.
-                          'mt-1 min-h-[180px] w-full flex-1 rounded-lg border border-line-card bg-paper-white p-1.5 shadow-sm'
+                          // 378 롤백 지점 (2/3): 액자 테두리만 폴라로이드(흰 5px)로 바꿨다 —
+                          // `border border-line-card`로 되돌리고 아래 테이프 두 조각을 지우면 원상복구다.
+                          `mt-1 min-h-[180px] w-full flex-1 rounded-lg bg-paper-white p-1.5 ${BINDER_PHOTO_FRAME_CLASS}`
                         : 'h-full'
                     }`}
                   >
+                    {/* 378: 액자를 페이지에 붙인 마스킹 테이프. 지도 조작을 가리지 않도록
+                        pointer-events-none이고, 액자 모서리 밖으로 걸치도록 음수 오프셋을 준다.
+                        사진이 없어 폴백(지도·안내 문구)이 보이는 경우에도 "페이지에 붙어 있다"는
+                        인상은 그대로 유지된다. */}
+                    {isTocOpen && (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className={`${BINDER_TAPE_CLASS} -left-5 -top-2`}
+                          style={binderTapeStyle('left')}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={`${BINDER_TAPE_CLASS} -right-5 -top-2`}
+                          style={binderTapeStyle('right')}
+                        />
+                      </>
+                    )}
                     {/* 전체 로드가 끝나기 전에는 마커를 하나도 그리지 않고 로딩 표시만 한다(가벼운 표시, 화면
                   전체를 막지 않음) — 넘길 때마다 핀이 하나씩 느는 방식을 피하기 위함. */}
                     <CollectionSpreadMap
@@ -751,7 +782,23 @@ export function CollectionDetailView({
                         {ownedByMe && currentRecord.contexts && (
                           // 353: 포스트잇 면은 버튼이 아니지만 조작 대상(연필·× 버튼이 그 위에 있고,
                           // 겹쳐 쌓여 빗맞기 쉽다)이라 통째로 넘김에서 제외한다.
-                          <div data-page-turn="ignore" className="flex flex-col pt-2">
+                          <div data-page-turn="ignore" className="relative flex flex-col pt-2">
+                            {/* 378 롤백 지점 (3/3): 포스트잇 뒤에 깔리는 "찢어낸 종이" 받침.
+                                포스트잇 자체(shared/ui/ContextStickyNote)는 손대지 않았다 — 색·회전·
+                                테이프는 332에서 확정한 3색 해시 그대로다. 이 aria-hidden 레이어와
+                                감싸는 div의 `relative`만 지우면 원래대로 돌아간다.
+                                받침은 포스트잇의 **부모가 아니라 형제**여야 한다: 마스크는 자식까지
+                                함께 잘라내므로, 부모로 감싸면 포스트잇 아랫부분이 톱니에 물린다.
+                                z-index는 주지 않는다 — 포스트잇도 position:relative라 DOM에서 뒤에 오는
+                                쪽이 위에 그려지고, 호버 시 z-20으로 앞서 나오는 332 동작도 그대로 산다
+                                (여기에 z-10 래퍼를 씌우면 쌓임 맥락이 갇혀 그 동작이 죽는다). */}
+                            {currentRecord.contexts.length > 0 && (
+                              <span
+                                aria-hidden="true"
+                                className="pointer-events-none absolute -inset-x-3 -top-1 bottom-3"
+                                style={BINDER_TORN_PAPER_STYLE}
+                              />
+                            )}
                             {currentRecord.contexts.length === 0 ? (
                               <p className="text-xs text-ink-gray-light">
                                 아직 기록된 맥락이 없어요.
