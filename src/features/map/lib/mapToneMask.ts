@@ -89,6 +89,37 @@ export function getMapToneWashColorCss(): string {
   return `rgba(${r}, ${g}, ${b}, ${MAP_TONE_WASH.alpha})`;
 }
 
+/**
+ * 지도 오른쪽 끝을 배경으로 스며들게 하는 페이드 폭(px 기본값)과 마스크.
+ *
+ * 377 후속: 지도 폭을 줄여 '최근의 장소' 카드와 분리했는데, 단면이 직선으로 잘리면 "지도가
+ * 잘렸다"로 읽힌다. 그라데이션으로 배경에 녹여야 한다.
+ *
+ * ⚠️ 이 마스크는 **지도 타일과 톤 레이어에만** 건다. 앞선 시도처럼 지도 레이어 전체에 걸면 그 안에
+ * 있는 줌·"내 주변" 버튼(오른쪽에서 32px 자리)까지 함께 사라진다 — 실제로 그렇게 사라졌다.
+ * 그리고 타일과 워시·질감이 **같은 폭**으로 사라져야 한다. 폭이 어긋나면 한쪽만 먼저 끝나 경계가
+ * 두 겹으로 보인다(374 워시와의 정합).
+ */
+export const MAP_TONE_RIGHT_FADE_PX = 128;
+
+export function getMapToneRightFadeMask(fadePx: number = MAP_TONE_RIGHT_FADE_PX): string {
+  return `linear-gradient(to right, black calc(100% - ${fadePx}px), transparent 100%)`;
+}
+
+/**
+ * 아래(로고 보호)와 오른쪽(배경으로 스며듦) 페이드를 함께 건다. 두 그라데이션을 겹쳐 **둘 다
+ * 불투명한 곳만** 남긴다(intersect) — 하나만 쓰면 다른 쪽 페이드가 사라진다.
+ */
+export function getMapToneEdgeMaskStyle(fadePx: number = MAP_TONE_RIGHT_FADE_PX) {
+  const masks = `${getMapToneBottomFadeMask()}, ${getMapToneRightFadeMask(fadePx)}`;
+  return {
+    maskImage: masks,
+    WebkitMaskImage: masks,
+    maskComposite: 'intersect',
+    WebkitMaskComposite: 'source-in',
+  } as const;
+}
+
 /** 종이 질감 이미지(data URI). feTurbulence로 만든 노이즈라 별도 asset 파일이 필요 없다. */
 export function getMapToneTextureImage(): string {
   const size = MAP_TONE_TEXTURE.tileSizePx;

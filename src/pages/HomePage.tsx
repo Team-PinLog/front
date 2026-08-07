@@ -15,6 +15,13 @@ import {
   HERO_OVERLAY_OPAQUE_PX,
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
+import { MAP_TONE_RIGHT_FADE_PX } from '@/features/map/lib/mapToneMask';
+
+/**
+ * 지도 오른쪽 페이드 폭(px). 톤 마스크 쪽 기본값을 그대로 쓴다 — 타일·워시·질감이 모두 같은 값으로
+ * 사라져야 경계가 한 겹으로 보인다. 더 부드럽게 하려면 mapToneMask.ts의 상수를 키운다.
+ */
+const MAP_RIGHT_FADE_PX = MAP_TONE_RIGHT_FADE_PX;
 
 // 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
 // src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
@@ -132,7 +139,19 @@ export function HomePage() {
             `fixed inset-0`을 쓰지 않은 이유 — 뷰포트 전체를 덮으므로 위 ②가 성립하지 않고, 스크롤
             영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
             "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
-        <div className="isolate absolute inset-0 mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mr-4 md:-mt-4 xl:-mb-6 xl:-ml-6 xl:-mr-6 xl:-mt-6">
+        {/* 377 후속: **지도의 실제 렌더 폭을 줄여** '최근의 장소' 카드와 물리적으로 분리한다.
+            시각적 페이드만으로는 부족했다 — 카드 뒤로 도로가 비치면 그것도 겹침이다.
+            ⚠️ 앞선 시도가 실패한 이유 두 가지를 여기서 함께 고쳤다:
+            ① 조건이 `lg`(≥1024px)뿐이라 그보다 좁은 창에서는 지도가 전폭 그대로였다 → **md부터**
+               걸고 화면이 넓어질수록 예약 폭을 키운다(카드 폭과 짝을 맞춘다).
+            ② 오른쪽 6rem에 걸어 둔 페이드 마스크가 **그 안에 있는 줌·"내 주변" 버튼까지 함께
+               지웠다**(버튼은 right-8 = 32px 자리다). 마스크를 걷어내고, 잘린 단면은 라운드와
+               그림자로 마감해 "잘렸다"가 아니라 "여기까지가 지도"로 읽히게 한다.
+            지도 컨트롤은 이 좁아진 상자를 기준으로 배치되므로 자동으로 카드 왼쪽에 남는다.
+            fitBounds 여유와 "화면 밖" 배지도 컨테이너 실측값을 쓰므로 새 폭에 자동으로 맞는다.
+            오른쪽 단면은 **RecordMapView·RegionMapView 안에서** 그라데이션으로 지운다 — 여기서
+            레이어 전체에 마스크를 걸면 그 안의 줌 버튼까지 함께 사라지기 때문이다(실제로 그랬다). */}
+        <div className="isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0">
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
           {isRegionView ? (
@@ -146,6 +165,7 @@ export function HomePage() {
               <RegionViewPanel
                 onSelectRecord={setOpenRecordId}
                 topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+                rightFadePx={MAP_RIGHT_FADE_PX}
               />
             </Suspense>
           ) : (
@@ -155,6 +175,8 @@ export function HomePage() {
               focusRecordId={savedRecordId}
               onFocusRecordHandled={handleSavedRecordFocused}
               highlightRecordId={activeRecentRecordId}
+              selectedRecordId={openRecordId}
+              rightFadePx={MAP_RIGHT_FADE_PX}
             />
           )}
         </div>
@@ -180,17 +202,27 @@ export function HomePage() {
             아래쪽은 이 오버레이가 고정 높이로 끝나는 레이어라 상쇄할 padding이 없다. */}
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mr-4 md:-mt-4 xl:-ml-6 xl:-mr-6 xl:-mt-6 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
+          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
           style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 
-        {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다. */}
-        <div className={`relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}>
+        {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다.
+            ⚠️ 377: **pointer-events-none이 반드시 있어야 한다.** 이 div는 max-w-6xl 폭에 컨텐츠
+            전체 높이를 가진 블록이라, 눈에는 아무것도 없는 여백까지 포함해 그 사각형 전체가 클릭을
+            받는다. 그 아래에 배경 레이어(지도·지역 뷰)가 깔려 있어서, 이게 없으면 화면 가운데
+            상당 부분에서 지도가 **클릭도 드래그도 되지 않는다.**
+            지역 뷰에서 "색칠된 서울을 눌러도 아무 일이 없다"고 보고된 증상의 원인이 이것이었다 —
+            서울이 그려지는 자리가 정확히 이 사각형 아래였다.
+            대신 실제로 눌려야 하는 자식에만 pointer-events-auto를 되돌려 준다. 자식 각각에 붙이는
+            것이 번거로워 보여도, "레이어는 통과시키고 위젯만 받는다"가 지도 위 UI의 기본 구조다. */}
+        <div
+          className={`pointer-events-none relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}
+        >
           {/* 376 — 롤백 지점 ②: 지도 ↔ 지역 뷰 토글. 이 블록과 위 lazy import, 그리고 아래 배경
               레이어의 삼항만 지우면 기능이 사라진다.
               세그먼트 두 칸으로 둔 이유는 "지금 무엇을 보고 있는지"와 "무엇으로 갈 수 있는지"가 한
               번에 보여야 하기 때문이다 — 단일 토글 버튼은 라벨이 현재 상태인지 목적지인지 늘 헷갈린다. */}
-          <div className="flex justify-end">
+          <div className="pointer-events-auto flex justify-end">
             <div
               role="group"
               aria-label="홈 배경 보기 방식"
@@ -217,37 +249,23 @@ export function HomePage() {
             </div>
           </div>
 
-          <SmartSearchPanel
-            onSubmit={(query) => searchMutation.mutate(query)}
-            isPending={searchMutation.isPending}
-          />
+          <div className="pointer-events-auto">
+            <SmartSearchPanel
+              onSubmit={(query) => searchMutation.mutate(query)}
+              isPending={searchMutation.isPending}
+            />
+          </div>
 
-          {/* 371: 지도 위 우측의 "요즘 붙여둔 것".
-              - 검색 결과가 떠 있는 동안에는 감춘다. 결과 갤러리와 최근 카드가 같은 폭을 두고 세로로
-                이어지면 어느 쪽이 지금 화면의 주인공인지 흐려진다. 검색은 사용자가 방금 요청한 일이라
-                그때는 결과가 주인공이다(idle·0건 상태에서는 다시 나타난다).
-              - 로딩 중과 미구현(recentPage === null)에는 자리표시자도 두지 않는다. 부가 영역이라
-                스켈레톤이 지도 위에 떠 있으면 그 자체가 노이즈다. */}
-          {!hasResults && recentPage && (
-            <div className="flex justify-end">
-              <RecentRecordCardStack
-                items={recentItems}
-                activeIndex={activeRecentIndex}
-                onActiveIndexChange={handleActiveRecentIndexChange}
-                hasNext={recentPage.hasNext}
+          {hasResults && (
+            <div className="pointer-events-auto">
+              <SearchResultGallery
+                items={searchMutation.data.items}
                 onSelectRecord={setOpenRecordId}
               />
             </div>
           )}
-
-          {hasResults && (
-            <SearchResultGallery
-              items={searchMutation.data.items}
-              onSelectRecord={setOpenRecordId}
-            />
-          )}
           {hasNoResults && (
-            <p className="flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
+            <p className="pointer-events-auto flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
               원하는 장소를 찾아보세요.
               <button
                 type="button"
@@ -259,6 +277,33 @@ export function HomePage() {
             </p>
           )}
         </div>
+
+        {/* 377 후속: '최근의 장소'를 **컨텐츠 흐름에서 빼내** 예약된 우측 띠에 붙인다.
+            이것이 "지역 뷰에서 페이지 스크롤이 생긴다"의 근본 원인이었다 — 리치 카드 2장이
+            컨텐츠 열의 높이를 뷰포트 예산(PAGE_MIN_HEIGHT_CLASS) 밖으로 밀어냈고, <main>이 늘어나자
+            그 안에서 inset-0으로 붙어 있던 배경 레이어가 함께 늘어났으며, 지역 지도는 h-full이라
+            같이 커져 제주가 화면 밖으로 나갔다. 스크롤은 그 결과였지 지도 자체의 문제가 아니었다.
+            흐름에서 빼면 페이지 높이는 토글+검색만으로 정해져 359의 "본문만 스크롤" 계약이 회복된다.
+            위치 기준을 컨텐츠 열이 아니라 <main>으로 잡는 이유: 컨텐츠 열은 max-w-6xl로 가운데
+            정렬돼 있어 넓은 화면에서 오른쪽 끝이 뷰포트 오른쪽과 어긋난다. 지도가 비워 둔 띠와
+            정확히 겹치려면 <main> 기준이어야 한다.
+            sm에서는 흐름에 그대로 둔다 — 좁은 화면에는 띠로 뺄 가로가 없다.
+            377 후속: **top을 크게 올렸다**(19~21rem → 6.5~7rem). 아래쪽에 두면 카드 2장(약 600px)
+            높이가 뷰포트 예산을 넘겨 그만큼 스크롤이 생겼다 — 절대 배치라도 스크롤 영역의 overflow에는
+            그대로 잡힌다. 폭도 md·lg를 15rem으로 통일했다(lg 19rem이면 사진 4:3이 커져 카드 한 장이
+            340px이 되고, 두 장이면 다시 예산을 넘는다). 히어로는 왼쪽 컬럼이라 카드가 위로 올라와도
+            검색창과 부딪히지 않는다. */}
+        {!hasResults && recentPage && (
+          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-0 md:top-[6.5rem] md:w-[15rem] md:px-0 lg:top-[7rem] xl:right-2">
+            <RecentRecordCardStack
+              items={recentItems}
+              activeIndex={activeRecentIndex}
+              onActiveIndexChange={handleActiveRecentIndexChange}
+              hasNext={recentPage.hasNext}
+              onSelectRecord={setOpenRecordId}
+            />
+          </div>
+        )}
       </main>
 
       <PlaceRecordSheet onRecordSaved={handleRecordSaved} />

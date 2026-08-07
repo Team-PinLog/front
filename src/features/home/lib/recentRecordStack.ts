@@ -7,78 +7,61 @@
  */
 
 /**
- * 앞장 뒤로 실제 그리는 장 수. 2 = 앞장 1 + 뒤 2, 화면에 카드 세 장이 함께 보인다.
- * (디자인 지침 변경 — 처음엔 뒷장 가장자리만 살짝 보이는 한 장짜리 스택이었으나, "우측에 3장 정도가
- * 붙어 있는 형태"로 바뀌었다. 뒤 장도 각각 카드로 식별돼야 한다.)
- * 이 상수는 DOM에 그릴 장 수인 동시에 아래 배치 배열의 최대 깊이라 둘이 같이 움직인다.
+ * 한 번에 펼쳐 보여 줄 행 수. 377에서 "3장 겹침 스택"을 폐기하고 **엇갈려 펼친 배치**로 바꿨다
+ * (사용자 지시) — 겹쳐 두면 뒤 장의 내용을 읽을 수 없어 "최근에 어디 갔었지"를 한눈에 확인할 수
+ * 없었다.
+ *
+ * **2인 이유**: 카드가 사진(4:3) + 장소명 + 손글씨 맥락 + 키워드 칩 + 날짜를 담은 리치 폴라로이드라
+ * 한 장이 약 200px이다. 세 장이면 보드만 600px을 넘어 히어로와 함께 화면 세로를 다 먹는다.
+ * 사용자가 "3장이 안 들어가면 2행만 해도 된다"고 허용한 부분이다.
+ * 이 값은 **보이는 카드 수 = 상세 지연 호출 상한**이기도 하다(RecentRecordCard 주석 참고).
  */
-export const RECENT_STACK_VISIBLE_DEPTH = 2;
+export const RECENT_ROW_COUNT = 2;
 
 /**
- * 뒷장 기울기·이동값. 인덱스는 **화면상 깊이(offset)** 다 — 카드의 고유 id가 아니다.
- * id 기반 해시(ContextStickyNote 방식)를 쓰지 않은 이유: 저 방식은 "같은 항목은 항상 같은 모양"이
- * 목적이지만, 여기서는 반대로 **자리마다 모양이 고정**돼야 한다. 장을 넘겼을 때 새 앞장이 항상
- * 정면(0deg)으로 오고 뒷장들이 같은 각도로 재정렬돼야 "한 장이 빠져 뒤로 들어갔다"로 읽힌다.
- * id 해시로 각도를 주면 넘길 때마다 스택 전체가 다른 모양이 되어 순환이 아니라 셔플로 보인다.
+ * 행마다 다른 가로 오프셋·기울기. 지그재그로 어긋나야 "대시보드에 하나씩 꽂아 둔 종이"로 읽힌다 —
+ * 값이 모두 같으면 정렬된 목록처럼 보여 손으로 붙인 인상이 사라진다.
  *
- * **계단식(오른쪽 위로) + 약한 회전**을 골랐다. 부채꼴(한 점을 축으로 크게 벌리는 배치)이 아닌 이유:
- * ① 이 영역은 지도 위 우측의 좁은 띠라 가로 예산이 작은데, 부채꼴은 회전각이 커질수록 카드
- *    바깥 모서리가 원호를 그리며 폭을 급격히 먹는다(같은 노출량을 얻는 데 훨씬 넓은 자리가 든다).
- * ② 폴라로이드는 위가 사진, 아래가 텍스트다. 뒷장을 **오른쪽 위로** 밀면 각 장의 사진 윗부분이
- *    드러나 "카드 세 장"으로 읽힌다. 아래로 밀면 앞장이 뒷장의 사진을 덮어 텍스트 여백만 남는다.
- * ③ 회전을 완전히 빼지 않고 2.4도씩만 준 것은, 오프셋만으로는 세 장이 자로 잰 듯 평행해 "쌓인
- *    종이"가 아니라 그리드처럼 보이기 때문이다. 각도는 손으로 겹쳐 둔 느낌을 만드는 최소치다.
+ * 인덱스는 **행 번호**이지 카드 id가 아니다. 넘길 때마다 카드가 한 칸씩 밀려 올라오는데, 각 자리의
+ * 모양이 고정돼 있어야 "종이 한 장이 빠지고 다음 장이 그 자리에 온다"로 읽힌다(371의 깊이별 배치와
+ * 같은 이유다).
  */
-const STACK_ROTATIONS_DEG = [0, 2.4, 4.8] as const;
-const STACK_TRANSLATE_X_PX = [0, 34, 64] as const;
-const STACK_TRANSLATE_Y_PX = [0, -16, -30] as const;
+const ROW_TRANSLATE_X_PX = [0, 30, 12] as const;
+const ROW_ROTATE_DEG = [-1.8, 1.5, -0.9] as const;
 
-export interface RecentStackCardLayout {
-  /** 앞장(0)으로부터의 깊이. */
-  offset: number;
-  rotateDeg: number;
+export interface RecentRowLayout {
+  rowIndex: number;
   translateXPx: number;
-  translateYPx: number;
-  scale: number;
-  /** 앞장이 가장 위. 뒤로 갈수록 낮아진다. */
+  rotateDeg: number;
+  /** 위 행이 아래 행 위로 겹친다 — 압정이 아래 행 카드에 가리지 않게 한다. */
   zIndex: number;
+  /** 첫 행. 손글씨 메모를 지연 호출하는 카드다. */
   isFront: boolean;
 }
 
-function pickByOffset<T>(values: readonly T[], offset: number): T {
-  // offset이 배열보다 깊어져도 마지막 값을 유지한다 — 가장 뒤 장들은 어차피 가장자리만 보인다.
-  return values[Math.min(offset, values.length - 1)] as T;
-}
-
-/**
- * 깊이 offset인 장의 배치. offset 0이 정면이고, 뒤로 갈수록 기울고 오른쪽 아래로 밀리며 작아진다.
- * "겹쳐 쌓인 폴라로이드"라 뒷장은 가장자리만 노출되면 충분하므로 이동값을 크게 주지 않는다.
- */
-export function getRecentStackCardLayout(offset: number): RecentStackCardLayout {
-  const safeOffset = Math.max(0, Math.trunc(offset));
+export function getRecentRowLayout(rowIndex: number): RecentRowLayout {
+  const safeIndex = Math.max(0, Math.trunc(rowIndex));
+  const slot = Math.min(safeIndex, ROW_TRANSLATE_X_PX.length - 1);
   return {
-    offset: safeOffset,
-    rotateDeg: pickByOffset(STACK_ROTATIONS_DEG, safeOffset),
-    translateXPx: pickByOffset(STACK_TRANSLATE_X_PX, safeOffset),
-    translateYPx: pickByOffset(STACK_TRANSLATE_Y_PX, safeOffset),
-    // 한 장당 5%씩 줄인다. 세 장이 함께 보이므로 축소가 곧 원근이다 — 이보다 작게 주면 세 장이
-    // 같은 평면에 놓인 것처럼 보이고, 크게 주면 맨 뒷장이 다른 크기의 카드로 보인다.
-    scale: Math.max(0.85, 1 - safeOffset * 0.05),
-    zIndex: RECENT_STACK_VISIBLE_DEPTH + 1 - safeOffset,
-    isFront: safeOffset === 0,
+    rowIndex: safeIndex,
+    translateXPx: ROW_TRANSLATE_X_PX[slot]!,
+    rotateDeg: ROW_ROTATE_DEG[slot]!,
+    zIndex: RECENT_ROW_COUNT - safeIndex,
+    isFront: safeIndex === 0,
   };
 }
 
 /**
- * 앞장 기준 깊이. 목록 순서를 바꾸지 않고 "지금 몇 번째 장이 앞이냐"만 옮기기 위한 계산이다 —
- * 배열 자체를 회전시키면 React key가 매 넘김마다 다른 위치로 이동해 카드 DOM이 재생성되고,
- * 그 순간 이미지가 다시 로드되며 깜빡인다.
+ * 지금 펼쳐 보여 줄 카드들. activeIndex가 첫 행이고 뒤로 순환한다.
+ * 배열을 회전시키지 않고 인덱스만 계산하는 이유는 371과 같다 — 회전시키면 같은 카드가 매번 다른
+ * React key 자리로 가 DOM이 재생성되고 사진이 다시 로드된다.
  */
-export function getRecentStackOffset(index: number, activeIndex: number, total: number): number {
+export function getVisibleRecentIndexes(activeIndex: number, total: number): number[] {
   if (total <= 0) {
-    return 0;
+    return [];
   }
-  return (index - activeIndex + total * 2) % total;
+  const count = Math.min(RECENT_ROW_COUNT, total);
+  return Array.from({ length: count }, (_, row) => (activeIndex + row) % total);
 }
 
 /**

@@ -5,6 +5,8 @@ interface RegionViewPanelProps {
   onSelectRecord: (recordId: number) => void;
   /** 히어로 오버레이가 위쪽을 덮는 높이(px). HomeMapSection과 같은 값을 받는다. */
   topObstructionPx?: number;
+  /** 지도 오른쪽 끝을 그라데이션으로 지우는 폭(px). 지도 뷰와 같은 값을 써야 두 탭이 같아 보인다. */
+  rightFadePx?: number;
 }
 
 /**
@@ -17,7 +19,11 @@ interface RegionViewPanelProps {
  * 바깥 코드에 남기는 흔적은 그 두 곳뿐이고, 기존 지도(RecordMapView)·검색 코드는 한 줄도 바뀌지
  * 않았다. 반대로 이 폴더는 바깥의 것을 **읽기만** 한다(지도 마커 쿼리, 371의 카드 배치 순수 함수).
  */
-export function RegionViewPanel({ onSelectRecord, topObstructionPx }: RegionViewPanelProps) {
+export function RegionViewPanel({
+  onSelectRecord,
+  topObstructionPx,
+  rightFadePx,
+}: RegionViewPanelProps) {
   const { data, isLoading, isError } = useRecordMapMarkersQuery();
 
   if (isLoading) {
@@ -46,6 +52,7 @@ export function RegionViewPanel({ onSelectRecord, topObstructionPx }: RegionView
         items={items}
         onSelectRecord={onSelectRecord}
         topObstructionPx={topObstructionPx}
+        rightFadePx={rightFadePx}
       />
       {items.length === 0 && (
         <p className="pointer-events-none absolute inset-x-0 bottom-8 text-center text-sm text-ink-gray">

@@ -2,67 +2,67 @@ import { describe, expect, it } from 'vitest';
 import {
   formatRecentRelativeDay,
   getCycledRecentIndex,
-  getRecentStackCardLayout,
-  getRecentStackOffset,
-  RECENT_STACK_VISIBLE_DEPTH,
+  getRecentRowLayout,
+  getVisibleRecentIndexes,
+  RECENT_ROW_COUNT,
 } from './recentRecordStack';
 
-describe('getRecentStackCardLayout', () => {
-  it('앞장은 기울지 않고 밀리지도 않으며 원래 크기다', () => {
-    const front = getRecentStackCardLayout(0);
-    expect(front.isFront).toBe(true);
-    expect(front.rotateDeg).toBe(0);
-    expect(front.translateXPx).toBe(0);
-    expect(front.translateYPx).toBe(0);
-    expect(front.scale).toBe(1);
+describe('getRecentRowLayout', () => {
+  it('첫 행이 앞 카드다 — 손글씨 메모를 지연 호출하는 자리', () => {
+    expect(getRecentRowLayout(0).isFront).toBe(true);
+    expect(getRecentRowLayout(1).isFront).toBe(false);
   });
 
-  it('뒤로 갈수록 작아지고 z가 낮아진다', () => {
-    const layouts = [0, 1, 2, 3].map(getRecentStackCardLayout);
-    for (let i = 1; i < layouts.length; i += 1) {
-      expect(layouts[i]!.scale).toBeLessThan(layouts[i - 1]!.scale);
-      expect(layouts[i]!.zIndex).toBeLessThan(layouts[i - 1]!.zIndex);
-    }
+  it('행마다 가로 오프셋과 기울기가 달라 지그재그로 어긋난다', () => {
+    const rows = [0, 1, 2].map(getRecentRowLayout);
+    const offsets = rows.map((row) => row.translateXPx);
+    const rotations = rows.map((row) => row.rotateDeg);
+    // 값이 모두 같으면 정렬된 목록처럼 보여 "손으로 붙였다"는 인상이 사라진다.
+    expect(new Set(offsets).size).toBe(3);
+    expect(new Set(rotations).size).toBe(3);
   });
 
-  it('뒷장은 각도가 0이 아니어서 가장자리가 드러난다', () => {
-    expect(getRecentStackCardLayout(1).rotateDeg).not.toBe(0);
-    expect(getRecentStackCardLayout(2).rotateDeg).not.toBe(0);
+  it('기울기 방향이 번갈아 바뀐다', () => {
+    expect(getRecentRowLayout(0).rotateDeg).toBeLessThan(0);
+    expect(getRecentRowLayout(1).rotateDeg).toBeGreaterThan(0);
   });
 
-  it('보이는 깊이를 넘겨도 값이 끊기지 않고 마지막 배치를 유지한다', () => {
-    const deep = getRecentStackCardLayout(RECENT_STACK_VISIBLE_DEPTH + 5);
+  it('위 행이 아래 행 위로 겹친다 — 압정이 아래 카드에 가리지 않게', () => {
+    expect(getRecentRowLayout(0).zIndex).toBeGreaterThan(getRecentRowLayout(1).zIndex);
+  });
+
+  it('행 수를 넘겨도 값이 끊기지 않는다', () => {
+    const deep = getRecentRowLayout(RECENT_ROW_COUNT + 3);
+    expect(Number.isFinite(deep.translateXPx)).toBe(true);
     expect(Number.isFinite(deep.rotateDeg)).toBe(true);
-    expect(deep.scale).toBeGreaterThan(0);
   });
 
-  it('음수·소수 offset을 0 이상 정수로 접는다', () => {
-    expect(getRecentStackCardLayout(-3).offset).toBe(0);
-    expect(getRecentStackCardLayout(1.7).offset).toBe(1);
+  it('음수·소수 행 번호를 0 이상 정수로 접는다', () => {
+    expect(getRecentRowLayout(-2).rowIndex).toBe(0);
+    expect(getRecentRowLayout(1.8).rowIndex).toBe(1);
   });
 });
 
-describe('getRecentStackOffset', () => {
-  it('활성 카드가 앞장(0)이고 그 다음 항목이 한 장 뒤다', () => {
-    expect(getRecentStackOffset(2, 2, 5)).toBe(0);
-    expect(getRecentStackOffset(3, 2, 5)).toBe(1);
+describe('getVisibleRecentIndexes', () => {
+  it('활성 인덱스부터 RECENT_ROW_COUNT개를 순서대로 펼친다', () => {
+    expect(getVisibleRecentIndexes(0, 5)).toEqual([0, 1]);
+    expect(getVisibleRecentIndexes(2, 5)).toEqual([2, 3]);
   });
 
-  it('목록 끝을 넘어가면 처음으로 이어진다', () => {
-    expect(getRecentStackOffset(0, 4, 5)).toBe(1);
-    expect(getRecentStackOffset(1, 4, 5)).toBe(2);
+  it('끝을 넘어가면 처음으로 이어진다 — 넘김이 끊기지 않는다', () => {
+    expect(getVisibleRecentIndexes(4, 5)).toEqual([4, 0]);
   });
 
-  it('모든 항목의 offset이 서로 겹치지 않는다', () => {
-    const total = 6;
-    const offsets = Array.from({ length: total }, (_, index) =>
-      getRecentStackOffset(index, 3, total),
-    );
-    expect(new Set(offsets).size).toBe(total);
+  it('보이는 카드 수가 상세 지연 호출 상한과 같다 — 한 화면에서 요청이 이보다 많이 나가지 않는다', () => {
+    expect(getVisibleRecentIndexes(0, 50)).toHaveLength(RECENT_ROW_COUNT);
   });
 
-  it('빈 목록에서도 계산이 깨지지 않는다', () => {
-    expect(getRecentStackOffset(0, 0, 0)).toBe(0);
+  it('기록이 행 수보다 적으면 있는 만큼만 펼친다 — 빈 종이를 지어내지 않는다', () => {
+    expect(getVisibleRecentIndexes(0, 1)).toEqual([0]);
+  });
+
+  it('빈 목록이면 아무것도 없다', () => {
+    expect(getVisibleRecentIndexes(0, 0)).toEqual([]);
   });
 });
 

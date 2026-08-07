@@ -152,6 +152,16 @@ export function getGeoBounds(regions: readonly RegionBoundary[]): GeoBounds {
   return { minLng, minLat, maxLng, maxLat };
 }
 
+/**
+ * 제주 지역 코드 접두. 377 후속에서 제주를 본토와 분리해 **우하단 인셋 박스**로 옮기는 데 쓴다.
+ * 한국 지도의 관례적 처리이며, 사용자가 허용한 방식이다.
+ */
+export const JEJU_CODE_PREFIX = '39';
+
+export function isJejuRegion(code: string): boolean {
+  return code.startsWith(JEJU_CODE_PREFIX);
+}
+
 export interface ProjectionSize {
   width: number;
   height: number;
@@ -168,6 +178,17 @@ export function getProjectionSize(bounds: GeoBounds, height: number): Projection
   const lngSpan = (bounds.maxLng - bounds.minLng) * Math.cos(midLat);
   const latSpan = bounds.maxLat - bounds.minLat;
   return { width: (height * lngSpan) / latSpan, height };
+}
+
+/**
+ * 폭을 먼저 정하고 높이를 따라가게 하는 투영 크기. 인셋 박스처럼 "가로 자리는 이만큼"이 먼저
+ * 정해지는 경우에 쓴다(본토는 반대로 높이가 먼저다).
+ */
+export function getProjectionSizeByWidth(bounds: GeoBounds, width: number): ProjectionSize {
+  const midLat = ((bounds.minLat + bounds.maxLat) / 2) * (Math.PI / 180);
+  const lngSpan = (bounds.maxLng - bounds.minLng) * Math.cos(midLat);
+  const latSpan = bounds.maxLat - bounds.minLat;
+  return { width, height: (width * latSpan) / lngSpan };
 }
 
 /** 경위도 → SVG 좌표. y는 위가 북쪽이 되도록 뒤집는다. */
@@ -197,6 +218,21 @@ export function getRegionPathData(
       return `${commands.join('')}Z`;
     })
     .join('');
+}
+
+/**
+ * 지역의 대표 지점(bbox 중심).
+ *
+ * 377: 시·군·구를 전국 축척으로 그리면 도심 자치구는 **화면에서 몇 px밖에 되지 않는다**(실측:
+ * 서울 중구 약 6x3px). 그 도형 자체를 클릭 대상으로 두면 사실상 누를 수 없어, 이 지점에 눈에 보이지
+ * 않는 넉넉한 클릭 원을 따로 놓는다.
+ *
+ * 폴리곤 무게중심이 아니라 bbox 중심인 이유 — 여기서 필요한 것은 "클릭 타깃을 놓을 대략의 자리"이지
+ * 정확한 무게중심이 아니다. 정확한 무게중심은 계산이 더 무겁고, 오목한 지역에서는 어차피 도형 밖으로
+ * 나갈 수 있어 더 낫다는 보장도 없다.
+ */
+export function getRegionCenter(region: RegionBoundary): GeoPoint {
+  return [(region.bbox[0] + region.bbox[2]) / 2, (region.bbox[1] + region.bbox[3]) / 2];
 }
 
 // --- 점-다각형 판정 ----------------------------------------------------------------------------

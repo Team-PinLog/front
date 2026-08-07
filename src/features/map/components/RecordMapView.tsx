@@ -19,6 +19,7 @@ import {
   getFitPadding,
   getMedianPoint,
   getVisibleCenterLatOffset,
+  getVisibleCenterLngOffset,
   KOREA_PAN_BOUNDS,
   MAX_ZOOM_OUT_LEVEL,
   shrinkViewportFromTop,
@@ -29,6 +30,8 @@ import {
 import {
   getMapToneBottomFadeMask,
   getMapToneFilterCss,
+  getMapToneEdgeMaskStyle,
+  getMapToneRightFadeMask,
   getMapToneTextureImage,
   getMapToneWashColorCss,
   getMarkerToneCompensationMatrix,
@@ -61,7 +64,7 @@ const MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
  * 첫 번째 필터 하나를 공유한다. <img>는 각 SVG가 독립 문서로 렌더돼 그 문제가 없고, 그림자도
  * asset 안에 이미 들어 있어 wrapper에 별도 drop-shadow를 걸 필요가 없다.
  */
-function createRecordMarkerElement(assetUrl: string, title: string): HTMLImageElement {
+function createRecordMarkerElement(assetUrl: string, title: string): MarkerElements {
   const image = document.createElement('img');
   image.src = assetUrl;
   // 마커 자체는 장식이 아니라 클릭 대상이지만 이름은 title로 노출되므로 alt는 비워 중복을 피한다.
@@ -80,10 +83,61 @@ function createRecordMarkerElement(assetUrl: string, title: string): HTMLImageEl
   image.style.maxWidth = 'none';
   image.style.width = `${MARKER_WIDTH}px`;
   image.style.height = `${MARKER_HEIGHT}px`;
-  // 374: 지도 톤 마스크가 이 마커도 물들이므로 미리 역보정을 걸어 둔다. 강조 상태에서도 이 값은
-  // 유지돼야 해서(applyMarkerHighlight가 뒤에 drop-shadow를 이어 붙인다) 여기서 한 번만 세운다.
+  // 374: 지도 톤 마스크가 이 마커도 물들이므로 미리 역보정을 걸어 둔다. 강조·선택 상태에서도 이
+  // 값은 유지돼야 해서(applyMarkerVisualState가 뒤에 다른 필터를 이어 붙인다) 여기서 한 번만 세운다.
   image.style.filter = MARKER_BASE_FILTER;
-  return image;
+
+  // 377: <img>를 래퍼 div 안에 넣는다. 이전에는 마커가 <img> 하나였는데, 물결(ripple)은 마커와
+  // 같은 자리에 겹쳐 그려지는 **형제 요소**가 필요하고 <img>는 자식을 가질 수 없다. 래퍼는 크기가
+  // 0인 기준점이 아니라 마커와 같은 크기라, 물결을 그 중앙에 놓으면 핀 머리에 정확히 맞는다.
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'relative';
+  wrapper.style.width = `${MARKER_WIDTH}px`;
+  wrapper.style.height = `${MARKER_HEIGHT}px`;
+  wrapper.appendChild(image);
+
+  return { wrapper, image };
+}
+
+/** 마커 하나를 이루는 DOM. 물결은 필요할 때만 만들어 붙였다가 애니메이션이 끝나면 스스로 지운다. */
+interface MarkerElements {
+  wrapper: HTMLDivElement;
+  image: HTMLImageElement;
+}
+
+/**
+ * 377: 선택된 핀에서 퍼지는 민트 물결. 애니메이션이 끝나면 요소를 지운다 — 남겨 두면 마커마다
+ * 죽은 노드가 쌓이고, 다시 선택했을 때 같은 요소를 재사용하려 들면 애니메이션이 다시 시작되지
+ * 않는다(이미 끝난 애니메이션은 클래스를 다시 붙여도 재생되지 않는다).
+ */
+function playMarkerRipple(wrapper: HTMLDivElement): void {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
+  const ripple = document.createElement('span');
+  // 클래스 문자열이 이 파일에 리터럴로 있어야 Tailwind가 @keyframes를 산출한다(원시 텍스트 스캔).
+  ripple.className = 'animate-pin-ripple motion-reduce:animate-none';
+  ripple.style.position = 'absolute';
+  // 핀 머리(원)의 중심에 맞춘다. asset 아래쪽은 그림자 여백이라 세로 중앙이 아니다.
+  ripple.style.left = '50%';
+  ripple.style.top = `${RECORD_MARKER_TIP_Y_RATIO * 55}%`;
+  ripple.style.width = `${MARKER_WIDTH}px`;
+  ripple.style.height = `${MARKER_WIDTH}px`;
+  ripple.style.borderRadius = '9999px';
+  ripple.style.border = '2.5px solid #3BB7A2';
+  ripple.style.pointerEvents = 'none';
+  ripple.addEventListener('animationend', () => ripple.remove());
+  wrapper.appendChild(ripple);
+}
+
+/** 377: 선택된 핀을 다시 꽂는 연출. 이미 끝난 애니메이션은 클래스를 다시 붙여도 재생되지 않으므로,
+ *  일단 떼고 강제로 리플로우를 일으킨 뒤 다시 붙인다(같은 핀을 연속으로 선택하는 경우). */
+function playPinStand(wrapper: HTMLDivElement): void {
+  wrapper.classList.remove('animate-pin-stand');
+  // reflow를 읽어 브라우저가 "클래스가 없던 상태"를 확정하게 만든다. 이 한 줄이 없으면 두 번째
+  // 선택부터 애니메이션이 돌지 않는다.
+  void wrapper.offsetWidth;
+  wrapper.classList.add('animate-pin-stand', 'motion-reduce:animate-none');
 }
 
 /**
@@ -99,19 +153,29 @@ const MARKER_HIGHLIGHT_SCALE = 1.35;
  * CustomOverlay를 새로 만들면 <img>가 다시 로드돼 강조를 옮길 때마다 지도 전체 마커가 깜빡인다
  * (근거: Jira S15P11A705-371).
  */
-function applyMarkerHighlight(element: HTMLImageElement, highlighted: boolean): void {
-  element.style.transformOrigin = MARKER_HIGHLIGHT_ORIGIN;
-  element.style.transition = 'transform 160ms ease-out, filter 160ms ease-out';
-  element.style.transform = highlighted ? `scale(${MARKER_HIGHLIGHT_SCALE})` : 'scale(1)';
+function applyMarkerVisualState(
+  { image }: MarkerElements,
+  state: { highlighted: boolean; dimmed: boolean },
+): void {
+  const { highlighted, dimmed } = state;
+  image.style.transformOrigin = MARKER_HIGHLIGHT_ORIGIN;
+  // 377: dim 전환은 목업이 지정한 .25s다. 강조(크기)는 기존 .16s를 유지한다 — 둘은 다른 사건이다.
+  image.style.transition = 'transform 160ms ease-out, filter 250ms ease-out';
+  image.style.transform = highlighted ? `scale(${MARKER_HIGHLIGHT_SCALE})` : 'scale(1)';
   // 강조된 핀이 이웃 핀에 가리지 않게 같은 오버레이 층 안에서 위로 올린다. CustomOverlay의 zIndex
   // 옵션은 생성 시점 값이라, 이미 만든 마커의 순서를 바꾸려면 content 엘리먼트 쪽을 쓴다.
   // 374: filter를 덮어쓰지 않고 **이어 붙인다.** 그냥 대입하면 지도 톤 역보정(MARKER_BASE_FILTER)이
   // 지워져, 강조하는 순간 그 마커만 누렇게 뜬다.
-  element.style.filter = highlighted
-    ? `${MARKER_BASE_FILTER} drop-shadow(0 6px 10px rgba(4,33,66,0.45))`.trim()
-    : MARKER_BASE_FILTER;
-  element.style.zIndex = highlighted ? '2' : '';
-  element.style.position = 'relative';
+  // 377: 여기에 dim(선택되지 않은 나머지)이 더해진다 — 목업 값 saturate(.32) opacity(.5).
+  image.style.filter = [
+    MARKER_BASE_FILTER,
+    dimmed ? 'saturate(.32) opacity(.5)' : '',
+    highlighted ? 'drop-shadow(0 6px 10px rgba(4,33,66,0.45))' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  image.style.zIndex = highlighted ? '2' : '';
+  image.style.position = 'relative';
 }
 
 // 마커가 없을 때(최초 SDK 로드 등) 지도 기본 중심(서울시청). KakaoPlaceMap.tsx와 동일 기본값.
@@ -157,8 +221,11 @@ function centerOnVisibleArea(
   insets: MapViewInsets,
   animate: boolean,
 ): void {
-  const latOffset = getVisibleCenterLatOffset(readViewport(map), insets);
-  const target = new kakao.maps.LatLng(point.lat + latOffset, point.lng);
+  const viewport = readViewport(map);
+  const latOffset = getVisibleCenterLatOffset(viewport, insets);
+  // 오른쪽이 페이드로 가려지면 중심을 서쪽으로 옮겨야 목표 지점이 보이는 영역 한가운데에 온다.
+  const lngOffset = getVisibleCenterLngOffset(viewport, insets);
+  const target = new kakao.maps.LatLng(point.lat + latOffset, point.lng + lngOffset);
   if (animate) {
     map.panTo(target);
   } else {
@@ -281,6 +348,23 @@ interface RecordMapViewProps {
    * 위해서다 — 아래 effect 주석).
    */
   highlightRecordId?: number | null;
+  /**
+   * 377: 지금 상세가 열려 있는 Record. 그 핀만 다시 꽂히며 물결이 퍼지고, **나머지 핀은 흐려진다**.
+   *
+   * highlightRecordId와 뜻이 다르다 — 저쪽은 "카드 스택의 앞장"이라 지도를 따라 이동시키는 지속
+   * 상태고, 이쪽은 "사용자가 열어 본 것"이라 주변을 눌러 시선을 모으는 연출이다. 두 값이 같은
+   * Record를 가리킬 수도, 서로 다를 수도 있어 한 prop으로 합치지 않는다.
+   */
+  selectedRecordId?: number | null;
+  /**
+   * 377 후속: 지도 **오른쪽 끝을 이 폭만큼 그라데이션으로 지운다**(px). 홈에서 지도 폭을 줄여
+   * '최근의 장소' 카드 자리를 비웠는데, 단면이 직선이면 잘린 것처럼 보이기 때문이다.
+   *
+   * 왜 호출부(HomePage)가 아니라 여기서 거는가 — 바깥에서 컨테이너 전체에 마스크를 걸면 그 안의
+   * 줌·"내 주변" 버튼까지 함께 지워진다. 지워도 되는 것은 타일과 톤 레이어뿐이라, 그 셋을 아는
+   * 이 컴포넌트가 건다. 0이면 아무것도 하지 않아 다른 화면의 지도는 그대로다.
+   */
+  rightFadePx?: number;
 }
 
 /** 내 Record를 지도 마커로 조회하는 화면. 근거: docs/reference/08_API_명세.md 4.2. */
@@ -290,6 +374,8 @@ export function RecordMapView({
   focusRecordId = null,
   onFocusRecordHandled,
   highlightRecordId = null,
+  selectedRecordId = null,
+  rightFadePx = 0,
 }: RecordMapViewProps = {}) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -300,9 +386,9 @@ export function RecordMapView({
    * 마커가 통째로 깜빡인다. content 엘리먼트를 함께 들고 있는 이유도 같다(오버레이만으로는 스타일을
    * 만질 손잡이가 없다).
    */
-  const markersRef = useRef<
-    Map<number, { overlay: KakaoCustomOverlay; element: HTMLImageElement }>
-  >(new Map());
+  const markersRef = useRef<Map<number, { overlay: KakaoCustomOverlay } & MarkerElements>>(
+    new Map(),
+  );
   const hasFitInitialBoundsRef = useRef(false);
   /**
    * 강조 대상이 "한 번이라도 적용된 적 있는지". 최초 적용에서는 지도를 옮기지 않기 위한 래치다 —
@@ -319,8 +405,12 @@ export function RecordMapView({
     (): MapViewInsets => ({
       topObstructionPx,
       containerHeightPx: containerRef.current?.clientHeight ?? 0,
+      // 377 후속: 오른쪽 페이드 띠는 그려지지만 보이지 않는다 — 상단 오버레이와 똑같이 "가려진
+      // 영역"으로 넘겨 fitBounds·센터링·"화면 밖" 배지가 모두 보이는 영역 기준으로 계산되게 한다.
+      rightObstructionPx: rightFadePx,
+      containerWidthPx: containerRef.current?.clientWidth ?? 0,
     }),
-    [topObstructionPx],
+    [topObstructionPx, rightFadePx],
   );
 
   /**
@@ -406,16 +496,13 @@ export function RecordMapView({
     }
 
     markersRef.current.forEach(({ overlay }) => overlay.setMap(null));
-    const nextMarkers = new Map<
-      number,
-      { overlay: KakaoCustomOverlay; element: HTMLImageElement }
-    >();
+    const nextMarkers = new Map<number, { overlay: KakaoCustomOverlay } & MarkerElements>();
     data.items.forEach((item) => {
-      const element = createRecordMarkerElement(
+      const elements = createRecordMarkerElement(
         getRecordMarkerAsset(item.latestCollectionId ?? null),
         item.name,
       );
-      element.addEventListener('click', () => {
+      elements.image.addEventListener('click', () => {
         if (onMarkerClick) {
           onMarkerClick(item.recordId);
         } else {
@@ -425,13 +512,13 @@ export function RecordMapView({
       const overlay = new kakao.maps.CustomOverlay({
         map,
         position: new kakao.maps.LatLng(item.lat, item.lng),
-        content: element,
+        content: elements.wrapper,
         // yAnchor는 1(엘리먼트 맨 아래)이 아니다 — asset 아래쪽 여백은 내장 그림자 자리라
         // 핀의 실제 뾰족한 끝 비율(RECORD_MARKER_TIP_Y_RATIO)에 맞춰야 좌표와 어긋나지 않는다.
         xAnchor: 0.5,
         yAnchor: RECORD_MARKER_TIP_Y_RATIO,
       });
-      nextMarkers.set(item.recordId, { overlay, element });
+      nextMarkers.set(item.recordId, { overlay, ...elements });
     });
     markersRef.current = nextMarkers;
   }, [data, map, navigate, onMarkerClick, readInsets]);
@@ -443,10 +530,34 @@ export function RecordMapView({
    * 같은 렌더에서 이 effect가 이어 돌아 강조를 다시 입혀야 한다(선언 순서상 생성이 먼저다).
    */
   useEffect(() => {
-    markersRef.current.forEach(({ element }, recordId) => {
-      applyMarkerHighlight(element, recordId === highlightRecordId);
+    // 377: 어떤 핀이 선택돼 있으면(상세가 열려 있으면) 나머지를 흐린다. 선택이 없으면 아무도 흐려지지
+    // 않는다 — dim은 "지금 이것을 보고 있다"는 뜻이지 평상시 상태가 아니다.
+    const hasSelection = selectedRecordId !== null && markersRef.current.has(selectedRecordId);
+    markersRef.current.forEach((entry, recordId) => {
+      applyMarkerVisualState(entry, {
+        highlighted: recordId === highlightRecordId || recordId === selectedRecordId,
+        dimmed: hasSelection && recordId !== selectedRecordId,
+      });
     });
-  }, [data, highlightRecordId]);
+  }, [data, highlightRecordId, selectedRecordId]);
+
+  /**
+   * 377: 선택된 핀만 다시 꽂히며 물결이 한 번 퍼진다. 위 effect(스타일 반영)와 나눈 이유는 성격이
+   * 달라서다 — 저쪽은 "지금 상태가 이렇다"를 매번 다시 그리는 멱등한 반영이고, 이쪽은 **선택이 바뀐
+   * 순간에만 한 번** 일어나는 사건이다. 합치면 목록 갱신 같은 무관한 이유로 effect가 돌 때마다
+   * 핀이 다시 꽂히며 튄다.
+   */
+  useEffect(() => {
+    if (selectedRecordId === null) {
+      return;
+    }
+    const entry = markersRef.current.get(selectedRecordId);
+    if (!entry) {
+      return;
+    }
+    playPinStand(entry.wrapper);
+    playMarkerRipple(entry.wrapper);
+  }, [selectedRecordId]);
 
   /**
    * 371: 앞장이 바뀌면 그 좌표로 지도를 옮긴다. 위 focusRecordId effect와 이동 로직(가시 영역 기준
@@ -628,7 +739,15 @@ export function RecordMapView({
       <div
         ref={containerRef}
         className="isolate h-full w-full"
-        style={{ filter: getMapToneFilterCss() }}
+        style={{
+          filter: getMapToneFilterCss(),
+          ...(rightFadePx > 0
+            ? {
+                maskImage: getMapToneRightFadeMask(rightFadePx),
+                WebkitMaskImage: getMapToneRightFadeMask(rightFadePx),
+              }
+            : {}),
+        }}
       />
 
       {/* 374: 마커 색 역보정 필터의 정의. 그리는 것이 없는 0x0 <svg>라 레이아웃에 영향을 주지 않는다.
@@ -653,8 +772,13 @@ export function RecordMapView({
         style={{
           backgroundColor: getMapToneWashColorCss(),
           mixBlendMode: MAP_TONE_WASH.blendMode,
-          maskImage: getMapToneBottomFadeMask(),
-          WebkitMaskImage: getMapToneBottomFadeMask(),
+          // 타일과 **같은 폭**으로 사라져야 경계가 두 겹으로 보이지 않는다.
+          ...(rightFadePx > 0
+            ? getMapToneEdgeMaskStyle(rightFadePx)
+            : {
+                maskImage: getMapToneBottomFadeMask(),
+                WebkitMaskImage: getMapToneBottomFadeMask(),
+              }),
         }}
       />
 
@@ -670,8 +794,12 @@ export function RecordMapView({
             backgroundSize: `${MAP_TONE_TEXTURE.tileSizePx}px ${MAP_TONE_TEXTURE.tileSizePx}px`,
             opacity: MAP_TONE_TEXTURE.alpha,
             mixBlendMode: 'multiply',
-            maskImage: getMapToneBottomFadeMask(),
-            WebkitMaskImage: getMapToneBottomFadeMask(),
+            ...(rightFadePx > 0
+              ? getMapToneEdgeMaskStyle(rightFadePx)
+              : {
+                  maskImage: getMapToneBottomFadeMask(),
+                  WebkitMaskImage: getMapToneBottomFadeMask(),
+                }),
           }}
         />
       )}

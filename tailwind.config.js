@@ -92,6 +92,59 @@ export default {
         // 357: Google Fonts의 나눔펜에서 로컬 번들한 나눔손글씨 금은보화로 교체했다.
         hand: ['NanumGeumEunBoHwa', 'JalnanGothic', 'cursive'],
       },
+
+      // 377: 핀 모션 키프레임 4종. 값은 사용자 제공 "핀 목업 v2" 구현 참조 문서 원본 그대로다.
+      // ⚠️ 여기 두는 것은 조율 세션의 사전 승인 사항이다(후속 티켓 378·379가 공유할 단일 출처가
+      // 필요해서다). **색 토큰 변경은 여전히 금지**이고, 이 커밋은 keyframes/animation 추가만 한다.
+      //
+      // 모든 핀 애니메이션은 prefers-reduced-motion에서 생략한다 — 사용하는 쪽에서
+      // `motion-reduce:animate-none`을 함께 붙인다(참조 문서 접근성 항목).
+      keyframes: {
+        // 꽂기 — 수직 낙하 후 두 번 튀김. **회전 없음**(목업 v1에서 "과함"으로 폐기됐다).
+        // 쓰는 쪽은 transform-origin: 50% 90%(핀 끝)을 함께 줘야 커질 때 꽂힌 점이 흔들리지 않는다.
+        'pin-stand': {
+          '0%': { transform: 'translateY(-30px) scale(.86)', opacity: '0' },
+          '50%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+          '66%': { transform: 'translateY(-7px) scale(1.03)' },
+          '82%': { transform: 'translateY(0) scale(.99)' },
+          '92%': { transform: 'translateY(-2px) scale(1)' },
+          '100%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+        },
+        // 물결 — 꽂힌 자리에서 퍼지는 원. 쓰는 쪽에서 2.5px 민트 테두리 원에 건다.
+        'pin-ripple': {
+          '0%': { transform: 'translate(-50%,-50%) scale(.22)', opacity: '.55' },
+          '100%': { transform: 'translate(-50%,-50%) scale(2.7)', opacity: '0' },
+        },
+        // 로딩 루프 — 핀 3개를 delay 0/.17s/.34s로 스태거해 쓴다.
+        'pin-loop': {
+          '0%': { transform: 'translateY(-16px) scale(.85)', opacity: '0' },
+          '35%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+          '50%': { transform: 'translateY(-4px) scale(1.02)' },
+          '62%': { transform: 'translateY(0) scale(1)' },
+          '85%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+          '100%': { transform: 'translateY(-16px) scale(.85)', opacity: '0' },
+        },
+        // 뽑기 — 저장 취소. 꽂기의 역재생이 아니라 위로 쑥 빠진다.
+        'pin-pull': {
+          '0%': { transform: 'translateY(0) scale(1)', opacity: '1' },
+          '30%': { transform: 'translateY(3px) scale(.97)' },
+          '100%': { transform: 'translateY(-26px) scale(.9)', opacity: '0' },
+        },
+        // 377-F: 지역을 누르면 장소들이 방사형으로 "또로록" 떠오르는 팝. 목업 키프레임 4종에는
+        // 없고 이번 상호작용(flower-menu)을 위해 더한 것이라, 위 넷과 구분해 맨 뒤에 둔다.
+        'pin-pop-in': {
+          '0%': { transform: 'translate(-50%,-50%) scale(.4)', opacity: '0' },
+          '70%': { transform: 'translate(-50%,-50%) scale(1.06)', opacity: '1' },
+          '100%': { transform: 'translate(-50%,-50%) scale(1)', opacity: '1' },
+        },
+      },
+      animation: {
+        'pin-stand': 'pin-stand .62s cubic-bezier(.22,1.2,.36,1) both',
+        'pin-ripple': 'pin-ripple .8s ease-out forwards',
+        'pin-loop': 'pin-loop 1.3s cubic-bezier(.3,1.05,.4,1) infinite',
+        'pin-pull': 'pin-pull .38s ease-in both',
+        'pin-pop-in': 'pin-pop-in .34s cubic-bezier(.22,1.2,.36,1) both',
+      },
     },
   },
   plugins: [],
