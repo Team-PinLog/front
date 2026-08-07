@@ -27,6 +27,15 @@ import {
 import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
+import { useFeedCoverPreload } from '../hooks/useFeedCoverPreload';
+import {
+  FEED_LAYOUT,
+  getBookstoreLayout,
+  getBookstorePageSize,
+  type BookstoreLayout,
+} from '../lib/feedLayout';
+import { recordRecentlyOpened } from '../lib/recentlyOpenedCollections';
+import { BookstoreFeed } from './bookstore/BookstoreFeed';
 import { CollectionBookCard } from './CollectionBookCard';
 import type { FeedCollectionItem } from '../api/getFeedCollections';
 
@@ -153,7 +162,18 @@ export function FeedList() {
     budgetPx: contentBudgetPx,
     availableGridWidthPx,
   });
-  const pageSize = columns * rows;
+  // 382: 레이아웃에 따라 한 페이지가 담는 권수가 다르다. **바뀌는 것은 이 숫자 하나뿐이고**
+  // cursor 체인·이벤트 큐잉·복원 계약은 두 레이아웃이 완전히 같은 코드를 쓴다(FEED_LAYOUT 주석).
+  const isBookstore = FEED_LAYOUT === 'bookstore';
+  // 좌우 페이지 버튼이 앉을 자리. 기존 레이아웃의 FEED_SIDE_GUTTER_PX(px-7)와 같은 역할이라,
+  // 버튼이 양 끝 책 위를 덮지 않는다. 레이아웃 역산에 넘기는 폭에서도 같은 값을 빼야 카드가
+  // 그 자리를 침범하지 않는다.
+  const bookstoreContentWidth = Math.max(1, availableGridWidthPx - BOOKSTORE_SIDE_GUTTER_PX * 2);
+  const bookstoreLayout = getBookstoreLayout({
+    budgetPx: contentBudgetPx,
+    availableGridWidthPx: bookstoreContentWidth,
+  });
+  const pageSize = isBookstore ? getBookstorePageSize(bookstoreLayout) : columns * rows;
   const scale = solveFeedScale({
     columns,
     rows,
@@ -202,6 +222,10 @@ export function FeedList() {
     lastFeedPagePosition = { cursorHistory, pageIndex, pageSize };
   }, [cursorHistory, pageIndex, pageSize]);
 
+  // 381(382에 병합): 목록이 도착하면 그 페이지 표지를 미리 받아 둔다. 훅이라 early return보다
+  // 위에 있어야 하고, 아직 데이터가 없으면 빈 배열이라 아무 일도 하지 않는다.
+  useFeedCoverPreload((feedQuery.data?.items ?? []).map((item) => item.coverImageUrl));
+
   const emptyShelfLayout: EmptyShelfLayout = {
     columns,
     shelfWidthPx,
@@ -216,7 +240,14 @@ export function FeedList() {
   };
 
   if (feedQuery.isPending) {
-    return (
+    return isBookstore ? (
+      <BookstoreShell
+        layout={bookstoreLayout}
+        widthPx={bookstoreContentWidth}
+        items={[]}
+        slotClassName="animate-pulse rounded-lg bg-line-subtle"
+      />
+    ) : (
       <EmptyShelves
         layout={emptyShelfLayout}
         slotClassName="animate-pulse rounded-lg bg-line-subtle"
@@ -225,16 +256,18 @@ export function FeedList() {
   }
 
   if (feedQuery.isError) {
-    return (
-      <EmptyShelves
-        layout={emptyShelfLayout}
-        overlay={
-          <ErrorState
-            title="추천 목록을 불러오지 못했어요"
-            description="잠시 후 다시 시도해 주세요."
-          />
-        }
+    const errorState = (
+      <ErrorState title="추천 목록을 불러오지 못했어요" description="잠시 후 다시 시도해 주세요." />
+    );
+    return isBookstore ? (
+      <BookstoreShell
+        layout={bookstoreLayout}
+        widthPx={bookstoreContentWidth}
+        items={[]}
+        overlay={errorState}
       />
+    ) : (
+      <EmptyShelves layout={emptyShelfLayout} overlay={errorState} />
     );
   }
 
@@ -262,6 +295,11 @@ export function FeedList() {
   };
 
   const handleItemClick = (item: FeedCollectionItem) => {
+    // 382 보조 카드 2: "최근 열어본 책"의 로컬 기록. 서버로 아무것도 보내지 않고 이 브라우저의
+    // localStorage에만 남긴다(recentlyOpenedCollections.ts). 아래 이벤트 큐잉과는 무관하며,
+    // 저장이 실패해도 그쪽 경로에 영향이 없다(그 안에서 try/catch로 삼킨다).
+    recordRecentlyOpened({ collectionId: item.collectionId, title: item.title });
+
     // position·requestId는 응답 값 그대로 사용한다 — 재계산 금지(api-contract.md Feed 이벤트).
     feedEventQueue.enqueue({
       requestId: page.requestId,
@@ -279,10 +317,31 @@ export function FeedList() {
   };
 
   if (items.length === 0) {
+    const emptyState = <p className="text-sm text-ink-gray">아직 추천할 컬렉션이 없습니다</p>;
+    return isBookstore ? (
+      <BookstoreShell
+        layout={bookstoreLayout}
+        widthPx={bookstoreContentWidth}
+        items={[]}
+        overlay={emptyState}
+      />
+    ) : (
+      <EmptyShelves layout={emptyShelfLayout} overlay={emptyState} />
+    );
+  }
+
+  // 382: 여기부터가 렌더 분기다. 위의 쿼리·cursor·이벤트 코드는 두 레이아웃이 그대로 공유한다.
+  if (isBookstore) {
     return (
-      <EmptyShelves
-        layout={emptyShelfLayout}
-        overlay={<p className="text-sm text-ink-gray">아직 추천할 컬렉션이 없습니다</p>}
+      <BookstoreShell
+        layout={bookstoreLayout}
+        widthPx={bookstoreContentWidth}
+        items={items}
+        canGoPrevious={canGoPrevious}
+        canGoNext={canGoNext}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
+        onItemClick={handleItemClick}
       />
     );
   }
@@ -349,6 +408,58 @@ export function FeedList() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// 382: 좌우 페이지 버튼이 앉는 gutter 폭. 기존 레이아웃의 FEED_SIDE_GUTTER_PX(28)와 같은 역할이다.
+const BOOKSTORE_SIDE_GUTTER_PX = 32;
+
+/**
+ * 382: 서점 레이아웃의 껍데기 — 좌우 페이지 버튼 + BookstoreFeed. 로딩·에러·빈 목록·정상 네 상태가
+ * 같은 껍데기를 쓰므로 버튼 위치와 선반 폭이 상태에 따라 흔들리지 않는다(314가 EmptyShelves로
+ * 세운 원칙과 같다).
+ * 데이터가 없는 상태에서는 버튼이 항상 disabled다 — 넘길 페이지가 없다.
+ */
+function BookstoreShell({
+  layout,
+  widthPx,
+  items,
+  slotClassName,
+  overlay,
+  canGoPrevious = false,
+  canGoNext = false,
+  onPrevious = noop,
+  onNext = noop,
+  onItemClick = noop,
+}: {
+  layout: BookstoreLayout;
+  widthPx: number;
+  items: FeedCollectionItem[];
+  slotClassName?: string;
+  overlay?: ReactNode;
+  canGoPrevious?: boolean;
+  canGoNext?: boolean;
+  onPrevious?: () => void;
+  onNext?: () => void;
+  onItemClick?: (item: FeedCollectionItem) => void;
+}) {
+  return (
+    <div
+      className="relative m-auto flex flex-col"
+      style={{ width: widthPx + BOOKSTORE_SIDE_GUTTER_PX * 2 }}
+    >
+      <FeedArrowButton direction="left" disabled={!canGoPrevious} onClick={onPrevious} />
+      <FeedArrowButton direction="right" disabled={!canGoNext} onClick={onNext} />
+
+      <BookstoreFeed
+        items={items}
+        layout={layout}
+        widthPx={widthPx}
+        onItemClick={onItemClick}
+        slotClassName={slotClassName}
+        overlay={overlay}
+      />
     </div>
   );
 }
