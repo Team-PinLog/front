@@ -212,6 +212,7 @@ type PlaceSummary = {
   - Context 삭제: 마지막 Context가 아니면 `204`, 마지막이면 `409`.
   - Record 삭제: 마지막 Record인 Collection이 있으면 `409`, 없으면 `204`.
   - Collection에서 마지막 Record 제거도 `409` → 확인 후 `DELETE /collections/{collectionId}`.
+- **`GET /records/recent`** — 최근 7일 안에 만든 **내** Record 목록(홈 최근 기록 카드). 기간(7일)과 정렬(`createdAt` 내림차순, 동시각은 `recordId` 내림차순)은 **서버 고정**이라 파라미터가 없다 — 프론트가 재계산·재정렬하지 않는다. 쿼리는 `cursor`/`size`뿐이며 `size` 기본 1, 100 초과는 100으로 접힌다. 항목은 `RecentRecordCard`(`recordId`·`place: PlaceSummary`·`keywords: string[]`·`createdAt`)로 **`contexts` 필드 자체가 없다** — 본문이 필요하면 `recordId`로 상세(5.2)를 재조회한다. `keywords`는 없으면 `null`이 아니라 `[]`이고 `keywordStatus`가 없어 'AI 판정 전'과 '0건'을 구분하지 않는다(둘 다 정상). 7일 내 기록이 없으면 404가 아니라 `items: []`인 200이다. <!-- 근거: 08_API_명세.md §5.9·§11.5·§13.13 -->
 
 ### Collection
 
