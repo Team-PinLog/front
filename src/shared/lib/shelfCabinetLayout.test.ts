@@ -348,16 +348,22 @@ describe('Library 세로 배치', () => {
 // ("사이드바 있음" / "네비게이션이 세로를 먹음" / "3열 배치")가 갈라졌다. 그 경계를 고정한다.
 
 describe('getNavPlacement / getSidebarWidthPx', () => {
-  it('sm만 하단 탭바이고 md 이상은 사이드바다', () => {
+  it('sm만 하단 탭바이고 md 이상은 세로를 먹는 네비가 없다', () => {
     expect(getNavPlacement('sm')).toBe('bottom');
     expect(getNavPlacement('mdlg')).toBe('side');
     expect(getNavPlacement('xl')).toBe('side');
   });
 
-  it('사이드바 폭은 sm 0, md~lg 레일, xl 넓은 폭이다', () => {
+  // 414: 좌측 네비(330 레일 → 394 플로팅 카드)를 폐기하면서 예약 폭이 **모든 구간에서 0**이 됐다.
+  // 이전 기대값은 sm 0 / mdlg 72 / xl 240이었다. 함수와 두 상수는 시그니처를 유지한 채 값만 0이라
+  // (appChrome.ts 주석), 이 테스트가 그 사실을 못박는 유일한 자리다 — 나중에 좌측에 무언가 다시
+  // 서면 여기가 먼저 깨진다.
+  it('좌측 네비가 없으므로 예약 폭은 모든 구간에서 0이다', () => {
     expect(getSidebarWidthPx('sm')).toBe(0);
-    expect(getSidebarWidthPx('mdlg')).toBe(SIDEBAR_RAIL_WIDTH_PX);
-    expect(getSidebarWidthPx('xl')).toBe(SIDEBAR_WIDE_WIDTH_PX);
+    expect(getSidebarWidthPx('mdlg')).toBe(0);
+    expect(getSidebarWidthPx('xl')).toBe(0);
+    expect(SIDEBAR_RAIL_WIDTH_PX).toBe(0);
+    expect(SIDEBAR_WIDE_WIDTH_PX).toBe(0);
   });
 });
 
@@ -365,11 +371,13 @@ describe('768 경계에서의 가로 예산', () => {
   // 767(sm) → 768(mdlg)로 넘어가는 순간 가용폭이 떨어진다. 의도된 불연속이라 값 자체를 못박아 둔다.
   // 364: 이 경계에서 생기는 것이 사이드바 레일 하나가 아니라 **둘**이 됐다 — 셸 좌우 여백도 md부터
   // 붙는다(sm은 0). 둘을 합친 값이 아니면 실패해야 한다.
-  it('사이드바 레일과 셸 좌우 여백이 생기는 만큼 가용폭이 줄어든다', () => {
+  it('셸 좌우 여백이 생기는 만큼 가용폭이 줄어든다', () => {
     const beforePx = getFeedGridAreaWidthPx(767, getSidebarWidthPx('sm'));
     const afterPx = getFeedGridAreaWidthPx(768, getSidebarWidthPx('mdlg'));
     // 767과 768은 getPageHorizontalPaddingPx 구간이 같으므로(둘 다 640↑1024미만 = 24) 차이는
     // 폭 1px과 레일 폭, 그리고 셸 좌우 여백뿐이다.
+    // 414: 그 레일 폭이 0이 되어 남은 것은 폭 1px과 셸 좌우 여백뿐이다. 식은 그대로 두고 상수만
+    // 0으로 참여시킨다 — 좌측에 무언가 다시 서면 이 식이 자동으로 다시 의미를 갖는다.
     expect(beforePx - afterPx).toBe(SIDEBAR_RAIL_WIDTH_PX - 1 + 2 * SHELL_INSET_PX_BY_TIER.mdlg.x);
   });
 
@@ -377,14 +385,16 @@ describe('768 경계에서의 가로 예산', () => {
     // 이건 버그가 아니라 CSS와 일치하는 동작이다 — PAGE_CONTAINER_CLASS의 sm:px-6은 window 폭
     // media query라, 컨테이너가 664px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
     // 364: 768 - 72(레일) - 2*16(셸 여백) = 664, 664 - 2*24(padding) = 616.
-    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(616);
+    // 414: 레일이 0이 되어 768 - 0 - 2*16 = 736, 736 - 2*24 = 688.
+    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(688);
     // 328: 그 컨테이너에서 좌우 gutter(28)와 선반 판 그림자 자리(8)를 더 뺀 값이 카드 예산이다.
-    // 616 - 2*28 - 2*8 = 544.
-    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(544);
+    // 414: 688 - 2*28 - 2*8 = 616.
+    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(616);
   });
 
-  it('레일 덕분에 768에서도 3열 카드가 가독성 하한을 넘는다', () => {
-    // 240px 사이드바였다면 가용폭이 424px로 떨어져 카드가 크게 작아졌을 구간이다.
+  it('768에서도 3열 카드가 가독성 하한을 넘는다', () => {
+    // 240px 사이드바였다면 가용폭이 424px로 떨어져 카드가 크게 작아졌을 구간이다. 414에서 예약
+    // 폭이 0이 되면서 그 걱정 자체가 사라졌고, 이 테스트는 하한을 지키는지만 계속 지킨다.
     const viewport = VIEWPORTS.find((item) => item.name === 'mdlg 768x1024 세로');
     expect(viewport).toBeDefined();
     const { columns, dims } = layoutFor(viewport!);

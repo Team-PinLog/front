@@ -7,6 +7,7 @@ import {
   PAGE_VERTICAL_PADDING_CLASS,
 } from '@/shared/lib/shelfCabinetLayout';
 import { PageTitle } from '@/shared/ui/PageTitle';
+import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
 
 // 287-8: min-h는 뷰포트 높이(100dvh)에서 AppLayout 고정 헤더 높이를 뺀 값이다 — 헤더 아래 남는
 // 세로 공간 전체를 이 페이지가 쓴다. 캐비닛 래퍼는 flex-1 min-h-0으로 나머지를 전부 채운다 — 정확한
@@ -27,14 +28,30 @@ export function FeedPage() {
           그대로 두었다: 이 페이지가 하는 일이 바뀐 게 아니라 놓는 방식만 바뀌었고, 서점 흉내를 내는
           새 문구("이번 주의 책" 같은)는 실제로 주간 큐레이션이 아닌데 그렇게 읽히게 만든다.
           ⏪ 롤백: FEED_LAYOUT이 'classic'이면 이 조판도 예전 그대로(고딕)로 돌아간다. */}
-      <PageTitle
-        className={`text-2xl font-extrabold text-pin-navy ${
-          FEED_LAYOUT === 'bookstore' ? 'font-serif' : ''
-        }`}
-        description="익명의 사용자가 만든 다양한 컬렉션을 구경해 보세요."
-      >
-        새로운 장소를 발견해 보세요
-      </PageTitle>
+      {/* 414: 셸의 좌측 네비를 걷어내면서 이 화면도 나가는 길을 스스로 가져야 한다. 395에서 Feed가
+          classic 배치로 롤백돼 종이 지면(3/3 이식)이 아직 없으므로, 홈처럼 지면 위에 얹지 않고
+          책장(LibraryPage)과 **같은 형태**로 제목 줄 오른쪽에 둔다 — 캐비닛을 쓰는 두 화면이 같은
+          자리·같은 조판이어야 한다. Feed 지면을 이식하는 후속 티켓이 이 줄을 종이 어깨로 옮긴다.
+          ⚠️ 이 파일은 414의 선언된 범위 밖이지만, 마운트하지 않으면 md 이상에서 탐색 화면이
+          되돌아갈 길 없는 막다른 화면이 된다. 추가한 것은 이 한 블록뿐이다. */}
+      <div className="flex flex-none items-start justify-between gap-6">
+        <PageTitle
+          className={`text-2xl font-extrabold text-pin-navy ${
+            FEED_LAYOUT === 'bookstore' ? 'font-serif' : ''
+          }`}
+          description="익명의 사용자가 만든 다양한 컬렉션을 구경해 보세요."
+        >
+          새로운 장소를 발견해 보세요
+        </PageTitle>
+
+        <PaperCornerNav
+          className="mt-2 flex-none"
+          items={[
+            { to: '/', label: '홈' },
+            { to: '/library', label: '책장' },
+          ]}
+        />
+      </div>
       {/* 328: items-center를 더했다. 이 래퍼는 flex-1이라 타이틀 아래 남는 세로를 전부 차지하는데,
           그 안의 책장은 그 높이를 다 쓰지 못하는 경우가 많다 — Feed 카드 크기는 세로 예산과 가로
           가용폭 중 빡빡한 쪽에 맞춰지고(solveFeedScale), 넓은 화면에서는 거의 항상 가로가 이긴다

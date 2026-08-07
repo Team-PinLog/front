@@ -88,13 +88,11 @@ export function HomePage() {
           h-full로 셸 <main>의 content box 높이를 **그대로** 받는다. 그쪽이 h-[100dvh] flex 열의
           flex-1 + min-h-0이라 높이가 확정돼 있어 %가 해석된다(AppLayout 359 주석).
 
-          ⚠️ 원본(design-ver2)은 셸 <main>에 여백이 없다는 전제로 "화면 가장자리까지"였지만 dev의
-          <main>은 사방 padding(md 좌 5.5rem/상하우 1rem, xl 좌 16.5rem/상하우 1.5rem)을 갖는다.
-          그 padding은 좌상단 플로팅 네비 카드(394)가 먹는 자리 예약이고 AppLayout은 이 티켓 범위
-          밖이라, 종이 무대는 **그 여백 안쪽에** 앉는다. 카드를 폐기하는 후속 티켓에서 padding이
-          풀리면 그때 저절로 가장자리까지 간다 — 여기서 음수 마진으로 상쇄하면 카드 뒤로 종이가
-          들어가 무대 왼쪽이 통째로 가린다(구 HomePage가 지도에 leftObstructionEdgeXPx 보정을
-          달아야 했던 이유이고, 여기서는 그 보정 자체가 필요 없어졌다). */}
+          414: 셸 <main>의 padding이 전부 사라져(좌측 네비 예약 5.5/16.5rem + 364의 사방 여백)
+          이제 이 무대가 **화면 가장자리까지** 간다 — 원본(design-ver2)의 전제와 같아졌다.
+          410에서 여백 안쪽에 앉아 있던 것을 음수 마진으로 상쇄하지 않고 미뤄 둔 이유가 이것이다:
+          상쇄하면 그때까지 살아 있던 네비 카드 뒤로 종이가 들어가 무대 왼쪽이 통째로 가렸다.
+          셸에서 여백을 걷는 쪽이 옳은 수정이었다. */}
       <main className="relative h-full">
         <PaperApertureStage
           open={open}
@@ -122,9 +120,9 @@ export function HomePage() {
                   핀만 또렷해지는 377 동작이 종이 창 안에서도 그대로 맞는다.
                 · rightFadePx — 우측 곁열은 종이 판이 아니라 지도 위에 놓인 책이라, 지도를 그
                   자리에서 지우면 책이 빈 종이 위에 뜬다. 넘기지 않아 페이드가 없다.
-                · leftObstructionEdgeXPx — 지도가 더 이상 풀블리드가 아니어서 네비 카드 뒤로
-                  들어가지 않는다(위 <main> 주석). 넘기면 있지도 않은 가림을 피해 지도가 오른쪽으로
-                  치우친다. */}
+                · leftObstructionEdgeXPx — 414에서 네비 카드 자체가 사라져 지도를 가리는 크롬이
+                  없다(appChrome.ts getNavCardRightEdgePx도 항상 0이다). 넘기면 있지도 않은 가림을
+                  피해 지도가 오른쪽으로 치우친다. */}
             <HomeMapSection
               onMarkerClick={setOpenRecordId}
               topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
@@ -151,14 +149,11 @@ export function HomePage() {
             무대(.pl-stage) 바깥에 두는 이유: 그쪽은 overflow:hidden에 종이 판이 쓸려 나가는
             자리라, 항상 제자리에 있어야 하는 이 줄이 개폐에 휩쓸리면 안 된다.
 
-            ⚠️ 원본과 달리 지금은 **셸의 네비 카드(394)가 그대로 살아 있다** — 폐기는 책장 화면의
-            이동 수단을 먼저 확보한 뒤라는 사용자 결정이라(Jira S15P11A705-410 코멘트) 이 티켓에서
-            건드리지 않는다. 그래서 이 줄은 "유일한 길"이 아니라 종이 위에 인쇄된 또 하나의 길이다.
-            ⚠️ .paper-corner-nav--rails의 링크 접힘 경계는 index.css에서 **뷰포트** 1081px인데
-            곁열이 사라지는 경계는 무대 **컨테이너** 1080px이다. 셸 <main>의 좌측 예약 폭(88/264px)
-            때문에 둘이 어긋나, 뷰포트 1081~1184px 구간에서는 곁열도 링크도 없다. 지금은 네비
-            카드가 살아 있어 길이 끊기지 않으므로 index.css(내 파일 밖)를 고치지 않고 남긴다 —
-            카드를 폐기하는 후속 티켓이 두 경계를 같은 기준으로 맞춰야 한다. */}
+            414: 셸의 네비 카드가 사라져 이 줄이 md 이상에서 **유일한 길**이 됐다(sm은 하단 탭바가
+            함께 남아 있다). 그래서 탐색·책장도 같은 부품을 자기 화면에 마운트한다.
+            같은 티켓에서 <main>의 좌측 예약 폭이 0이 되어 무대 컨테이너 폭 = 뷰포트 폭이 됐으므로,
+            .paper-corner-nav--rails의 접힘 경계(뷰포트 1081px)와 곁열이 사라지는 경계(컨테이너
+            1080px)가 이제 같은 지점을 가리킨다 — 410에서 관찰한 "둘 다 없는 구간"이 사라졌다. */}
         <PaperCornerNav
           className="paper-corner-nav--rails absolute right-6 top-6 z-30"
           items={[

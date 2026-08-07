@@ -25,6 +25,7 @@ import {
 import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 import { useShelfWidthTier, useViewportSize } from '@/shared/lib/useShelfBreakpoint';
 import { PageTitle } from '@/shared/ui/PageTitle';
+import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
 import { ShelfCabinet, ShelfColumn, ShelfColumnGrid } from '@/shared/ui/Shelf';
 
 /**
@@ -210,31 +211,54 @@ export function LibraryPage() {
     <main
       className={`${PAGE_CONTAINER_CLASS} ${PAGE_MIN_HEIGHT_CLASS} flex flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS}`}
     >
-      {/* 407: 활동 기록 진입점을 **PageTitle의 description 안에** 둔다. 제목 블록 바깥(형제)에 한 줄을
-          더 얹으면 그만큼의 높이가 ResizeObserver 측정에서 빠져 titleHeightPx가 실제보다 작게
+      {/* 414: 셸의 좌측 네비가 사라져 이 화면에도 나가는 길이 필요해졌다. 홈·탐색이 쓰는 것과
+          **같은 부품**(PaperCornerNav)을 같은 자리(오른쪽 어깨)에 둔다 — 세 화면에서 링크가 같은
+          모양·같은 위치에 있어야 "돌아가는 길은 언제나 오른쪽 위"라는 위치 기억이 성립한다.
+          설정 진입점도 이 줄이 항상 포함하므로 계정·로그아웃·탈퇴 경로가 끊기지 않는다.
+
+          홈·탐색과 두 가지가 다르다:
+          ① `--rails` 변형을 쓰지 않는다. 그 변형은 "곁열의 표지 두 권이 같은 목적지를 이미 보여
+             주는 넓은 폭에서는 링크를 접는다"는 규칙인데, 책장에는 곁열이 없어 접을 이유가 없다.
+          ② 지면 위에 absolute로 얹지 않고 제목과 같은 줄의 흐름 안에 둔다. 이 화면은 종이 무대가
+             아니라 캐비닛 레이아웃이고, 캐비닛 높이가 실측 예산으로 정해져 있어(아래
+             cabinetHeightPx) 떠 있는 요소를 얹으면 그 위에 걸친다.
+          items-start: 제목 블록은 설명 줄까지 포함해 2단이라 세로 중앙을 맞추면 링크가 내려앉는다.
+          제목의 첫 줄과 눈높이를 맞추려고 mt-2만 준다.
+
+          407: 활동 기록 진입점은 **PageTitle의 description 안에** 둔다. 제목 블록 바깥(형제)에 한
+          줄을 더 얹으면 그만큼의 높이가 ResizeObserver 측정에서 빠져 titleHeightPx가 실제보다 작게
           보고되고, getPageContentBudgetPx가 세로 예산을 과대 계상해 sm·mdlg에서 책장 마지막 행이
           잘린다(PageTitle 313 주석의 그 함정 그대로다). description은 ReactNode라 노드를 그대로
           넘길 수 있고, 안에 들어가면 링크의 높이·줄바꿈까지 측정에 포함된다.
-          링크 스타일은 LoginPage 약관 링크와 같은 문법이다(밑줄 + 네이비) — 본문 안에 섞이는 보조
-          링크가 이 앱에서 쓰는 유일한 형태다. */}
-      <PageTitle
-        className="text-[27px] font-bold tracking-tight text-pin-navy"
-        description={
-          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span>저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요.</span>
-            {hasAnyRecord && (
-              <Link
-                to="/me/activity"
-                className="font-semibold text-pin-navy underline underline-offset-2"
-              >
-                나의 활동 기록 보기
-              </Link>
-            )}
-          </span>
-        }
-      >
-        나의 책장
-      </PageTitle>
+          링크 스타일은 LoginPage 약관 링크와 같은 문법이다(밑줄 + 네이비). */}
+      <div className="flex flex-none items-start justify-between gap-6">
+        <PageTitle
+          className="text-[27px] font-bold tracking-tight text-pin-navy"
+          description={
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span>저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요.</span>
+              {hasAnyRecord && (
+                <Link
+                  to="/me/activity"
+                  className="font-semibold text-pin-navy underline underline-offset-2"
+                >
+                  나의 활동 기록 보기
+                </Link>
+              )}
+            </span>
+          }
+        >
+          나의 책장
+        </PageTitle>
+
+        <PaperCornerNav
+          className="mt-2 flex-none"
+          items={[
+            { to: '/', label: '홈' },
+            { to: '/feed', label: '탐색' },
+          ]}
+        />
+      </div>
 
       {/* 328: 바깥에 flex-1 + items-center 래퍼를 한 겹 더 뒀다 — 남는 세로 공간에서 책장이 중앙에
           오도록 FeedPage와 정렬 규칙을 통일한다. 여기서 남는 양은 대개 안전 여백(8px) 정도라 육안
