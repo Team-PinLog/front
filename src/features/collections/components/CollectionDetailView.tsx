@@ -23,7 +23,6 @@ import {
   BINDER_PAGE_SURFACE,
   BINDER_PHOTO_FRAME_CLASS,
   BINDER_TAPE_CLASS,
-  BINDER_TORN_PAPER_STYLE,
   binderTapeStyle,
 } from './collectionBinderSkin';
 import { CollectionIndexRail } from './CollectionIndexRail';
@@ -798,20 +797,11 @@ export function CollectionDetailView({
                           // 겹쳐 쌓여 빗맞기 쉽다)이라 통째로 넘김에서 제외한다.
                           <div
                             data-page-turn="ignore"
-                            className="relative flex flex-wrap content-start gap-x-7 px-3 pb-4 pt-6"
+                            className="flex flex-wrap content-start gap-x-7 px-3 pb-4 pt-6"
                           >
-                            {/* 378 롤백 지점 (3/3): 포스트잇 뒤에 깔리는 "찢어낸 종이" 받침.
-                                이 aria-hidden 레이어와 감싸는 div의 `relative`만 지우면 원래대로 돌아간다.
-                                받침은 포스트잇의 **부모가 아니라 형제**여야 한다: 마스크는 자식까지
-                                함께 잘라내므로, 부모로 감싸면 포스트잇 아랫부분이 톱니에 물린다.
-                                z-index는 주지 않는다 — 뒤에 오는 포스트잇들이 DOM 순서대로 이 위에 그려진다. */}
-                            {currentRecord.contexts.length > 0 && (
-                              <span
-                                aria-hidden="true"
-                                className="pointer-events-none absolute -inset-x-3 -top-1 bottom-3"
-                                style={BINDER_TORN_PAPER_STYLE}
-                              />
-                            )}
+                            {/* 387: 여기 있던 "찢어낸 종이 받침"(378 롤백 지점 3/3)을 제거했다 —
+                                화면에서 메모지 뒤에 베이지 배경 박스가 붙은 것처럼 읽혀서, 메모지가
+                                페이지에 직접 붙어 있다는 인상을 오히려 방해했다. 이제 포스트잇만 남는다. */}
                             {currentRecord.contexts.length === 0 ? (
                               <p className="text-xs text-ink-gray-light">
                                 아직 기록된 맥락이 없어요.
