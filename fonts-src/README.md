@@ -12,15 +12,26 @@ CDN에서 받던 것보다 느려진다 — 폰트를 로컬 번들한 목적("�
 정반대로 뒤집힌다. 그래서 원본은 서빙되지 않는 이 디렉터리에 두고, 필요한 글자만 뽑아
 WOFF2로 압축한 것만 `public/fonts/`로 내보낸다.
 
-| 원본                           | → 산출물                                | 크기     |
-| ------------------------------ | --------------------------------------- | -------- |
-| `Jalnan2TTF.ttf` (3.7M)        | `public/fonts/jalnan2.woff2`            | 184K     |
-| `JalnanGothicTTF.ttf` (2.2M)   | `public/fonts/jalnan-gothic.woff2`      | 152K     |
-| `NanumGeumEunBoHwa.ttf` (4.6M) | `public/fonts/nanum-geumeunbohwa.woff2` | 460K     |
-|                                | **합계**                                | **796K** |
+| 원본                           | → 산출물                                | 크기     | 역할(tailwind 토큰)      |
+| ------------------------------ | --------------------------------------- | -------- | ------------------------ |
+| `JejuGothic.ttf` (2.3M)        | `public/fonts/jeju-gothic.woff2`        | 92K      | `font-sans` (본문 기본)  |
+| `JejuHallasan.ttf` (6.4M)      | `public/fonts/jeju-hallasan.woff2`      | 195K     | `font-display` (표제)    |
+| `JejuMyeongjo.ttf` (9.1M)      | `public/fonts/jeju-myeongjo.woff2`      | 241K     | `font-serif` (인용·서브) |
+| `NanumGeumEunBoHwa.ttf` (4.6M) | `public/fonts/nanum-geumeunbohwa.woff2` | 469K     | `font-hand` (Context)    |
+|                                | **합계**                                | **997K** |                          |
 
-> `NanumGeumEunBoHwa.ttf`의 원래 파일명은 `나눔손글씨 금은보화.ttf`였다. 파일명에 한글과 공백이
-> 있으면 URL 인코딩·셸 인용이 매번 걸리므로 ASCII로 바꿨다. 폰트 내부 이름은 그대로다.
+> 380에서 본문·표제 서체를 제주 3종으로 교체했다(잘난체 2·잘난고딕 → 제주고딕·제주한라산·
+> 제주명조). 구 원본과 산출물, `@font-face`, preload, LICENSE 항목은 전부 제거했다.
+>
+> 손글씨체(금은보화)는 교보 손글씨 2025로 바꾸려다 **보류**했다 — 그 폰트의 라이선스가 이
+> 디렉터리의 변환 절차 자체(서브셋·포맷 변환·재배포)를 금지한다. 근거는 `public/fonts/LICENSE`
+> 하단 "반입 보류" 항목에 있다.
+>
+> 첫 화면이 실제로 받는 것은 **본문 서체 1개(92K)** 뿐이다 — 나머지 셋은 그 서체를 쓰는 요소가
+> 화면에 나타날 때만 받는다(`index.html`의 preload 주석 참고).
+>
+> 서브셋 글리프 커버리지: 제주 3종 모두 완성형 한글 2350자를 전부 포함한다. 요청한 2524자 중
+> `®`·`✓`는 원본 폰트에 글리프가 없어 빠진다 — 이 두 글자는 폴백 폰트로 그려진다.
 
 ## 다시 만들기
 

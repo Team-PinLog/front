@@ -7,55 +7,50 @@ WOFF2로 변환한 것이다. 변환 절차는 저장소의 fonts-src/README.md 
 서브셋 결과물에도 원본의 저작권·상표·라이선스 정보(OpenType name table ID 0/7/13/14)를
 그대로 보존했다. 폰트 파일을 열어 직접 확인할 수 있다.
 
-근거: Jira S15P11A705-357
+근거: Jira S15P11A705-357, S15P11A705-380
 
 
 -------------------------------------------------------------------------------
-1. 여기어때 잘난체 2 (Jalnan 2)  —  jalnan2.woff2
-2. 여기어때 잘난체 고딕 (Jalnan Gothic)  —  jalnan-gothic.woff2
+1. 제주고딕 (JejuGothic)      —  jeju-gothic.woff2
+2. 제주한라산 (JejuHallasan)  —  jeju-hallasan.woff2
+3. 제주명조 (JejuMyeongjo)    —  jeju-myeongjo.woff2
 -------------------------------------------------------------------------------
 
-Copyright (c) GC COMPANY All rights reserved.
-Font Designed by Sandoll Inc.
-Jalnan 2 / Jalnan Gothic is a registered trademark of GC COMPANY.
+Copyright (c) 2010 Sandoll Communications Inc. All rights reserved.
 
-저작권자: ㈜여기어때컴퍼니 (GC COMPANY)   https://gccompany.co.kr
-제작:     산돌 (Sandoll Inc.)             https://www.sandoll.co.kr
-라이선스 문의: ygot_font@gccompany.co.kr
+저작권자: 제주특별자치도 (Jeju Special Self-Governing Province)
+제작:     산돌커뮤니케이션 (Sandoll Communications Inc.)
+배포처:   https://www.jeju.go.kr/jeju/symbol/font/infor.htm
 
-[폰트 파일에 내장된 라이선스 전문 — OpenType name table ID 13]
+라이선스: 공공누리 제1유형 — 출처표시 (KOGL Type 1)
+          https://www.kogl.or.kr/recommend/recommendDivView.do?recommendIdx=9541&division=font
 
-  Jalnan 2:
-    "The intellectual property rights of Jalnan 2 is with GC COMPANY.
-     Jalnan 2 is provided free of charge to all users, including individual and
-     corporate users, and can be freely modified and redistributed."
+  공공누리 제1유형은 출처를 표시하는 조건으로 **상업적 이용**과 **변형 등 2차적 저작물 작성**을
+  모두 허용한다. 이 저장소가 하는 서브셋 생성(= 변형)과 웹폰트 셀프호스팅(= 복제·배포)이
+  그 범위 안에 있다.
 
-  Jalnan Gothic:
-    "The intellectual property rights of Jalnan Gothic is with GC COMPANY.
-     Jalnan Gothic is provided free of charge to all users, including individual
-     and corporate users, and can be freely modified and redistributed."
+  제주특별자치도 안내문의 "유료로 양도하거나 판매하는 등 상업적 행위는 금지"는 **폰트 파일
+  자체를 상품으로 파는 것**을 금지하는 조항이지, 상업 서비스에서의 사용을 막는 것이 아니다
+  (공공누리 제1유형이 "상업적 이용가능"을 명시한다). 이 저장소는 폰트 파일을 판매하지 않는다.
 
-  License URL (name table ID 14): http://www.gccompany.co.kr
+  [출처 표시]
 
-[서브셋 재배포의 근거]
+    본 저작물은 제주특별자치도에서 작성하여 공공누리 제1유형으로 개방한
+    제주고딕체·제주한라산체·제주명조체를 이용하였습니다.
 
-  이 저장소가 원본이 아닌 서브셋(= 수정본)을 재배포하는 근거는 위 내장 라이선스 문구다.
-  두 폰트 모두 "can be freely modified and redistributed"(자유롭게 수정 및 재배포 가능)를
-  명시하고 있다.
+  공유마당(한국저작권위원회) 등록:
+    제주고딕체   https://gongu.copyright.or.kr/gongu/wrt/wrt/view.do?wrtSn=419035&menuNo=200133
+    제주명조체   https://gongu.copyright.or.kr/gongu/wrt/wrt/view.do?wrtSn=13287188&menuNo=200023
+    제주한라산체 https://gongu.copyright.or.kr/gongu/wrt/wrt/view.do?wrtSn=13287189&menuNo=200023
 
-  사용한 파일은 저작권자 공식 홈페이지(gccompany.co.kr)에서 직접 내려받은 배포본이며,
-  위 문구는 그 배포본 바이너리에 저작권자가 직접 기입한 것이다.
-
-  참고 — 일부 폰트 아카이브 사이트에는 구버전 '여기어때 잘난체'(2017) 기준의 안내문
-  ("임의 수정/개작하여 글꼴을 재배포 하는 것은 금지")이 게시되어 있으나, 이 저장소가
-  사용하는 Jalnan 2(2022)·Jalnan Gothic(2023) 배포본의 내장 라이선스는 위와 같이
-  수정·재배포를 허용한다. 판단 근거는 배포본 파일 자체의 고지를 따랐다.
-
-  ※ 폰트 파일 자체를 유료로 판매하지 않는다.
+  폰트 파일에 내장된 라이선스 필드(name table ID 13/14)는 제작사 표기
+  ("Sandoll Communications Inc." / http://www.sandoll.co.kr)만 담고 있어 조건 전문을
+  담지 않는다 — 조건의 근거는 위 배포처·공공누리 등록 정보다.
+  OS/2 fsType = 8 (Editable embedding) 으로, 폰트 파일 자체가 임베딩을 허용하고 있다.
 
 
 -------------------------------------------------------------------------------
-3. 나눔손글씨 금은보화 (Nanum GeumEunBoHwa)  —  nanum-geumeunbohwa.woff2
+4. 나눔손글씨 금은보화 (Nanum GeumEunBoHwa)  —  nanum-geumeunbohwa.woff2
 -------------------------------------------------------------------------------
 
 Copyright (c) 2019 NAVER Corporation. All rights reserved.
@@ -78,7 +73,35 @@ Font created by CLOVA AI OCR Team.
      이 항목을 갱신하고, Reserved Font Name이 지정되어 있다면 CSS font-family 이름을
      그 이름을 피하도록 변경한다.
 
-아래는 SIL Open Font License 1.1 전문이다.
+
+-------------------------------------------------------------------------------
+[반입 보류] 교보 손글씨 2025 이유빈 (Kyobo Handwriting 2025 lyb)
+-------------------------------------------------------------------------------
+
+380에서 이 폰트를 font-hand(Context 필기체)로 반입하려다 **보류**했다. 결론만 먼저 적는다:
+
+  ❌ 이 저장소의 웹폰트 파이프라인(서브셋 → WOFF2 변환 → 저장소 커밋 → 셀프호스팅)을
+     그대로 적용할 수 없다.
+
+저작권자: 주식회사 교보문고 (KYOBO BOOK CENTRE)   제작: 윤디자인 (YOONDESIGN Inc.)
+배포처:   https://store.kyobobook.co.kr/handwriting/font
+
+  - SIL OFL이 **아니다.** 교보문고 자체 라이선스이며, 폰트 파일 내부에도 라이선스 전문
+    (name table ID 13)이 없고 라이선스 URL(ID 14)로 교보문고 홈페이지만 가리킨다.
+  - 상업적 이용 자체는 무료로 허용된다("개인 및 기업 사용자를 포함한 모든 사용자에게 무료로
+    제공되며, 인쇄물, 웹, 모바일, 광고물, 영상자료 등 다양한 영역에서 사용 가능합니다").
+  - 그러나 배포 조건에 다음이 명시돼 있다:
+
+      "수정 및 변경(디지털 포맷 변경), 개작, 개명, 재배포, 유료양도, 재판매를 금지합니다."
+
+    서브셋 생성과 TTF → WOFF2 변환이 "수정 및 변경(디지털 포맷 변경)"에, 폰트 파일을 저장소에
+    커밋해 공개 URL로 서빙하는 것이 "재배포"에 각각 해당할 수 있다.
+  - 웹폰트 임베딩 허용 여부는 출처마다 상충한다(폰트 아카이브 A: 임베딩 사용 가능 / 아카이브 B:
+    임베딩은 별도 계약 필요). 즉 **불확실**이다.
+
+  → 진행하려면 교보문고(고객센터 1544-1900)로부터 "웹폰트 서브셋·포맷 변환·셀프호스팅 가능"
+     서면 확인을 받아야 한다. 확인 전까지 font-hand는 OFL인 나눔손글씨 금은보화를 유지한다.
+
 
 -------------------------------------------------------------------------------
 

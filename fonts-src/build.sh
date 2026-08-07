@@ -51,8 +51,16 @@ subset() {
 }
 
 echo "서브셋 생성 중…"
-subset Jalnan2TTF.ttf        jalnan2.woff2
-subset JalnanGothicTTF.ttf   jalnan-gothic.woff2
+# 380: 본문·표제 서체를 제주 3종으로 교체했다(잘난체 2·잘난고딕 제거). 역할 배정은
+# tailwind.config.js의 fontFamily 주석을 보라.
+#
+# ⚠️ 교보 손글씨 2025는 여기 없다. 이 파이프라인 자체를 쓸 수 없는 라이선스라 반입을 보류했다 —
+# 교보문고 자체 라이선스가 "수정 및 변경(디지털 포맷 변경)·개작·개명·재배포"를 금지하는데,
+# 이 스크립트가 하는 일(TTF → 서브셋 WOFF2 변환)이 정확히 그 금지 대상이다. 근거와 결론은
+# public/fonts/LICENSE 하단 "반입 보류" 항목에 적어 뒀다. 손글씨체는 OFL인 금은보화를 유지한다.
+subset JejuGothic.ttf        jeju-gothic.woff2
+subset JejuHallasan.ttf      jeju-hallasan.woff2
+subset JejuMyeongjo.ttf      jeju-myeongjo.woff2
 subset NanumGeumEunBoHwa.ttf nanum-geumeunbohwa.woff2
 
 echo "완료. 합계: $(du -ch "$OUT"/*.woff2 | tail -1 | cut -f1)"

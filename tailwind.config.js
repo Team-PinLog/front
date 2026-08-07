@@ -41,6 +41,9 @@ export default {
         'cover-gold': '#B68235', // 괘선·표제 라벨 (시안 rgba(182,130,53))
         'cover-gold-soft': '#DCC7A0', // 옅은 프레임 (시안 --color-accent-200)
       },
+      // ⚠️ 380에서 본문 서체가 잘난고딕 → 제주고딕으로 또 바뀌었다. 아래 보정은 잘난고딕 기준으로
+      // 잡은 값이고, 서체가 바뀌면 시각 크기도 달라진다 — 값 조정은 눈으로 판단할 일이라 그
+      // 티켓에서는 스케일을 그대로 뒀다(index.css의 body letter-spacing도 같은 이유로 유지).
       // 364: 본문 타이포를 한 단계 키운다. 357에서 본문 서체가 Pretendard → 잘난고딕으로 바뀌면서
       // 같은 px에서도 글자가 작아 보인다는 피드백이 나왔다(서체마다 대문자 높이·글자 폭이 달라
       // 시각 크기가 다르다). 페이지마다 클래스를 고치면 다른 레인 파일을 전부 건드려야 하므로
@@ -64,16 +67,26 @@ export default {
         '3xl': ['2rem', { lineHeight: '2.375rem' }], // 30 → 32px
         '4xl': ['2.375rem', { lineHeight: '2.625rem' }], // 36 → 38px
       },
-      // 357: 세 서체 모두 public/fonts/의 로컬 서브셋 WOFF2다. @font-face는 src/index.css에
+      // 357: 서체는 전부 public/fonts/의 로컬 서브셋 WOFF2다. @font-face는 src/index.css에
       // 있고, 외부 CDN(jsDelivr Pretendard·Google Fonts) 링크는 제거했다.
       // 폰트를 바꾸려면 여기와 index.css의 @font-face를 함께 고친다.
+      //
+      // 380: 본문·표제 서체를 제주 3종으로 교체했다(잘난체 2·잘난고딕 제거). 역할 배정의 근거:
+      //   - sans = 제주고딕     : 새로 들어온 셋 중 유일한 본문용 고딕이다. 본문 기본값은 주소·
+      //     Context 원문처럼 긴 글이 깔리는 자리라 장식 서체를 놓을 수 없다.
+      //   - display = 제주한라산: 붓끝이 살아 있는 표제용 서체라 "브랜드로 읽혀야 하는 자리"인
+      //     이 토큰의 성격(잘난체가 있던 자리)을 그대로 승계한다. 본문에 깔면 안 되는 것도 같다.
+      //   - serif = 제주명조    : 380에서 신설. 셋 중 유일한 명조라 고딕(본문)·한라산(표제)과
+      //     역할이 겹치지 않는다. 인용·서브 텍스트처럼 "본문이되 결이 다른" 자리를 위한 토큰이다.
+      // ⚠️ display·serif는 아직 어느 컴포넌트도 쓰지 않는다(display는 357 신설 이래 계속 미사용).
+      //    어디에 적용할지는 디자인 결정이라 이 티켓에서 임의로 화면에 얹지 않았다 — 토큰과
+      //    @font-face만 준비해 두고, 적용은 별도 티켓에서 시안을 받아 한다.
       fontFamily: {
-        // 본문 기본값. 잘난고딕은 잘난체와 같은 뼈대를 가진 본문용 고딕이라, 제목(잘난체)과
-        // 한 가족으로 읽히면서도 주소·Context 원문 같은 긴 텍스트의 가독성을 유지한다.
-        // 폴백은 시스템 폰트다 — 외부 의존을 없애는 것이 이 티켓의 목적이라 Pretendard CDN을
+        // 본문 기본값. 제주고딕은 획이 고르고 자족이 단정해 긴 텍스트에서도 눈이 덜 피로하다.
+        // 폴백은 시스템 폰트다 — 외부 의존을 없애는 것이 357의 목적이라 Pretendard CDN을
         // 되살리지 않는다. 사용자 기기에 Pretendard가 설치돼 있으면 그것이 먼저 쓰인다.
         sans: [
-          'JalnanGothic',
+          'JejuGothic',
           'Pretendard Variable',
           'Pretendard',
           'system-ui',
@@ -82,15 +95,18 @@ export default {
           'Malgun Gothic',
           'sans-serif',
         ],
-        // 357 신설. "브랜드"로 읽혀야 하는 자리 — 페이지 제목·책 표지 제목·책등·컬렉션 이름.
-        // ⚠️ 본문에 깔지 않는다. 굵은 제목용 서체라 긴 텍스트의 가독성이 떨어진다.
-        // 폴백이 JalnanGothic인 이유: 잘난체가 아직 안 왔을 때 전혀 다른 계열로 튀지 않는다.
-        display: ['Jalnan2', 'JalnanGothic', 'sans-serif'],
+        // "브랜드"로 읽혀야 하는 자리 — 페이지 제목·책 표지 제목·책등·컬렉션 이름을 상정한다.
+        // ⚠️ 본문에 깔지 않는다. 표제용 서체라 긴 텍스트의 가독성이 떨어진다.
+        // 폴백이 JejuGothic인 이유: 한라산이 아직 안 왔을 때 전혀 다른 계열로 튀지 않는다.
+        display: ['JejuHallasan', 'JejuGothic', 'sans-serif'],
+        // 380 신설. 인용·서브 텍스트용 명조. 폴백을 시스템 serif로 두어 계열을 유지한다.
+        serif: ['JejuMyeongjo', 'Apple SD Gothic Neo', 'serif'],
         // 332: Collection 펼친 화면 시안의 포스트잇 손글씨. 본문 서체와 대비되는 "직접 적어
         // 붙인 메모"라는 인상이 시안에서 Context를 다른 정보(장소·주소·키워드)와 구분하는
         // 유일한 장치라 도입한다. ⚠️ 포스트잇(ContextStickyNote) 밖에서 쓰지 않는다.
-        // 357: Google Fonts의 나눔펜에서 로컬 번들한 나눔손글씨 금은보화로 교체했다.
-        hand: ['NanumGeumEunBoHwa', 'JalnanGothic', 'cursive'],
+        // 380: 교보 손글씨 2025로 교체하려 했으나 라이선스가 서브셋·포맷 변환·재배포를 금지해
+        // 반입을 보류했다(public/fonts/LICENSE 하단 "반입 보류"). 금은보화(OFL)를 유지한다.
+        hand: ['NanumGeumEunBoHwa', 'JejuGothic', 'cursive'],
       },
 
       // 377: 핀 모션 키프레임 4종. 값은 사용자 제공 "핀 목업 v2" 구현 참조 문서 원본 그대로다.
