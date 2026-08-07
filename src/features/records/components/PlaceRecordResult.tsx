@@ -249,7 +249,12 @@ export function PlaceRecordResult({
               className="min-h-[150px] bg-gradient-to-br from-[#faf0a0] to-[#f4e88a] px-6 py-6 shadow-[5px_8px_16px_-8px_rgba(90,80,30,0.4)]"
               style={{ transform: 'rotate(-1.2deg)' }}
             >
-              <p className="whitespace-pre-wrap font-[Gaegu] text-xl leading-[1.5] text-[#3f3a2a]">
+              {/* 375: 366이 Google Fonts CDN으로 들여왔던 장식 폰트를 로컬 번들 금은보화
+                  (font-hand)로 교체했다 — 357이 세운 "외부 폰트 참조 0건" 정책과 충돌했다.
+                  크기는 text-xl 그대로다: 같은 성격의 포스트잇 본문인 ContextStickyNote가 이미
+                  `font-hand text-xl`이고(손글씨체는 같은 px에서 Pretendard보다 작게 보여 한 단계
+                  올려둔 값이다), 같은 서체를 같은 자리에 쓰는 이상 그 값에 맞추는 것이 맞다. */}
+              <p className="whitespace-pre-wrap font-hand text-xl leading-[1.5] text-[#3f3a2a]">
                 {savedContext.body}
               </p>
             </div>

@@ -650,7 +650,8 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
 
                       <div className="my-7 flex items-center gap-4">
                         <div className="h-0 flex-1 border-t-2 border-dashed border-[#ddd7cd]" />
-                        <span className="font-[Gaegu] text-xl text-[#a29d95]">OR</span>
+                        {/* 375: 외부 CDN 장식 폰트를 로컬 번들 금은보화(font-hand)로 교체했다. */}
+                        <span className="font-hand text-xl text-[#a29d95]">OR</span>
                         <div className="h-0 flex-1 border-t-2 border-dashed border-[#ddd7cd]" />
                       </div>
 
