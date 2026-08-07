@@ -1,37 +1,40 @@
-import { useState } from 'react';
 import { useParams, useRouter, useRouterState, useSearch } from '@tanstack/react-router';
 import { CollectionDeleteConfirmProvider } from '@/contexts/CollectionDeleteConfirmProvider';
 import { EditCollectionTitleProvider } from '@/contexts/EditCollectionTitleProvider';
 import { CollectionSpreadProvider } from '@/contexts/CollectionSpreadProvider';
 import { DeleteConfirmProvider } from '@/contexts/DeleteConfirmProvider';
 import { CollectionDetailView } from '@/features/collections/components/CollectionDetailView';
-import {
-  CollectionFullscreenCloseButton,
-  CollectionOverlayShell,
-} from '@/features/collections/components/CollectionOverlayShell';
+import { CollectionOverlayShell } from '@/features/collections/components/CollectionOverlayShell';
 import { CollectionDeleteConfirmDialog } from '@/features/collections/components/CollectionDeleteConfirmDialog';
 import { EditCollectionTitleDialog } from '@/features/collections/components/EditCollectionTitleDialog';
-import { consumeCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 
 export function CollectionDetailPage() {
   const { collectionId } = useParams({ from: '/collections/$collectionId' });
   const { feedRequestId, feedPosition } = useSearch({ from: '/collections/$collectionId' });
   const router = useRouter();
   // Feed·내 책장·팔로우한 책장 등 내부 진입은 navigate({ state: { collectionOverlay: true } })로 이
-  // 라우트에 진입한다(207) — 직접 URL 진입·공유 링크는 이 state가 없어 평범한 풀페이지로 남는다.
+  // 라우트에 진입한다(207) — 직접 URL 진입·공유 링크는 이 state가 없어 닫기 버튼을 붙이지 않는다.
+  // 332: 딤·카드 패널을 없애면서 화면 자체는 세 진입 경로가 모두 같아졌다. 남은 차이는 "돌아갈
+  // 앱 내 지점이 있는가"뿐이라, 이 state 하나만 보고 닫기 버튼 노출을 정한다 — 새로고침 재진입을
+  // 따로 가려내던 collectionOverlayIntent 소비는 더 이상 필요하지 않아 걷어냈다.
   const hasOverlayState = useRouterState({
     select: (state) => state.location.state.collectionOverlay === true,
   });
-  // location.state는 새로고침해도 브라우저가 보존해 hasOverlayState만으로는 "방금 클릭해서 왔는지"와
-  // "새로고침으로 재진입했는지"를 구분할 수 없다 — 인메모리 플래그(collectionOverlayIntent)를 mount
-  // 시점에 한 번만 소비해 판단한다. 새로고침이면 모듈이 다시 로드돼 플래그가 이미 false다. useState
-  // lazy initializer라 최초 렌더에서 딱 한 번만 호출되고, 이후 리렌더에서는 다시 호출되지 않는다.
-  const [cameFromInAppClick] = useState(() => consumeCollectionOverlayIntent());
+  // 332: 오른쪽 책장에서 다른 Collection으로 넘어왔다는 마커(router.tsx HistoryState). Feed 경유
+  // 진입(feedRequestId)과 함께 "오른쪽 책장을 세울지"를 결정한다 — 책장에서 책장으로 넘나드는
+  // 동안 책장이 사라지지 않게 하기 위한 것이다.
+  const hasShelfContext = useRouterState({
+    select: (state) => state.location.state.shelfContext === true,
+  });
+
+  // 닫기 버튼은 책 우상단에 붙으므로(332 피드백) 화면이 아니라 View가 그린다 — 위치를 아는 쪽이
+  // 책 래퍼이기 때문이다. 오버레이 진입이 아닐 때는 넘기지 않아 버튼 자체가 나오지 않는다.
+  const handleClose = hasOverlayState ? () => router.history.back() : undefined;
 
   const content = (
     <CollectionDeleteConfirmProvider>
       <EditCollectionTitleProvider>
-        {/* collectionId로 key를 걸어 다른 Collection으로 이동(예: ShelfExploreSection 클릭)할 때 스프레드
+        {/* collectionId로 key를 걸어 다른 Collection으로 이동(예: 오른쪽 책장 클릭)할 때 스프레드
             인덱스를 0으로 리셋한다 — 이 라우트는 params만 바뀌고 컴포넌트가 재마운트되지 않는다. */}
         <CollectionSpreadProvider key={collectionId}>
           {/* ContextStickyNoteCard(소유 Collection의 record 안)가 useDeleteContextMutation → useDeleteConfirm을
@@ -43,6 +46,8 @@ export function CollectionDetailPage() {
               collectionId={collectionId}
               feedRequestId={feedRequestId}
               feedPosition={feedPosition}
+              hasShelfContext={hasShelfContext}
+              onClose={handleClose}
             />
           </DeleteConfirmProvider>
         </CollectionSpreadProvider>
@@ -55,23 +60,7 @@ export function CollectionDetailPage() {
     </CollectionDeleteConfirmProvider>
   );
 
-  if (!hasOverlayState) {
-    // 직접 URL 진입·공유 링크: 기존과 동일한 풀스크린, 닫기 버튼 없음.
-    return content;
-  }
-
-  const handleClose = () => router.history.back();
-
-  if (cameFromInAppClick) {
-    // 방금 클릭해서 진입: dimmed backdrop + 중앙 카드.
-    return <CollectionOverlayShell onClose={handleClose}>{content}</CollectionOverlayShell>;
-  }
-
-  // state는 있지만 방금 클릭한 게 아님(새로고침으로 재진입): 풀스크린 + 우측 상단 X 닫기 버튼.
-  return (
-    <>
-      <CollectionFullscreenCloseButton onClose={handleClose} />
-      {content}
-    </>
-  );
+  // 내부 진입은 원래 보던 화면을 흐리게 깔고 그 위에 띄운다. 직접 URL·공유 링크는 뒤에 깔 화면이
+  // 없으므로 그대로 페이지로 둔다.
+  return hasOverlayState ? <CollectionOverlayShell>{content}</CollectionOverlayShell> : content;
 }

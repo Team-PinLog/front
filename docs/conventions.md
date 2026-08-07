@@ -17,6 +17,10 @@
 - **컴포넌트에서 API를 직접 호출하지 않는다.** 데이터 흐름은 `docs/architecture.md`를 따른다(화면 → Hook → API 함수 → HTTP Client).
 - 서버 상태(TanStack Query)와 UI 상태(Context API)를 한 곳에 섞지 않는다.
 - 검증 스키마는 Zod로 정의하고 API 경계에서 파싱한다.
+- **하나의 사실을 두 변수가 나눠 들지 않는다.** 특히 외부 라이브러리 인스턴스의 준비 여부가 렌더에 영향을 준다면 ref가 아니라 state로 든다 — ref는 갱신해도 리렌더가 없어 effect가 다시 돌지 않는다(`docs/troubleshooting/2026-08-06-map-remount-ref-state-race.md`, S15P11A705-346).
+- **Tailwind 클래스는 리터럴로만 쓴다.** Tailwind는 소스를 원시 텍스트로 스캔해 양방향으로 조용히 틀린다 — 문자열 조작으로 만든 클래스는 스캔되지 않아 **스타일이 없고**, 주석에 클래스처럼 생긴 문자열을 적으면 스캔돼 **없는 규칙이 생긴다**. 조건부는 완성된 리터럴 중 하나를 고르는 형태로 쓰고, 주석에서 클래스를 언급할 때 대괄호 arbitrary value를 그대로 적지 않는다(`docs/troubleshooting/2026-08-06-collection-spread-redesign-lessons.md`·`2026-08-06-silent-css-traps-nav-shell.md`).
+- **새 컴포넌트를 만들기 전에 기존 구현을 먼저 찾는다.** 병렬 작업에서 배정받은 "내 파일 목록"은 쓰기 권한의 경계이지 **탐색 범위의 경계가 아니다**. 배정 밖 파일을 고쳐야 하면 우회해서 새로 만들지 말고 보고한다(S15P11A705-332).
+- **모듈 스코프 플래그·전역 상태의 소비자를 지울 때 생산자도 함께 확인한다.** 타입으로 이어지지 않아 컴파일러가 알려주지 않는다 — 읽는 쪽을 지우면 쓰는 쪽이 아무도 안 보는 값을 계속 쓴다. 당장 지울 수 없으면 후속 정리 대상으로 명시한다(S15P11A705-332 → 350).
 - **`httpClient`로 `FormData`(multipart) 요청을 보낼 때는 `Content-Type` 헤더를 지운다.** `httpClient`가 기본 헤더로 `Content-Type: application/json`을 고정하고 있어서, 그대로 두면 브라우저가 multipart boundary를 붙이지 못해 요청이 깨진다(서버가 `image/jpeg` 등을 JSON으로 파싱하려다 실패).
 
   ```typescript
@@ -80,3 +84,9 @@
 - Feed `position`·`requestId`는 응답 값을 그대로 사용하고 프론트에서 재계산하지 않는다.
 - Keyword의 식별 키는 `code`다. 표시 문자열(`display_name`, 구 컬럼명 `label`)을 상태 키·매핑 키로 쓰지 않는다.
 - [해결됨] origin(Team-PinLog/docs)이 `keyword_preset`의 DB 컬럼명을 label→display_name으로 변경함(2026-07 업데이트). API 응답(`keywords`)은 원래도 code/label 구분 없는 순수 문자열 배열이라 JSON 계약 변경 없음(`08_API_명세` §6.1, `05_AI_설계` §12.1, 2026-08 재확인).
+
+## 7. 개발 전용 라우트
+
+- `/dev/*` 등 개발·QA 전용 라우트는 `router.tsx`에서 `import.meta.env.DEV` 조건으로 라우트 트리 등록 자체를 감싼다(예시: `placeRecordPreviewRoute`). Vite가 빌드 타임에 상수로 치환해 프로덕션 빌드에서는 조건이 `false`로 굳어지므로 라우트가 등록되지 않아 해당 경로는 `NotFoundPage`로 떨어진다 — URL을 알아도 접근할 수 없다. (페이지 컴포넌트 자체는 모듈 그래프에서 정적으로 참조되므로 번들에는 남지만, 라우터가 마운트하지 않아 실행되지는 않는다.)
+- `beforeLoad` 인증 가드(`requireLoggedIn` 등)로는 대체하지 않는다. 개발 전용 라우트는 종종 "로그인 없이 테스트 세션을 발급"하는 등 인증 가드와 목적이 상충하는 기능을 담기 때문이다.
+- 개발 전용 라우트가 호출하는 API가 있다면, 그 API가 운영 백엔드에도 노출되어 있는지 별도로 확인한다. 프론트에서 라우트를 숨겨도 백엔드 엔드포인트 자체가 운영에 살아 있으면 URL을 아는 누구나 호출할 수 있다 — 이건 프론트만으로는 막을 수 없는 백엔드 이슈다(S15P11A705-342).

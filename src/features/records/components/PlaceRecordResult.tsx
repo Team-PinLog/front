@@ -29,6 +29,11 @@ interface PlaceRecordResultProps {
   collectionCreationResults: CollectionCreationOutcome[];
   existingCollectionAddResults: ExistingCollectionAddOutcome[];
   onClose: () => void;
+  /**
+   * 327: 실패했던 컬렉션 생성을 이 화면에서 다시 시도해 성공한 경우. 호출부가 표지 단계를 띄운다 —
+   * 처음에 성공했을 때와 결과가 같아야 하고, 아니면 재시도로 만든 컬렉션만 표지 없이 남는다.
+   */
+  onCollectionCreated?: (collection: { collectionId: number; title: string }) => void;
 }
 
 function summaryMessage(nounPhrase: string, titles: string[]): string {
@@ -65,21 +70,21 @@ function CollectionOutcomeSection({
   const pendingItems = items.filter((item) => item.status === 'pending');
 
   return (
-    <div className="mt-3">
-      <p className="text-[11px] font-bold tracking-[0.08em] text-ink-gray-light">{heading}</p>
+    <div className="mt-4">
+      <p className="text-[13px] font-bold tracking-[0.08em] text-[#a29d95]">{heading}</p>
 
       {succeededTitles.length > 0 && (
-        <p className="mt-1 text-sm text-ink-gray">
+        <p className="mt-1.5 text-[15px] font-medium text-[#8a857e]">
           {summaryMessage(successNounPhrase, succeededTitles)}
         </p>
       )}
 
       {failedItems.length > 0 && (
-        <div className="mt-1 flex flex-col gap-1.5">
+        <div className="mt-1.5 flex flex-col gap-1.5">
           {failedItems.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
+              className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-600"
             >
               <span>
                 {item.title} {failureLabel}
@@ -97,7 +102,7 @@ function CollectionOutcomeSection({
       )}
 
       {pendingItems.length > 0 && (
-        <p className="mt-1 text-xs text-ink-gray-light">
+        <p className="mt-1.5 text-[13px] text-[#a29d95]">
           {pendingItems.map((item) => item.title).join(', ')} 다시 시도하는 중…
         </p>
       )}
@@ -106,11 +111,15 @@ function CollectionOutcomeSection({
 }
 
 // keywords: []는 AI 미완료 상태의 정상 응답이다(architecture.md 5장) — 오류가 아니라 중립 안내로 처리한다.
+// mockup: 다운로드 "장소 기록 완료 화면.dc.html"(S15P11A705-323 디자인 개정). 새로 만든 Record인지
+// 기존 Record에 맥락만 더한 것인지에 따라 헤딩 문구가 달라진다(resultLabel) — mockup 데모는 후자
+// 상태 하나만 보여주지만, 실제로는 이 분기를 그대로 옮긴 것이다.
 export function PlaceRecordResult({
   data,
   collectionCreationResults,
   existingCollectionAddResults,
   onClose,
+  onCollectionCreated,
 }: PlaceRecordResultProps) {
   const [creationItems, setCreationItems] = useState<TrackedOutcome[]>(() =>
     collectionCreationResults.map((result, index) => ({
@@ -145,10 +154,11 @@ export function PlaceRecordResult({
     createCollectionMutation.mutate(
       { title: target.title, recordIds: [data.recordId] },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           setCreationItems((prev) =>
             prev.map((item) => (item.id === id ? { ...item, status: 'success' } : item)),
           );
+          onCollectionCreated?.({ collectionId: created.collectionId, title: created.title });
         },
         onError: () => {
           setCreationItems((prev) =>
@@ -185,68 +195,88 @@ export function PlaceRecordResult({
   };
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-paper-white bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_51px,rgba(109,102,99,0.08)_52px)] p-6">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <button
         type="button"
         onClick={onClose}
         aria-label="저장 결과 닫기"
-        className="absolute right-5 top-5 grid h-[34px] w-[34px] place-items-center rounded-full bg-pin-navy/10 text-pin-navy hover:bg-pin-navy/15"
+        className="absolute right-6 top-6 grid h-11 w-11 place-items-center rounded-full bg-[#efece8] text-lg text-[#6f6a63] transition-colors hover:bg-[#e2ddd6] sm:right-[26px] sm:top-[26px]"
       >
-        x
+        ✕
       </button>
 
-      <p className="text-[11px] font-bold tracking-[0.12em] text-log-mint">SAVED</p>
-      <h2 className="mt-2 max-w-[calc(100%-44px)] text-[21px] font-bold text-pin-navy">
-        {resultLabel}
-      </h2>
-      <h3 className="mt-4 text-3xl font-extrabold tracking-tight text-pin-navy">
-        {data.place.name}
-      </h3>
-      <p className="mt-1 text-sm font-semibold leading-6 text-log-mint">{data.place.address}</p>
+      <div className="flex-none pr-14">
+        <p className="text-[13px] font-extrabold tracking-[0.14em] text-[#4f9b78]">SAVED</p>
+        <h1 className="mt-2 text-[26px] font-extrabold leading-[1.3] tracking-[-0.02em] text-[#2c2a28] sm:text-[32px]">
+          {resultLabel}
+        </h1>
+      </div>
 
-      <CollectionOutcomeSection
-        heading="기존 컬렉션에 추가"
-        successNounPhrase="에 추가되었습니다"
-        failureLabel="컬렉션 추가에 실패했습니다"
-        items={addItems}
-        onRetry={handleRetryAdd}
-      />
+      <div className="place-scroll mt-7 flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+        <div className="flex-none">
+          <h2 className="text-[28px] font-extrabold tracking-[-0.02em] text-[#2c2a28] sm:text-[34px]">
+            {data.place.name}
+          </h2>
+          <p className="mt-2 text-[17px] font-bold text-[#4f9b78]">{data.place.address}</p>
+        </div>
 
-      <CollectionOutcomeSection
-        heading="새로 만든 컬렉션"
-        successNounPhrase="을 새로 만들었습니다"
-        failureLabel="컬렉션 생성에 실패했습니다"
-        items={creationItems}
-        onRetry={handleRetryCreation}
-      />
+        <div className="mt-5 flex-none">
+          {data.keywords.length > 0 ? (
+            <div className="flex flex-wrap gap-2.5">
+              {data.keywords.map((keyword) => (
+                <span
+                  key={keyword}
+                  className="rounded-full bg-[#dcecdf] px-4 py-2 text-[15px] font-bold text-[#3f7d5f]"
+                >
+                  #{keyword}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[15px] font-medium text-[#a29d95]">
+              키워드는 잠시 후 자동으로 채워져요.
+            </p>
+          )}
+        </div>
 
-      {data.keywords.length > 0 ? (
-        <div className="mt-6 flex flex-wrap gap-2">
-          {data.keywords.map((keyword) => (
-            <span
-              key={keyword}
-              className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
+        {savedContext && (
+          <div className="relative mt-6 w-full max-w-[360px] pt-4">
+            <div
+              className="pointer-events-none absolute left-1/2 top-0 h-[26px] w-[70px] -translate-x-1/2 rotate-[-5deg] border border-[rgba(190,175,95,0.35)] bg-[rgba(214,200,120,0.42)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+              aria-hidden="true"
+            />
+            <div
+              className="min-h-[150px] bg-gradient-to-br from-[#faf0a0] to-[#f4e88a] px-6 py-6 shadow-[5px_8px_16px_-8px_rgba(90,80,30,0.4)]"
+              style={{ transform: 'rotate(-1.2deg)' }}
             >
-              {keyword}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-6 text-xs text-ink-gray-light">
-          키워드는 잠시 후 자동으로 채워질 수 있어요.
-        </p>
-      )}
+              <p className="whitespace-pre-wrap font-[Gaegu] text-xl leading-[1.5] text-[#3f3a2a]">
+                {savedContext.body}
+              </p>
+            </div>
+          </div>
+        )}
 
-      {savedContext && (
-        <div className="mt-auto whitespace-pre-wrap rounded-[10px] border border-pin-navy/10 bg-white/80 p-4 text-sm leading-7 text-ink-gray">
-          {savedContext.body}
-        </div>
-      )}
+        <CollectionOutcomeSection
+          heading="기존 컬렉션에 추가"
+          successNounPhrase="에 추가되었습니다"
+          failureLabel="컬렉션 추가에 실패했습니다"
+          items={addItems}
+          onRetry={handleRetryAdd}
+        />
+
+        <CollectionOutcomeSection
+          heading="새로 만든 컬렉션"
+          successNounPhrase="을 새로 만들었습니다"
+          failureLabel="컬렉션 생성에 실패했습니다"
+          items={creationItems}
+          onRetry={handleRetryCreation}
+        />
+      </div>
 
       <button
         type="button"
         onClick={onClose}
-        className="mt-4 h-[52px] flex-none rounded-[10px] bg-log-mint text-[15px] font-bold text-pin-navy"
+        className="mt-6 h-[60px] flex-none rounded-[14px] bg-[#5faa84] text-[19px] font-extrabold tracking-[-0.01em] text-white shadow-[0_8px_18px_-8px_rgba(79,155,120,0.7)]"
       >
         확인
       </button>

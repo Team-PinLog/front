@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isRedirect } from '@tanstack/react-router';
 import { handleOAuthCallback } from './handleOAuthCallback';
 import { getPreLoginPath, PRE_LOGIN_PATH_KEY } from './preLoginPath';
+import { hasWithdrawalNotice, saveWithdrawalNotice } from './withdrawalNotice';
 import { logoutRequest } from '../api/logout';
+
+const WITHDRAWAL_SUCCESS_MESSAGE = '탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.';
 
 vi.mock('../api/logout', () => ({
   logoutRequest: vi.fn(),
@@ -49,6 +52,67 @@ describe('handleOAuthCallback', () => {
         // 리다이렉트만 확인하면 되므로 무시한다.
       }
       expect(logoutRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  // 탈퇴 성공에는 쿼리 파라미터가 없어(08 §3.6.2) 콜백만으로는 평범한 로그인과 구분되지 않는다.
+  // 이 탭이 탈퇴를 시작했다는 표시로만 구분한다. 근거: Jira S15P11A705-347.
+  describe('탈퇴 완료(error 없음 + 탈퇴 표시 있음)', () => {
+    let alertSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      alertSpy.mockRestore();
+    });
+
+    it('탈퇴 완료를 알린다', async () => {
+      saveWithdrawalNotice();
+
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: {} });
+      } catch {
+        // 리다이렉트는 성공 분기 테스트에서 확인한다.
+      }
+      expect(alertSpy).toHaveBeenCalledWith(WITHDRAWAL_SUCCESS_MESSAGE);
+    });
+
+    it('취소 문구와 구분되는 문구를 쓴다', async () => {
+      saveWithdrawalNotice();
+
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: {} });
+      } catch {
+        // 문구만 확인하면 된다.
+      }
+      expect(alertSpy).not.toHaveBeenCalledWith('탈퇴를 취소했습니다.');
+    });
+
+    // 한 번 알리고 끝나야 한다 — 표시가 남으면 이후 같은 탭의 평범한 로그인에서 또 뜬다.
+    it('표시를 읽은 뒤 지운다', async () => {
+      saveWithdrawalNotice();
+
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: {} });
+      } catch {
+        // 표시 정리만 확인하면 된다.
+      }
+      expect(hasWithdrawalNotice()).toBe(false);
+    });
+
+    it('표시가 없으면 아무것도 알리지 않는다 — 평범한 로그인이다', async () => {
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: {} });
+      } catch {
+        // 알림 여부만 확인하면 된다.
+      }
+      expect(alertSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -117,6 +181,20 @@ describe('handleOAuthCallback', () => {
       }
       expect(getPreLoginPath()).toBe('/collections/42');
     });
+
+    // 로그인 실패에도 표시를 지운다 — 왕복이 이 착지로 끝났고 회원은 지워지지 않았다.
+    it('탈퇴 표시가 남아 있으면 지운다', async () => {
+      vi.mocked(logoutRequest).mockResolvedValue(undefined);
+      saveWithdrawalNotice();
+
+      expect.assertions(1);
+      try {
+        await handleOAuthCallback({ search: { error: 'OAUTH_FAILED' } });
+      } catch {
+        // 표시 정리만 확인하면 된다.
+      }
+      expect(hasWithdrawalNotice()).toBe(false);
+    });
   });
 
   // 탈퇴 왕복의 실패는 로그인 실패와 성격이 다르다 — 회원이 그대로 살아 있다.
@@ -157,6 +235,26 @@ describe('handleOAuthCallback', () => {
         // 리다이렉트만 확인하면 되므로 무시한다.
       }
       expect(logoutRequest).not.toHaveBeenCalled();
+    });
+
+    // 지우지 않으면 공급자 화면에서 취소하고 돌아온 사용자가 같은 탭에서 나중에 평범히 로그인할 때
+    // "탈퇴가 완료되었습니다"를 보게 된다 — 실제로는 계정이 그대로 살아 있는데도.
+    it.each([
+      'WITHDRAWAL_CANCELLED',
+      'WITHDRAWAL_FAILED',
+      'WITHDRAWAL_UNLINK_FAILED',
+      'WITHDRAWAL_ACCOUNT_MISMATCH',
+    ])('%s 이면 탈퇴 표시를 지운다', async (error) => {
+      saveWithdrawalNotice();
+
+      expect.assertions(2);
+      try {
+        await handleOAuthCallback({ search: { error } });
+      } catch {
+        // 표시 정리만 확인하면 된다.
+      }
+      expect(hasWithdrawalNotice()).toBe(false);
+      expect(alertSpy).not.toHaveBeenCalledWith(WITHDRAWAL_SUCCESS_MESSAGE);
     });
 
     it('로그인 실패 문구를 쓰지 않는다', async () => {

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
 // 319: 선반 판은 Library 캐비닛(ShelfBoard)과 완전히 같은 판이라 shared/ui/Shelf.tsx로 옮겨 공유한다.
@@ -9,22 +9,22 @@ import {
   FEED_MAX_ROWS_BY_KEY,
   FEED_ROWS_PADDING_BOTTOM_PX,
   FEED_ROWS_PADDING_TOP_PX,
+  FEED_ROWS_PADDING_X_PX,
   getFeedColumnsKey,
   getFeedCardDimensions,
   getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
-  SIDEBAR_WIDTH_PX,
   solveFeedScale,
 } from '@/shared/lib/shelfCabinetLayout';
+import { getSidebarWidthPx } from '@/shared/lib/appChrome';
 import {
   useIsLandscapeOrientation,
   useShelfWidthTier,
   useViewportSize,
 } from '@/shared/lib/useShelfBreakpoint';
 import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
-import { markCollectionOverlayIntent } from '@/features/collections/lib/collectionOverlayIntent';
 import { useFeedCollectionsQuery } from '../hooks/useFeedCollectionsQuery';
 import { useFeedEventQueue } from '../hooks/useFeedEventQueue';
 import { CollectionBookCard } from './CollectionBookCard';
@@ -71,6 +71,23 @@ function toShelfRows(
   return rows;
 }
 
+// 354: 책을 펼치면 FeedPage가 언마운트되므로(오버레이처럼 보이지만 실제로는 라우트 이동) 아래
+// cursorHistory/pageIndex도 함께 사라진다 — 닫고 돌아오면 캐시가 남아 있어도 언제나 1페이지였다.
+// "지금 몇 번째 페이지를 보고 있었는가"만 모듈 스코프에 남겨두면 되돌아왔을 때 그 cursor의 캐시가
+// 곧장 그려진다.
+// ⚠️ sessionStorage가 아니라 모듈 변수인 것이 핵심이다. cursor는 특정 Feed Session에 묶인 opaque
+// 값이라(08_API_명세 10.1) 쿼리 캐시와 정확히 같은 수명(탭의 JS 수명)을 가져야 한다 — 새로고침하면
+// 캐시와 함께 사라져 새 세션의 1페이지에서 시작하는 게 맞고, 저장소에 남겨두면 죽은 세션의 cursor로
+// 요청하게 된다. pageSize가 다르면(리사이즈로 그리드 구성이 바뀐 경우) 복원하지 않는다 — 같은
+// cursor라도 페이지가 담는 항목 수가 달라 "보던 위치"가 아니게 된다(아래 pageSize 리셋과 같은 이유).
+interface FeedPagePosition {
+  cursorHistory: (string | undefined)[];
+  pageIndex: number;
+  pageSize: number;
+}
+
+let lastFeedPagePosition: FeedPagePosition | null = null;
+
 /**
  * Feed(발행된 Collection 추천 목록) 목록. 근거: Jira S15P11A705-142, docs/reference/08_API_명세.md 10.1.
  * IMPRESSION은 서버가 목록 응답 생성 시 자동 기록한다 — 프론트는 CLICK만 큐잉한다.
@@ -101,13 +118,11 @@ function toShelfRows(
 export function FeedList() {
   const navigate = useNavigate();
   const feedEventQueue = useFeedEventQueue();
-  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([undefined]);
-  const [pageIndex, setPageIndex] = useState(0);
 
   const tier = useShelfWidthTier();
   const isLandscape = useIsLandscapeOrientation();
   const { width: viewportWidth, height: viewportHeight } = useViewportSize();
-  const { navHeightPx, titleHeightPx } = useLayoutMetrics();
+  const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
 
   const columnsKey = getFeedColumnsKey(tier, isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
@@ -118,15 +133,16 @@ export function FeedList() {
   // 실측해 보고한 값이다(AppLayout.tsx/PageTitle.tsx 참고).
   // 315: budgetPx는 스크롤 박스 바깥 치수(maxHeight)이고, 카드·선반이 실제로 쓸 수 있는 몫은 위아래
   // 여백을 뺀 contentBudgetPx다 — 이 구분을 빼먹으면 여백만큼 매번 예산이 넘쳐 스크롤바가 뜬다.
-  const budgetPx = getPageContentBudgetPx(viewportHeight, { navHeightPx, titleHeightPx }, tier);
+  const budgetPx = getPageContentBudgetPx(
+    viewportHeight,
+    { navChromeHeightPx, titleHeightPx },
+    tier,
+  );
   const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
 
-  // 304: xl에서는 좌측 사이드바(SIDEBAR_WIDTH_PX)가 실제 가용 폭을 그만큼 줄인다 — sm·mdlg는
-  // 사이드바가 없어 기존과 동일하게 0을 넘긴다.
-  const availableGridWidthPx = getFeedGridAreaWidthPx(
-    viewportWidth,
-    tier === 'xl' ? SIDEBAR_WIDTH_PX : 0,
-  );
+  // 좌측 사이드바가 실제 가용 폭을 그만큼 줄인다. 330: 사이드바가 md부터 생기고 폭도 구간마다
+  // 다르므로(레일 72 / 넓은 240) 값을 getSidebarWidthPx가 판단한다 — sm은 0이라 기존과 동일하다.
+  const availableGridWidthPx = getFeedGridAreaWidthPx(viewportWidth, getSidebarWidthPx(tier));
 
   // 314: 행 수도 더 이상 구간별 고정값이 아니다 — 세로 예산과 가로 폭을 둘 다 반영해 화면을 가장
   // 많이 덮는 배치를 고른다(decideFeedRows). 이전에는 xl·mdlgLandscape가 2행 고정이라 세로가 남고,
@@ -162,6 +178,14 @@ export function FeedList() {
   // 오염은 없지만, 사용자가 보던 페이지 번호 자체가 새 그리드에서는 다른 항목 수를 의미하게 된다).
   // "prop이 바뀌면 state를 리셋"하는 리액트 표준 패턴(렌더 중 setState) — useEffect+setState는
   // 커밋 후 리렌더를 한 번 더 유발해(react-hooks/set-state-in-effect) 화면이 잠깐 깜빡일 수 있다.
+  // 354: 초기값은 직전에 보던 페이지다(lastFeedPagePosition). 이 두 state를 pageSize 계산 아래로
+  // 내린 이유도 그것이다 — 복원 여부를 판단하려면 이번 렌더의 pageSize를 먼저 알아야 한다.
+  const restored = lastFeedPagePosition?.pageSize === pageSize ? lastFeedPagePosition : null;
+  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>(
+    () => restored?.cursorHistory ?? [undefined],
+  );
+  const [pageIndex, setPageIndex] = useState(() => restored?.pageIndex ?? 0);
+
   const [prevPageSize, setPrevPageSize] = useState(pageSize);
   if (pageSize !== prevPageSize) {
     setPrevPageSize(pageSize);
@@ -171,6 +195,12 @@ export function FeedList() {
 
   const cursor = cursorHistory[pageIndex];
   const feedQuery = useFeedCollectionsQuery(cursor, pageSize);
+
+  // 다음 마운트가 이어받을 위치를 기록한다. 렌더 중이 아니라 커밋 후에 쓴다 — 위 pageSize 리셋처럼
+  // 렌더 중 state가 바뀌는 경로가 있어서, 렌더 중에 쓰면 버려질 값을 기록할 수 있다.
+  useEffect(() => {
+    lastFeedPagePosition = { cursorHistory, pageIndex, pageSize };
+  }, [cursorHistory, pageIndex, pageSize]);
 
   const emptyShelfLayout: EmptyShelfLayout = {
     columns,
@@ -240,7 +270,6 @@ export function FeedList() {
       placeId: null,
       position: item.position,
     });
-    markCollectionOverlayIntent();
     void navigate({
       to: '/collections/$collectionId',
       params: { collectionId: item.collectionId },
@@ -268,8 +297,12 @@ export function FeedList() {
   // 314: 캐비닛이 사라져 버튼이 앉을 안쪽 여백(px-5)이 없어졌다 — 대신 그리드에 좌우
   // FEED_SIDE_GUTTER_PX만큼 padding을 주고(FEED_GRID_CLASS의 px-7) 버튼을 그 gutter에 놓는다.
   // 선반 판은 gutter까지 덮는 full-bleed로 두어 시안처럼 책보다 넓게 깔린다.
+  // 328: mx-auto → m-auto. 부모(FeedPage의 flex-1 래퍼)가 flex-col이 되면서 세로 auto 마진이
+  // "남는 세로 공간을 위아래로 나눠 갖는다"는 뜻을 갖게 됐다 — 책장이 화면 중앙에 온다. 가로는
+  // 기존 mx-auto와 동일하게 동작하고, flex 컨테이너가 아닌 곳에 놓여도 세로 auto는 0으로 풀려
+  // 기존 동작 그대로다(FeedPage 주석 참고).
   return (
-    <div className="relative mx-auto flex flex-col" style={{ width: shelfWidthPx }}>
+    <div className="relative m-auto flex flex-col" style={{ width: shelfWidthPx }}>
       <FeedArrowButton direction="left" disabled={!canGoPrevious} onClick={handlePrevious} />
       <FeedArrowButton direction="right" disabled={!canGoNext} onClick={handleNext} />
 
@@ -286,8 +319,13 @@ export function FeedList() {
                   // 315: 카드 JSX는 CollectionBookCard로 분리했다 — 정보가 표지 안으로 들어가면서
                   // 카드 내부 조판이 길어졌고, 316에서 이 자리를 표지 레이아웃 6종이 대체한다.
                   // 클릭 핸들러·이벤트 큐잉·페이지네이션은 그대로 이 컴포넌트가 갖는다.
+                  // 354: key에서 requestId를 뺐다. 이 목록이 어떤 이유로든 다시 받아지면(명시적
+                  // invalidate 등) requestId가 바뀌는데, 그게 key에 섞여 있으면 같은 자리에 같은
+                  // 책이 있어도 카드가 전부 재마운트돼 표지 <img>까지 다시 그려진다 — 사용자
+                  // 눈에는 "책장이 처음부터 다시 로딩되는" 장면이다. 한 페이지 안에서 슬롯을
+                  // 식별하는 값은 collectionId + position이면 충분하다(position은 응답 값 그대로).
                   <CollectionBookCard
-                    key={`${page.requestId}-${item.collectionId}-${item.position}`}
+                    key={`${item.collectionId}-${item.position}`}
                     item={item}
                     widthPx={dims.cardWidth}
                     heightPx={dims.cardHeight}
@@ -345,7 +383,7 @@ function EmptyShelves({
   overlay?: ReactNode;
 }) {
   return (
-    <div className="relative mx-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
+    <div className="relative m-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
       {/* 314: 데이터가 없는 상태에서도 좌우 버튼은 자리에 있어야 한다 — 책장 가구의 일부라, 로딩·빈
           목록·에러에서 사라졌다가 데이터가 오면 나타나면 레이아웃이 흔들린 것처럼 보인다.
           넘길 페이지가 없는 상태이므로 항상 disabled다. */}
@@ -389,6 +427,9 @@ function EmptyShelves({
 // 314: 그리드 좌우에 FEED_SIDE_GUTTER_PX(28px = px-7)만큼 여백을 준다 — getFeedGridAreaWidthPx가
 // 카드 크기를 역산할 때 빼는 값과 반드시 같아야 한다(JS 상수 ↔ Tailwind 리터럴 수동 동기화).
 // 이 여백이 좌우 페이지 버튼의 자리이자, 캐비닛의 border+px-5가 하던 역할을 대신한다.
+// 328: getFeedGridAreaWidthPx는 이제 여기에 더해 그림자 번짐 폭(FEED_PLANK_SHADOW_BLEED_PX)도
+// 뺀다 — 그쪽은 이 클래스가 아니라 스크롤 박스의 인라인 padding이라, 이 px-7 리터럴 자체는 여전히
+// FEED_SIDE_GUTTER_PX 하나와만 짝이다.
 // 314: overflow-y-auto는 계산이 어긋나는 극단적 경우에 대비한 안전판인데, 그 때문에 맨 윗줄 카드가
 // hover(-translate-y-1.5 = 6px)로 떠오를 때 스크롤 박스 위쪽 경계에 잘렸다. 위쪽에 그 이동량보다
 // 조금 더 큰 padding을 두면 떠오른 카드가 padding 영역 안에 머물러 잘리지 않는다.
@@ -396,6 +437,10 @@ function EmptyShelves({
 // 위아래 padding을 Tailwind 리터럴(pt-2)이 아니라 인라인 style로 준다 — 이 값은 세로 예산에서
 // 차감돼야 하는 값이라(getFeedRowsContentBudgetPx) 클래스 문자열과 JS 상수로 이원화하면 반드시
 // 어긋난다. shelfCabinetLayout.ts를 단일 소스로 두고 여기서는 읽어 쓰기만 한다.
+// 328: 좌우 padding도 같은 이유로 필요하다 — overflow-y-auto는 세로만 스크롤할 뿐 가로도 함께
+// 클리핑해서, 스크롤 박스 폭을 꽉 채우는 선반 판의 좌우 그림자(8px)가 그대로 잘려 나갔다.
+// 이 폭은 getFeedGridAreaWidthPx가 카드 가로 예산에서 이미 빼고 getFeedShelfWidthPx가 다시
+// 더하므로(FEED_PLANK_SHADOW_BLEED_PX 주석), 판 폭도 카드 폭도 이 여백에 침범당하지 않는다.
 const FEED_ROWS_SCROLL_CLASS = 'flex flex-col overflow-y-auto';
 
 function getRowsScrollStyle(rowsGapPx: number, budgetPx: number): CSSProperties {
@@ -404,6 +449,8 @@ function getRowsScrollStyle(rowsGapPx: number, budgetPx: number): CSSProperties 
     maxHeight: budgetPx,
     paddingTop: FEED_ROWS_PADDING_TOP_PX,
     paddingBottom: FEED_ROWS_PADDING_BOTTOM_PX,
+    paddingLeft: FEED_ROWS_PADDING_X_PX,
+    paddingRight: FEED_ROWS_PADDING_X_PX,
   };
 }
 

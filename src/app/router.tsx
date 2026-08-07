@@ -135,13 +135,20 @@ const placeRecordPreviewRoute = createRoute({
   component: PlaceRecordPreviewPage,
 });
 
+// 개발 전용 라우트(docs/conventions.md 7장): 프로덕션 빌드에서는 import.meta.env.DEV가 false로 굳어져
+// routeTree에 등록되지 않으므로 /dev/place-record는 NotFoundPage로 떨어진다(URL을 알아도 접근 불가).
+// component 자체는 번들에 남지만(모듈 그래프에서 정적으로 참조돼 트리셰이킹되지 않음) 라우터가 마운트하지
+// 않아 실행되지 않는다. beforeLoad 인증 가드가 아니라 라우트 등록 자체를 막는 방식을 쓴 이유는, 이 라우트의
+// "테스트 세션 발급" 버튼이 로그인 없이 세션을 만드는 것이 목적이라 requireLoggedIn과 상충하기 때문이다.
+const devOnlyRoutes = import.meta.env.DEV ? [placeRecordPreviewRoute] : [];
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   callbackRoute,
   termsRoute,
   privacyRoute,
-  placeRecordPreviewRoute,
+  ...devOnlyRoutes,
   recordDetailRoute,
   collectionDetailRoute,
   shelfRoute,
@@ -167,5 +174,11 @@ declare module '@tanstack/react-router' {
 declare module '@tanstack/history' {
   interface HistoryState {
     collectionOverlay?: true;
+    // 332: Collection 상세 오른쪽 "이 작성자의 다른 컬렉션" 책장(ShelfExploreSection)을 세울지 여부.
+    // Feed 경유 진입은 feedRequestId search param으로 판별하지만, 그 책장에서 다른 Collection을 열면
+    // 그 값이 따라가지 않아(Feed 이벤트 값을 물려주면 requestId/position이 엉뚱한 슬롯에 귀속된다)
+    // 책장이 사라졌다. 책장 클릭에만 이 마커를 심어 "책장을 넘나드는 중"이라는 맥락을 잇는다.
+    // history state라 뒤로가기·새로고침에도 그 진입점의 맥락이 그대로 남는다.
+    shelfContext?: true;
   }
 }

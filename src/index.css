@@ -2,6 +2,219 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 357 — 로컬 번들 웹폰트.
+   이전에는 Pretendard를 jsDelivr에서, 손글씨체를 Google Fonts에서 받았다. 외부 요청 2곳이
+   첫 화면 렌더를 붙잡고 있어서(DNS+TLS+CSS 왕복 후에야 폰트 요청이 시작된다) 글자가 늦게
+   자리를 잡았다. 이제 셋 다 같은 오리진에서 받는다 — index.html의 외부 <link>는 전부 지웠다.
+
+   파일은 public/fonts/의 서브셋 WOFF2다(원본 TTF는 fonts-src/에 있고 서빙되지 않는다).
+   서브셋 범위·재생성 방법은 fonts-src/README.md, 라이선스 고지는 public/fonts/LICENSE 참고.
+
+   font-display: swap — 폰트가 도착하기 전에는 폴백으로 즉시 그리고, 도착하면 바꿔 끼운다.
+   block(기본값에 가까운 동작)이면 최대 3초간 글자가 아예 안 보인다. 로컬 파일이라 교체까지
+   걸리는 시간이 짧아 깜빡임이 눈에 잘 띄지 않는다.
+
+   font-weight를 400 하나로만 선언하는 이유 — 세 폰트 모두 단일 굵기 파일이다. 여기서 범위를
+   넓게(예: 100 900) 잡으면 브라우저가 "이 파일이 모든 굵기를 담당한다"고 믿어 font-bold에
+   합성 굵게(가짜 볼드)를 적용하지 않는다. 400만 선언하면 그 밖의 굵기는 브라우저가 합성해
+   준다 — 잘난고딕처럼 볼드 파일이 없는 서체에서 제목이 본문과 구분되려면 이 합성이 필요하다. */
+@font-face {
+  font-family: 'JalnanGothic';
+  src: url('/fonts/jalnan-gothic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Jalnan2';
+  src: url('/fonts/jalnan2.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NanumGeumEunBoHwa';
+  src: url('/fonts/nanum-geumeunbohwa.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 358 후속(디자인 피드백 — "너무 팍 하고 바뀐다"): 설정 패널의 등장·퇴장 모션.
+   지속시간·이징(200ms ease-out)은 AppLayout 사이드바의 폭 transition과 같은 값이다. 둘이 동시에
+   움직이므로 어긋나면 바로 눈에 띈다 — 값을 바꿀 땐 반드시 함께 바꾼다.
+
+   transition이 아니라 @keyframes인 이유: transition은 "마운트된 뒤 한 프레임 있다가 클래스를
+   바꾼다"는 2단계가 있어야 발동하는데(rAF 두 번), 애니메이션은 클래스가 붙은 첫 프레임부터 그냥
+   재생된다. 조건부 리터럴 클래스 하나만 갈아끼우면 되므로 상태 기계가 단순해진다.
+
+   퇴장에 forwards가 필요한 이유: 애니메이션이 끝나도 실제 unmount까지 남은 프레임 동안 원래
+   스타일(불투명)로 되돌아가 깜빡이는 것을 막는다. */
+@keyframes settings-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes settings-panel-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes settings-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes settings-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@layer base {
+  /* 359 — 전역 높이 계약 ①: 문서 루트까지 높이를 이어 준다.
+     `height: %`는 부모의 높이가 **확정**일 때만 해석된다. 이 세 줄이 없으면 앱 안에서 h-full을
+     쓴 순간 조용히 auto로 무너지고, 그 자리에 뷰포트 단위(dvh/vh)를 대신 박게 된다 — 그렇게
+     하면 높이의 출처가 컴포넌트마다 흩어져 "누가 화면을 넘치게 했는지"를 추적할 수 없다.
+     AppLayout 셸은 확정 높이(100dvh)를 자기가 선언하므로 이 규칙에 의존하지 않지만, AppLayout을
+     쓰지 않는 화면(로그인 등)까지 같은 기준을 갖게 하려면 계약은 문서 루트에서 시작해야 한다.
+
+     ⚠️ body에 overflow: hidden을 걸지 않는다. 그러면 아직 세로가 넘치는 화면의 하단이 스크롤도
+     못 한 채 잘려 **닿을 수 없는 UI**가 된다. 페이지 스크롤을 없애는 일은 셸이 자기 높이를 확정하고
+     내부에 스크롤 영역을 내주는 방식으로만 한다(AppLayout <main>). */
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  /* 356 후속 — 전역 포커스 표시.
+     L1이 펼친 책 화면에서만 브랜드 아웃라인으로 바꿨는데, 그 밖(포스트잇 버튼·팔로우 버튼·
+     다이얼로그 등)은 브라우저 기본 파란 사각형이 남아 있었다. 개별 컴포넌트마다 클래스를 붙이는
+     대신 여기서 한 번에 기본값을 바꾼다.
+
+     ⚠️ `outline: none`으로 지우고 box-shadow로 대체하지 않는다. 강제 색상(고대비) 모드에서는
+     배경·그림자가 시스템 색으로 덮여 사라지지만 outline은 살아남는다 — 아웃라인을 없애는 순간
+     그 환경에서 포커스 위치를 알 수 없게 된다. 그래서 **지우지 않고 값만 교체**한다.
+
+     :focus에는 걸지 않는다. 마우스로 눌렀을 때까지 링이 뜨면 시끄럽다. :focus-visible은 브라우저가
+     키보드 조작 등 "표시가 필요한 경우"로 판정했을 때만 매치된다.
+
+     ⚠️ **명시도를 일부러 최소로 유지한다.** 이 규칙은 "기본값"이지 "최종 결정"이 아니다. 요소별로
+     붙인 유틸리티(예: 356의 COLLECTION_FOCUS_RING_CLASS, 목차 레일의 흰색 아웃라인 예외)가 항상
+     이겨야 한다. Tailwind v3는 네이티브 @layer를 쓰지 않고 base→utilities 순서로 평범한 CSS를
+     내놓기 때문에, 레이어가 아니라 **명시도가 먼저** 승부를 가른다.
+     - 이 규칙 `:focus-visible` = (0,1,0)
+     - Tailwind `.outline-none` = (0,1,0) → 명시도가 같고 뒤에 나오므로 **유틸리티가 이긴다**
+     - `.focus-visible\:outline-*:focus-visible` = (0,2,0) → 무조건 이긴다
+     여기에 `:not(...)` 같은 걸 덧붙여 (0,2,0)으로 올리면 그 순간 `outline-none`을 쓰는 텍스트
+     입력들을 덮어써서 자체 민트 링과 **이중으로** 그려진다. 실제로 그렇게 만들었다가 빌드 산출
+     CSS로 확인하고 되돌렸다. 선택자를 건드릴 땐 이 계산을 다시 하라.
+
+     아래 [tabindex='-1']만 (0,2,0)으로 올려 예외를 만든다. 스크롤 대상이나 다이얼로그
+     컨테이너처럼 **코드가 직접 포커스를 옮기는** 자리다(예: AppLayout 설정 패널). 사용자가 탭으로
+     도달한 것이 아니므로 링을 그리면 "여기 눌러라"로 잘못 읽힌다. 여기서도 outline을 none으로
+     지우지 않고 색만 투명하게 둔다 — 강제 색상 모드에서 아웃라인 자리가 남아야 한다.
+
+     offset을 음수(-2px)가 아니라 양수 2px로 둔 이유 — 안쪽으로 그리면 짧은 텍스트 버튼
+     (예: 설정 패널의 밑줄 친 「탈퇴하기」)에서 아웃라인이 글자를 가로지른다. 바깥으로 빼면 잘릴
+     걱정이 있지만, 실제로 클리핑 조상이 있는 자리(사이드바 레일, 책장 판)를 확인해 보니 요소가
+     좌우 padding 안쪽에 있어 2px 여유가 남는다.
+
+     텍스트 입력류는 여기서 예외 처리를 따로 하지 않아도 된다. 이미 `outline-none`(Tailwind에서는
+     투명 아웃라인이다) + 자체 민트 테두리·링을 갖고 있고, utilities 레이어가 base보다 뒤에 오므로
+     그 규칙이 이 기본값을 덮는다. 이중 표시가 생기지 않는다. */
+  :focus-visible {
+    outline: 2px solid theme('colors.log-mint');
+    outline-offset: 2px;
+  }
+
+  [tabindex='-1']:focus-visible {
+    outline-color: transparent;
+  }
+
+  body {
+    /* 셸이 뷰포트 높이에 딱 맞으면 오버스크롤 반동 때 문서 배경이 그대로 드러난다. 기본 흰색이
+       아니라 앱 배경과 같은 색이어야 이음매가 보이지 않는다. */
+    background-color: theme('colors.paper-white');
+
+    /* 364: 자간을 조금 넓힌다(0 → 0.02em, Tailwind의 tracking-normal과 tracking-wide 사이).
+       잘난고딕은 글자 폭이 넓고 획이 굵어 기본 자간에서 글자끼리 붙어 보인다.
+
+       fontSize 토큰에 letterSpacing을 끼워 넣지 않고 body에 거는 이유 — 토큰에 넣으면
+       `text-[11px]`처럼 임의 값으로 쓴 자리(52곳)가 자간 보정을 못 받는다. body에서 상속시키면
+       크기를 어떻게 지정했든 전부 적용된다.
+       letter-spacing은 상속되므로 이 한 줄이 앱 전체에 닿고, 개별 조정이 필요한 곳은 tracking-*
+       유틸리티가 덮는다(클래스라 명시도가 높다) — 표지 제목의 TITLE_TRACKING_CLASS가 그 예다. */
+    letter-spacing: 0.02em;
+  }
+
+  /* 359 — 브랜드 스크롤바.
+     표준(scrollbar-width/color)과 WebKit 의사요소를 **둘 다** 넣는다. Firefox는 표준만, Chrome·
+     Safari는 의사요소만 해석하므로 한쪽만으로는 절반의 브라우저가 기본 회색 스크롤바를 그린다.
+     scrollbar-color는 상속되므로 html에 한 번만 선언하면 내부 스크롤 영역까지 함께 따라온다.
+     의사요소는 상속되지 않아 선택자를 한정하지 않고 전역으로 둔다.
+
+     ⚠️ 폭을 0으로 만들거나 display:none으로 숨기지 않는다. 스크롤바는 "여기 더 있다"를 알리는
+     유일한 시각 단서라, 없애면 스크롤 가능 영역인지 알 수 없어진다. 얇게(thin/8px) + 배경과
+     가까운 색으로 은은하게 만들되 항상 보이게 둔다.
+     색은 tailwind.config.js에 이미 있는 토큰만 theme()로 가져온다 — 그 파일은 357이 독점하므로
+     새 색을 추가하지 않는다. */
+  html {
+    scrollbar-color: theme('colors.line-card') theme('colors.paper-white');
+  }
+
+  /* scrollbar-color는 상속되지만 **scrollbar-width는 상속되지 않는다.** html에만 걸면 Firefox에서
+     문서 스크롤바만 얇아지고 AppLayout 본문·목록 같은 내부 스크롤 영역은 기본 두께로 남는다. */
+  * {
+    scrollbar-width: thin;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background-color: theme('colors.paper-white');
+  }
+
+  ::-webkit-scrollbar-thumb {
+    /* 투명 테두리 + content-box 클립으로 트랙 안에 여백을 만든다. 실제로 칠해지는 폭은 10 - 3*2 =
+       4px이라 표준 쪽 `thin`과 두께 인상이 맞는다. border-radius만으로는 이 여백이 생기지 않는다. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+    background-color: theme('colors.line-card');
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.ink-gray-light');
+  }
+}
+
 /* Team-PinLog/mockup index.html .book-context-postit(라인 284)·hover(라인 289)를 그대로 옮긴 값이다.
    회전각은 --note-rotate 커스텀 프로퍼티로 인스턴스마다 다르게 주입한다(ContextStickyNote 참고). */
 .context-sticky-note {
@@ -16,4 +229,17 @@
   z-index: 20;
   transform: translateY(-7px) scale(1.05) rotate(0deg);
   box-shadow: 0 18px 32px rgba(4, 33, 66, 0.22);
+}
+
+/* 장소 기록 팝업(저장 화면.dc.html, S15P11A705-323/366)의 커스텀 스크롤바.
+   노트북 카드 안 스크롤 영역 전용이다. */
+.place-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.place-scroll::-webkit-scrollbar-thumb {
+  background: #cfcac1;
+  border-radius: 4px;
+}
+.place-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }

@@ -1,5 +1,6 @@
 import { useWithdrawConfirm } from '@/contexts/useWithdrawConfirm';
 import { useDeleteAccountMutation } from '@/features/auth/hooks/useDeleteAccountMutation';
+import { saveWithdrawalNotice } from '@/features/auth/lib/withdrawalNotice';
 
 /**
  * 회원 탈퇴 확인 다이얼로그.
@@ -27,6 +28,10 @@ export function WithdrawConfirmDialog() {
   const handleConfirm = () => {
     deleteAccountMutation.mutate(undefined, {
       onSuccess: ({ authorizationUrl }) => {
+        // 이동 직전에 "이 탭에서 탈퇴를 시작했다"를 남긴다. 탈퇴 성공에는 쿼리 파라미터가 없어
+        // (08 §3.6.2) 콜백만으로는 평범한 로그인과 구분되지 않는데, 시작한 사실은 여기서만 알 수
+        // 있다. 아래 이동으로 이 문서는 버려지므로 반드시 이동보다 먼저다. 근거: Jira S15P11A705-347.
+        saveWithdrawalNotice();
         // 라우터 이동이 아니라 전체 페이지 이동이어야 한다 — 목적지가 공급자 화면이다.
         // fetch·axios로 부르면 사용자에게 그 화면이 보이지 않는다(08 §3.6.1).
         window.location.href = authorizationUrl;

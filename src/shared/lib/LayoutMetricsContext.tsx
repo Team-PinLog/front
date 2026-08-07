@@ -9,9 +9,15 @@ import { createContext, useContext } from 'react';
  * 조정, 로고 크기 변경 등) 이 Context와 FeedList의 계산 로직은 그대로 두고 AppLayout/PageTitle
  * 내부 마크업만 바뀌면 된다 — 값이 아니라 "누가 무엇을 실측해서 보고하는지"라는 책임만 고정한다.
  * measure 이전(최초 렌더)에는 null이다 — 소비 측(FeedList)이 기존 하드코딩 상수를 폴백으로 쓴다.
+ *
+ * 330: navHeightPx → navChromeHeightPx. 이전 이름은 "상단 오프셋"을 뜻했지만, 네비게이션이
+ * sm에서 하단 탭바로 내려가면서 위치와 무관한 "네비게이션이 페이지 세로에서 차지하는 높이"가
+ * 됐다. md 이상은 좌측 사이드바라 세로를 전혀 먹지 않아 0으로 보고된다(탭바가 md:hidden이라
+ * ResizeObserver가 자연히 0을 준다 — 예전 헤더 xl:hidden에서 이미 검증된 메커니즘이다).
+ * 하단 탭바의 safe-area 인셋도 탭바 자신의 padding이라 이 실측값에 포함된다.
  */
 export interface LayoutMetrics {
-  navHeightPx: number | null;
+  navChromeHeightPx: number | null;
   titleHeightPx: number | null;
   reportTitleHeightPx: (heightPx: number) => void;
 }
@@ -19,7 +25,7 @@ export interface LayoutMetrics {
 const noop = () => {};
 
 export const LayoutMetricsContext = createContext<LayoutMetrics>({
-  navHeightPx: null,
+  navChromeHeightPx: null,
   titleHeightPx: null,
   reportTitleHeightPx: noop,
 });

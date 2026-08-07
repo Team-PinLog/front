@@ -20,7 +20,15 @@ export type CoverGenerationPhase =
   | 'idle'
   /** 후보 6종 생성 중 — 최상위 status가 terminal이면 끝. */
   | 'generating'
-  /** 화풍 선택 후 인쇄본 생성 중 — final이 terminal이어야 끝. */
+  /**
+   * 326: 화풍 선택이 접수되어 인쇄본 잡을 백그라운드로 넘긴 상태.
+   *
+   * 화면(모달) 쪽 흐름은 여기서 끝난다 — 인쇄본을 기다리지 않고 닫으므로 더 물을 것이 없다.
+   * 'idle'로 되돌리지 않는 이유: 후보 카드를 그대로 둔 채(고른 것을 보여주며) 폴링만 멈춰야
+   * 모달이 닫히기 직전 한 프레임 동안 화면이 스켈레톤으로 되돌아가지 않는다.
+   */
+  | 'accepted'
+  /** 화풍 선택 후 인쇄본 생성 중 — final이 terminal이어야 끝. 백그라운드 러너가 쓴다. */
   | 'finalizing';
 
 const TERMINAL_JOB_STATUSES: readonly CoverJobStatus[] = ['done', 'failed'];
@@ -34,12 +42,13 @@ export function isTerminalJobStatus(status: CoverJobStatus): boolean {
  *
  * state가 아직 없으면(첫 응답 전) 당연히 계속 폴링한다. idle이면 애초에 폴링을 걸지 않지만,
  * 호출부가 상태를 잘못 넘겨도 무한 폴링이 되지 않도록 여기서도 멈춘 것으로 본다.
+ * accepted도 마찬가지로 멈춘다 — 인쇄본은 다른 구독자(백그라운드 러너)가 본다.
  */
 export function isCoverPollingSettled(
   state: CoverRequestState | undefined,
   phase: CoverGenerationPhase,
 ): boolean {
-  if (phase === 'idle') {
+  if (phase === 'idle' || phase === 'accepted') {
     return true;
   }
   if (!state) {
@@ -76,6 +85,41 @@ export function isCoverPollingExpired(
     return false;
   }
   return now - startedAt >= timeoutMs;
+}
+
+/**
+ * 326: 저장해도 되는 인쇄본 URL. 저장할 것이 없으면 null이다.
+ *
+ * **`status: 'done'`이면서 url이 있을 때만 돌려준다.** 서버(core)는 coverImageUrl의 경로 패턴만
+ * 검사하고 파일의 실제 존재는 확인하지 않으므로(확인하려면 core가 이미지 서비스에 결합된다),
+ * 완성 전 URL을 보내면 깨진 표지가 그대로 저장된다.
+ *
+ * 백그라운드 저장으로 바뀌면서 이 판정이 더 중요해졌다 — 예전에는 사용자가 완성된 그림을 보고
+ * 완료를 눌렀지만, 이제는 아무도 보지 않는 상태에서 프론트 판정만으로 PATCH가 나간다.
+ */
+export function resolveSavableCoverUrl(final: CoverRequestState['final']): string | null {
+  if (final === null || final.status !== 'done') {
+    return null;
+  }
+  return final.url;
+}
+
+/**
+ * 326: 백그라운드 폴링을 연속 실패로 포기할 시점인가.
+ *
+ * 화면에 붙어 있던 폴링은 실패해도 사용자가 보고 다시 시도할 수 있었지만, 백그라운드 러너에는
+ * 볼 사람도 누를 사람도 없다. 그렇다고 한 번의 실패로 접으면 순간적인 네트워크 끊김에 표지를
+ * 잃는다 — 몇 번은 견디고, 그래도 안 되면 조용히 접는다(표지 없는 컬렉션은 정상 상태다).
+ *
+ * 성공 응답이 오면 TanStack Query가 실패 카운트를 0으로 되돌리므로 "연속" 실패가 된다.
+ */
+export const COVER_POLL_MAX_CONSECUTIVE_FAILURES = 3;
+
+export function hasCoverPollingGivenUp(
+  consecutiveFailureCount: number,
+  maxFailures: number = COVER_POLL_MAX_CONSECUTIVE_FAILURES,
+): boolean {
+  return consecutiveFailureCount >= maxFailures;
 }
 
 /**

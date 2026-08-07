@@ -13,12 +13,13 @@ import {
   COVER_POLL_TIMEOUT_MS,
   isCoverPollingExpired,
   isCoverPollingSettled,
-  isTerminalJobStatus,
   pickRandomReadyCandidate,
   resolveCoverCandidates,
   type CoverGenerationPhase,
 } from '../lib/coverGenerationPhase';
 import { collectCoverKeywords } from '../lib/coverKeywords';
+// 타입만 가져온다(런타임 순환 없음) — 인계 대상인 useCoverFinalization이 잡의 모양을 소유한다.
+import type { CoverFinalizationJob } from './useCoverFinalization';
 
 // ⭐ 표준 패턴: 컴포넌트는 이 Hook만 호출한다. API 함수·클라이언트를 직접 부르지 않는다.
 
@@ -57,16 +58,26 @@ export function coverRequestQueryKey(coverRequestId: string) {
   return ['coverRequest', coverRequestId] as const;
 }
 
+export interface UseCoverGenerationOptions {
+  /**
+   * 화풍 선택이 **접수된** 순간에 부른다(인쇄본 완성이 아니다).
+   *
+   * 326: 호출부는 여기서 인쇄본 잡을 백그라운드로 넘기고 화면을 닫는다. 인쇄본은 GPU 잡이라
+   * 수십 초에서 몇 분이 걸리는데, 그동안 모달이 사용자를 붙잡고 있을 이유가 없다
+   * (docs/api-contract.md § Collection 표지 이미지 — "생성 버튼을 표지 완성에 묶지 않는다").
+   *
+   * 인계에 필요한 것을 한 덩어리로 넘긴다 — 대상 컬렉션은 start()가 받았으므로 호출부가 그때의
+   * id를 다시 붙들고 있을 필요가 없다.
+   */
+  onStyleAccepted?: (job: CoverFinalizationJob) => void;
+}
+
 export interface CoverGeneration {
   phase: CoverGenerationPhase;
   /** 화면에 그릴 후보 카드(서버 응답 순서 그대로). */
   candidates: CoverCandidate[];
   /** 사용자가 고른 화풍. 선택 전에는 null. */
   selectedStyleId: string | null;
-  /** 인쇄본. 완료 전에는 null. */
-  final: CoverRequestState['final'];
-  /** 인쇄본까지 끝나 상위로 넘길 수 있는 상태인가. */
-  isSettled: boolean;
   /** 상한(5분)을 넘겨 폴링을 그만둔 상태. 실패가 아니라 "그만 묻기로 했다"는 뜻이다. */
   isTimedOut: boolean;
   /** 사용자가 "알아서 골라주기"를 눌러, 완성되는 대로 무작위 한 장이 선택되는 중. */
@@ -83,28 +94,44 @@ export interface CoverGeneration {
 }
 
 /**
- * 317: Collection 표지 생성 흐름 전체(생성 → 폴링 → 화풍 선택 → 인쇄본 폴링)를 하나로 묶는다.
+ * 317: Collection 표지의 **화면 쪽** 흐름(생성 → 후보 폴링 → 화풍 선택 접수)을 하나로 묶는다.
  *
  * **폴링을 setInterval이 아니라 TanStack Query의 refetchInterval로 하는 이유**: 언마운트 시 타이머
  * 정리와 중복 요청 방지를 직접 짜지 않아도 된다. front#99가 "컴포넌트 unmount 시 폴링 timer를 반드시
  * 정리"하라고 못박은 부분인데, setInterval + useEffect로 하면 정리 누락·의존성 배열 실수로 타이머가
  * 남기 쉽다. Query는 구독자가 사라지면 알아서 멈춘다.
  *
+ * 326: **인쇄본(final) 폴링과 저장은 여기서 하지 않는다.** 그 두 가지는 화면 수명과 무관해야 하기
+ * 때문이다 — 구독자가 사라지면 폴링이 멈춘다는 바로 그 성질 때문에, 모달 안에서 인쇄본을 기다리면
+ * "모달을 닫지 말고 기다려라"가 되어버린다. 선택이 접수되면 onStyleAccepted로 coverRequestId를
+ * 넘기고 이 훅의 역할은 끝난다. 인쇄본은 라우터 바깥의 CoverJobProvider가 이어받는다
+ * (hooks/useCoverFinalization.ts).
+ *
  * 종료 조건은 단계마다 다르다 — lib/coverGenerationPhase.ts의 isCoverPollingSettled 주석 참고.
  */
-export function useCoverGeneration(): CoverGeneration {
+export function useCoverGeneration(options: UseCoverGenerationOptions = {}): CoverGeneration {
   const [coverRequestId, setCoverRequestId] = useState<string | null>(null);
   const [phase, setPhase] = useState<CoverGenerationPhase>('idle');
   const [initialCandidates, setInitialCandidates] = useState<CoverCandidate[]>([]);
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
-  // 폴링 상한의 기준 시각. 화풍 선택으로 새 잡이 시작되면 다시 잡는다 — 후보 생성에 3분,
-  // 인쇄본에 3분이 걸리는 것은 각각 정상인데 합쳐서 재면 정상 흐름이 중간에 끊긴다.
+  // 후보 생성 폴링의 상한 기준 시각. '다시 그리기'로 새 요청을 시작하면 다시 잡는다.
+  // 인쇄본 쪽 상한은 여기서 재지 않는다 — 백그라운드 러너가 인계 시점부터 따로 잰다.
   const [pollStartedAt, setPollStartedAt] = useState<number | null>(null);
   const [isTimedOut, setIsTimedOut] = useState(false);
   const [isAutoPicking, setIsAutoPicking] = useState(false);
   // 자동 선택은 딱 한 번만 쏜다. 폴링이 1초마다 새 데이터를 주므로 effect가 반복 실행되는데,
   // mutate가 접수돼 phase가 바뀌기까지의 짧은 틈에 두 번째 요청이 나가면 인쇄본 잡이 두 개 생긴다.
   const autoPickFiredRef = useRef(false);
+  // 표지를 붙일 컬렉션. 화면에 그릴 일이 없어 state가 아니라 ref다 — 선택이 접수될 때 인계할
+  // 잡을 조립하는 데만 쓴다.
+  const targetCollectionIdRef = useRef<number | null>(null);
+  // 콜백을 ref로 들고 부르는 이유: 선택 접수 시점의 최신 콜백이어야 한다. 뮤테이션 옵션에 그대로
+  // 넣으면 useMutation이 처음 받은 클로저를 붙들어, 호출부가 그 사이 갱신한 값(예: 방금 만든
+  // 컬렉션 id)을 못 보고 옛 값으로 인쇄본 잡을 등록할 수 있다.
+  const onStyleAcceptedRef = useRef(options.onStyleAccepted);
+  useEffect(() => {
+    onStyleAcceptedRef.current = options.onStyleAccepted;
+  });
 
   // 상한 도달을 렌더 중 Date.now()로 판정하면 안 된다 — 렌더가 순수하지 않아지고, 무엇보다 5분이
   // 지나도 리렌더를 유발할 것이 없어 화면이 그대로 멈춰 있는다. 타이머로 한 번만 깨워 상태를 뒤집는다.
@@ -170,20 +197,23 @@ export function useCoverGeneration(): CoverGeneration {
     mutationFn: (styleId: string) => selectCoverStyle(coverRequestId as string, styleId),
     onSuccess: (data) => {
       setSelectedStyleId(data.styleId);
-      // 선택 직후 서버 상태는 아직 이전 done일 수 있다 — phase를 먼저 바꿔야 그 응답을 보고
-      // 폴링을 멈추지 않는다(isCoverPollingSettled는 finalizing에서 final만 본다).
-      setPhase('finalizing');
-      // 인쇄본은 새 잡이다 — 상한도 여기서 다시 잡는다.
-      restartPollTimeout();
+      // 326: 여기서 이 훅의 일은 끝난다. 후보 폴링을 멈추고(accepted), 인쇄본은 호출부가
+      // 백그라운드로 넘긴다. 상한 타이머도 더 잡지 않는다 — 기다릴 것이 없다.
+      setPhase('accepted');
+      setPollStartedAt(null);
+      const collectionId = targetCollectionIdRef.current;
+      if (collectionId !== null) {
+        onStyleAcceptedRef.current?.({ coverRequestId: data.coverRequestId, collectionId });
+      }
     },
   });
 
   /**
-   * "알아서 골라주기": 완성된 후보가 나오는 대로 무작위 한 장을 골라 인쇄본까지 진행한다.
+   * "알아서 골라주기": 완성된 후보가 나오는 대로 무작위 한 장을 골라 인쇄본 생성을 요청한다.
    *
    * 누른 시점에 아직 아무것도 안 그려졌을 수 있어(GPU 큐) 즉시 고르지 못한다 — 의사만 기록해 두고
    * 폴링으로 첫 완성본이 도착하면 그때 고른다.
-   * 그 사이 사용자가 직접 고르면 phase가 finalizing이 되어 이 effect는 더 이상 개입하지 않는다.
+   * 그 사이 사용자가 직접 고르면 phase가 accepted가 되어 이 effect는 더 이상 개입하지 않는다.
    */
   useEffect(() => {
     if (!isAutoPicking || phase !== 'generating' || autoPickFiredRef.current) {
@@ -210,12 +240,24 @@ export function useCoverGeneration(): CoverGeneration {
     setIsTimedOut(false);
     setIsAutoPicking(false);
     autoPickFiredRef.current = false;
+    targetCollectionIdRef.current = null;
     createMutation.reset();
     selectMutation.reset();
   }, [createMutation, selectMutation]);
 
+  /**
+   * 표지 요청을 시작한다. 326부터는 **'다시 그리기'(후보 6종을 새로 받기)도 같은 입구**를 쓴다 —
+   * 서버에 "다시 그려라"가 따로 없고 새 coverRequest를 만드는 것이 곧 다시 그리기다.
+   *
+   * 그래서 이전 요청에 걸어둔 선택 의사(직접 고른 화풍·"알아서 골라주기")를 여기서 지운다.
+   * 남겨두면 새 후보가 도착하는 즉시 옛 의사가 발동해, 사용자가 새 그림을 보기도 전에 골라진다.
+   */
   const start = useCallback(
     (payload: StartCoverGenerationPayload) => {
+      setSelectedStyleId(null);
+      setIsAutoPicking(false);
+      autoPickFiredRef.current = false;
+      targetCollectionIdRef.current = payload.collectionId;
       createMutation.mutate(payload);
     },
     [createMutation],
@@ -223,25 +265,22 @@ export function useCoverGeneration(): CoverGeneration {
 
   const select = useCallback(
     (styleId: string) => {
-      if (coverRequestId === null || selectMutation.isPending) {
+      // accepted 이후의 클릭은 무시한다 — 이미 인쇄본 잡이 등록됐고, 한 번 더 보내면 같은
+      // coverRequest에 GPU 잡이 하나 더 생긴다.
+      if (coverRequestId === null || phase === 'accepted' || selectMutation.isPending) {
         return;
       }
       selectMutation.mutate(styleId);
     },
-    [coverRequestId, selectMutation],
+    [coverRequestId, phase, selectMutation],
   );
-
-  const final = stateQuery.data?.final ?? null;
-  const isSettled = phase === 'finalizing' && final !== null && isTerminalJobStatus(final.status);
 
   return {
     phase,
     candidates: resolveCoverCandidates(initialCandidates, stateQuery.data),
     selectedStyleId,
-    final,
-    isSettled,
-    // 끝나지 않은 채 상한을 넘긴 경우만 타임아웃이다 — 이미 끝났으면 상한을 넘겨도 정상 완료다.
-    isTimedOut: isTimedOut && !isSettled,
+    // 선택이 접수된 뒤에는 기다리는 것이 없으므로 상한 안내를 띄우지 않는다.
+    isTimedOut: isTimedOut && phase === 'generating',
     isAutoPicking,
     // 셋 중 먼저 난 실패 하나만 보여준다 — 폴링 실패는 이미 끝난 생성 요청의 성공을 덮지 않는다.
     error: createMutation.error ?? selectMutation.error ?? stateQuery.error ?? null,

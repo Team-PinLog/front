@@ -28,42 +28,46 @@ const COVER_SKELETON_COUNT = 6;
 
 export interface CoverStylePickerProps {
   cover: CoverGeneration;
-  /** 생성 요청 자체가 실패했을 때 같은 컬렉션으로 다시 시도한다. */
-  onRetry: () => void;
+  /**
+   * 326: 후보 6종을 처음부터 새로 받는다(새 coverRequest).
+   *
+   * 원래는 요청 자체가 실패했을 때만 나오는 "다시 시도"였는데, 6종이 다 마음에 들지 않는 것과
+   * 6종을 아예 못 받은 것은 사용자에게 같은 요구("다른 그림을 보여줘")다. 서버에도 "다시 그려라"가
+   * 따로 없고 새 요청을 만드는 것이 곧 다시 그리기라, 둘을 하나로 합쳤다.
+   */
+  onRedraw: () => void;
 }
 
-export function CoverStylePicker({ cover, onRetry }: CoverStylePickerProps) {
-  const isFinalizing = cover.phase === 'finalizing';
+export function CoverStylePicker({ cover, onRedraw }: CoverStylePickerProps) {
+  const isAccepted = cover.phase === 'accepted';
   const hasCandidates = cover.candidates.length > 0;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <p className="text-xs font-bold text-pin-navy">표지 화풍을 골라 주세요</p>
-      <p className="mt-1 text-[11px] text-ink-gray-light">
-        {isFinalizing
-          ? '고른 화풍으로 표지를 완성하고 있어요. 잠시만 기다려 주세요.'
-          : cover.isAutoPicking
-            ? '완성되는 대로 하나를 골라 표지로 씁니다.'
-            : '그림이 완성되는 대로 하나씩 나타나요. 마음에 드는 화풍을 골라 주세요.'}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold text-pin-navy">표지 화풍을 골라 주세요</p>
+          <p className="mt-1 text-[11px] text-ink-gray-light">
+            {cover.isAutoPicking
+              ? '완성되는 대로 하나를 골라 표지로 씁니다.'
+              : '그림이 완성되는 대로 하나씩 나타나요. 마음에 드는 화풍을 골라 주세요.'}
+          </p>
+        </div>
+        {/* 그림을 다 받은 뒤에도 누를 수 있다 — 6종이 전부 마음에 들지 않을 수 있다.
+            고르는 중이거나 이미 접수된 뒤에는 막는다(새 후보를 받아도 쓸 데가 없다). */}
+        <button
+          type="button"
+          onClick={onRedraw}
+          disabled={cover.isStarting || cover.isSelecting || cover.isAutoPicking || isAccepted}
+          className="h-8 flex-none rounded-lg border border-pin-navy/15 px-3 text-xs font-bold text-pin-navy disabled:opacity-40"
+        >
+          {cover.isStarting ? '요청 중…' : '다시 그리기'}
+        </button>
+      </div>
 
       {/* 요청 실패(네트워크·404·422·5xx)와 GPU 작업 실패(카드의 status: failed)는 다른 것이라
           메시지를 섞지 않는다 — 카드별 실패는 카드 안에 따로 표시된다. */}
-      {cover.error && (
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <p className="text-xs text-red-600">{cover.error.message}</p>
-          {!hasCandidates && (
-            <button
-              type="button"
-              onClick={onRetry}
-              disabled={cover.isStarting}
-              className="h-8 flex-none rounded-lg border border-pin-navy/15 px-3 text-xs font-bold text-pin-navy disabled:opacity-40"
-            >
-              다시 시도
-            </button>
-          )}
-        </div>
-      )}
+      {cover.error && <p className="mt-2 text-xs text-red-600">{cover.error.message}</p>}
 
       <ul className="mt-3 grid grid-cols-3 gap-2">
         {hasCandidates
@@ -72,12 +76,9 @@ export function CoverStylePicker({ cover, onRetry }: CoverStylePickerProps) {
                 <CoverStyleCard
                   candidate={candidate}
                   isSelected={cover.selectedStyleId === candidate.styleId}
-                  // 인쇄본 생성이 시작되면 선택을 바꿀 수 없다 — 이미 GPU 잡이 돌고 있다.
-                  // 다만 그 인쇄본이 실패했으면 다시 열어준다 — 안 그러면 실패 문구만 보이고
-                  // 다른 화풍으로 다시 시도할 길이 없는 막다른 상태가 된다.
-                  isDisabled={
-                    (isFinalizing && cover.final?.status !== 'failed') || cover.isSelecting
-                  }
+                  // 선택이 접수되면 바꿀 수 없다 — 이미 인쇄본 GPU 잡이 돌고 있고, 모달도 곧
+                  // 닫힌다. 그 찰나에 다른 카드가 눌리면 잡이 하나 더 생긴다.
+                  isDisabled={isAccepted || cover.isSelecting}
                   onSelect={() => cover.select(candidate.styleId)}
                 />
               </li>
@@ -88,12 +89,6 @@ export function CoverStylePicker({ cover, onRetry }: CoverStylePickerProps) {
               </li>
             ))}
       </ul>
-
-      {cover.final?.status === 'failed' && (
-        <p className="mt-2 text-xs text-red-600">
-          표지를 완성하지 못했어요. 다른 화풍으로 다시 시도해 주세요.
-        </p>
-      )}
 
       {/* 318: 상한(5분)을 넘겨 폴링을 그만둔 상태. 실패로 단정하지 않는다 — 서버 작업은 계속
           돌고 있을 수 있고 우리가 그만 묻는 것뿐이다. */}
