@@ -210,6 +210,7 @@ Record·Context 생성 및 수정 응답은 Keyword·Embedding 생성을 기다�
 | Method | Endpoint | 설명 |
 |---|---|---|
 | GET | `/records/map` | 내 활성 Record 기반 지도 마커 조회 |
+| GET | `/records/map/keywords` | 지도에 보이는 범위의 내 키워드 상위 5건 (검색창 밑 추천 칩) |
 
 장소 검색은 서버 API가 아니다. 프론트가 카카오 로컬 API를 직접 호출하고, Record 생성 시 카카오 응답의 장소 데이터를 서버에 전달한다(5.1).
 
@@ -221,6 +222,7 @@ Record·Context 생성 및 수정 응답은 Keyword·Embedding 생성을 기다�
 | GET | `/records/{recordId}` | 내 Record 상세 조회 |
 | GET | `/records/by-place` | kakaoPlaceId로 이 장소의 내 활성 Record 조회 |
 | GET | `/records/recent` | 최근 7일 안에 만든 내 Record 목록 (홈 화면 최근 기록) |
+| GET | `/records/{recordId}/collections` | 이 Record가 담긴 내 Collection 목록 (Record 상세 화면) |
 | DELETE | `/records/{recordId}` | Record 소프트 삭제. 마지막 Record인 Collection이 있으면 409 거절 |
 | DELETE | `/records/{recordId}/force` | 안내 확인 후 Record 강제 삭제. 연쇄 Collection 삭제 포함 |
 | POST | `/records/{recordId}/contexts` | Context 추가 |
@@ -516,6 +518,67 @@ WHERE context_id = ?;
 - 활성 `social_account`가 사라지므로, 같은 소셜 계정으로 다시 로그인하면 **신규 회원으로 가입**된다(3.2). 과거 데이터는 복구되지 않는다.
 - 연결이 해제됐으므로 그 재로그인은 **공급자 동의 절차를 다시 거친다.** 이것이 3.6.3의 순서가 보장하는 결과다.
 
+## 3.7 나의 활동 기록 집계
+
+```http
+GET /api/core/v1/me/activity
+```
+
+내 기록을 월별·지역별로 집계한다. 활동 기록 화면 진입 시 1회 호출한다.
+
+**기간은 전체 누적이다.** 기간 파라미터를 두지 않는다 — 화면이 "지금까지"를 보여주는 자리라 범위를 고를 여지가 없다.
+
+```json
+{
+  "success": true,
+  "data": {
+    "totals": {
+      "placeCount": 24,
+      "districtCount": 7,
+      "firstRecordedOn": "2026-01-14"
+    },
+    "months": [
+      { "month": "2026-01", "recordCount": 2 },
+      { "month": "2026-02", "recordCount": 0 },
+      { "month": "2026-03", "recordCount": 5 }
+    ],
+    "areas": [
+      { "district": "마포구", "recordCount": 8 },
+      { "district": "성동구", "recordCount": 5 }
+    ],
+    "counts": {
+      "contextCount": 31,
+      "collectionCount": 5,
+      "recordedMonthCount": 7
+    },
+    "highlights": {
+      "firstPlaceName": "성수 앤트러사이트",
+      "lastPlaceName": "연남 커피리브레",
+      "busiestDay": { "date": "2026-05-17", "recordCount": 3 }
+    }
+  }
+}
+```
+
+**날짜 경계는 전부 KST다.** `record.created_at`은 `TIMESTAMPTZ`이므로 UTC로 끊으면 KST 자정 직후에 남긴 기록이 전날에 붙는다. 월·일 집계는 모두 KST 벽시계 기준으로 계산한다.
+
+| 필드 | 의미 |
+|---|---|
+| `totals.placeCount` | 기록한 장소 수. 활성 Record 수와 같다([06 §4.1](06_데이터모델_및_무결성.md) 회원·장소당 활성 Record 1개) |
+| `totals.districtCount` | 발자국이 닿은 시·구 수 |
+| `totals.firstRecordedOn` | 첫 기록일(KST). 기록이 없으면 `null` |
+| `months` | 첫 기록이 있는 달부터 **이번 달까지** 빠짐없이 이어진다. 기록이 없는 달은 `recordCount: 0`으로 채워진다 |
+| `areas` | 건수 내림차순 **상위 5곳**. 동점은 지역명 오름차순으로 끊는다 |
+| `counts.recordedMonthCount` | 기록이 **실제로 있는** 달의 수. `months`의 길이와 다르다 — 그쪽은 빈 달까지 채운 구간 길이다 |
+| `highlights.busiestDay` | 하루에 가장 많이 기록한 날(KST). 동점이면 더 최근 날짜다 |
+
+- 카운트는 모두 활성 데이터 기준 집계다. 소프트 삭제된 Record·Context·Collection은 빠진다.
+- **`areas`의 시·구는 `place.address` 문자열에서 뽑는다.** 행정구역 컬럼이 없어 주소를 공백으로 끊은 두 번째 조각을 쓰므로, 도로명·지번이 섞이거나 형식을 벗어난 주소에서는 정확하지 않다. 조각을 뽑을 수 없는 주소는 `areas`와 `districtCount` 양쪽에서 제외된다.
+- **기록이 하나도 없으면 `200`이다.** `months`·`areas`는 빈 배열, 카운트는 `0`, `firstRecordedOn`과 `highlights`의 세 값은 `null`이다. 404가 아니다.
+- AI 키워드는 담지 않는다. 키워드 집계는 4.3(지도 범위의 내 키워드 상위 5건)을 쓴다.
+- `memberId`는 반환하지 않는다(1.1).
+- 3.5(마이페이지 요약)를 대체하지 않는다. 그쪽은 계정 정보와 카운트 넷이고 이쪽은 집계라, 호출 시점과 응답 크기가 다르다.
+
 ---
 
 # 4. Place·지도 상세
@@ -543,11 +606,16 @@ Query:
 | `neLat` | X | 북동 위도 |
 | `neLng` | X | 북동 경도 |
 | `keyword` | X | 장소명·주소 부분 일치 검색어 |
+| `keywordId` | X | AI 키워드 id. 이 키워드가 붙은 Record만 남긴다 |
+
+**`keyword`와 `keywordId`는 다른 것이다.** `keyword`는 사용자가 검색창에 친 **글자**로 장소명·주소를 찾고, `keywordId`는 4.3이 내려준 **AI 키워드**로 Record를 거른다. 이름이 비슷하니 프론트에서 섞어 쓰지 않도록 주의한다.
 
 - bbox 파라미터 없이 호출하면(최초 진입) 내 **전체** 마커를 반환한다.
 - bbox를 주면 해당 범위의 마커만 반환한다(지도 이동 시).
 - `keyword`를 주면 장소명(`name`) **또는** 주소(`address`)에 검색어가 부분 일치(대소문자 무시)하는 마커만 반환한다. 생략하거나 빈 문자열·공백뿐이면 필터하지 않는다. `%`·`_`는 와일드카드가 아니라 문자 그대로 검색된다.
-- `keyword`는 bbox와 독립적으로 조합할 수 있다(AND). bbox의 "모두 주거나 모두 생략" 규칙에 `keyword`는 포함되지 않는다.
+- `keywordId`를 주면 그 키워드가 붙은 Record의 마커만 반환한다. 값은 4.3의 `items[].keywordId`를 그대로 넘긴다.
+- 존재하지 않거나 비활성·비공개 처리된 `keywordId`는 **400이 아니라 빈 `items`의 200**이다. 프리셋이 꺼지는 것은 사용자 잘못이 아니므로 오류로 다루지 않는다.
+- `keyword`·`keywordId`는 bbox와 독립적으로 조합할 수 있다(전부 AND). bbox의 "모두 주거나 모두 생략" 규칙에 이 둘은 포함되지 않는다.
 - 응답은 현재 로그인 사용자의 활성 Record와 연결된 Place만 포함한다.
 - `items`는 장소명 오름차순(동명이면 `recordId` 오름차순)으로 정렬된다.
 
@@ -567,7 +635,59 @@ Query:
 - 결과가 없으면 `bounds: null`, 1개면 해당 좌표의 점 사각형(sw = ne)이다.
 - `latestCollectionId`는 그 Record가 **가장 최근에 담긴** Collection의 id다(마커 색상 구분용). "가장 최근"은 컬렉션 내부 정렬과 같은 담은 시각 기준이며, 어느 Collection에도 담기지 않은 Record는 `null`이다. 컬렉션에서 뺀(삭제된) 연결은 판단에서 제외된다.
 
-## 4.3 발견한 Place 저장
+## 4.3 지도 범위의 내 키워드 상위 5건
+
+```http
+GET /api/core/v1/records/map/keywords?swLat={swLat}&swLng={swLng}&neLat={neLat}&neLng={neLng}
+```
+
+검색창 밑에 띄우는 추천 칩이다. 누르면 그 `keywordId`로 4.2를 다시 호출해 지도를 거른다.
+
+Query:
+
+| 이름 | 필수 | 설명 |
+|---|---:|---|
+| `swLat` | X | 남서 위도 |
+| `swLng` | X | 남서 경도 |
+| `neLat` | X | 북동 위도 |
+| `neLng` | X | 북동 경도 |
+
+- bbox 규칙은 4.2와 같다 — **넷 다 주거나 모두 생략**한다. 일부만 주면 400이다.
+- 개수는 서버가 5로 고정한다. 개수 파라미터가 없다.
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      { "keywordId": 12, "displayName": "카페", "recordCount": 12 },
+      { "keywordId": 7, "displayName": "산책", "recordCount": 5 }
+    ]
+  }
+}
+```
+
+- `recordCount`는 **Record 수**다. 같은 키워드가 한 Record의 Context 여러 개에 붙어 있어도 1로 센다 — 지도 핀 하나가 Record 하나이므로 칩의 숫자와 핀 개수가 같은 규칙으로 세어진다.
+- 집계 범위는 **전체 기간 × bbox 안**이다. 기간 파라미터는 없다.
+- 정렬은 `recordCount` 내림차순이고, 같으면 `keywordId` 오름차순이다.
+- 대상이 5개 미만이면 있는 만큼, 없으면 `items: []`인 200이다. 404가 아니다.
+- AI 판정이 끝나지 않은 Context는 집계에서 빠진다. 갓 만든 Record는 칩에 반영되기까지 시간이 걸린다.
+
+### 프론트 구현 규약
+
+**칩 계산은 bbox만 반영한다.** 검색창에 친 `keyword`도, 지금 적용 중인 `keywordId`도 반영하지 않는다. 적용 중인 필터를 반영하면 그 키워드를 뺀 나머지 칩이 전부 0이 되어 사라지고, 사용자가 다른 칩으로 갈아탈 수 없게 된다.
+
+**칩 숫자와 화면의 핀 수는 같아야 한다.** 같은 bbox에서 `keywordId`로 거른 4.2의 `items` 개수와 이 응답의 `recordCount`는 일치한다. 어긋나 보이면 두 요청의 bbox가 다른 것이다.
+
+**두 요청의 bbox 동기화는 프론트 책임이다.** 4.2와 4.3은 별도 호출이라 완료 순서에 보장이 없다. 빠르게 패닝하면 칩은 bbox A의 결과, 마커는 bbox B의 결과가 화면에 함께 뜰 수 있다. 요청마다 토큰을 들고 **늦게 도착한 응답을 버려야 한다.**
+
+호출 횟수를 줄이는 세 가지를 함께 적용한다.
+
+- **디바운스** — 지도 idle 후 약 300ms. 드래그 중 쏟아지는 이벤트를 1회로 접는다.
+- **bbox 양자화** — 뷰포트를 격자에 맞춰 반올림해서 보낸다. 미세한 팬이 같은 요청이 되어 재호출이 사라지고 직전 응답을 그대로 재사용할 수 있다.
+- **줌 임계** — 전국이 보이는 줌에서는 호출하지 않는다. 그 범위의 칩은 의미가 없다.
+
+## 4.4 발견한 Place 저장
 
 Feed나 공개 Collection에서 발견한 장소의 저장도 별도 API 없이 Record 생성(5.1)을 사용한다. 공개 응답에 포함된 장소 데이터를 그대로 전달한다.
 
@@ -858,6 +978,51 @@ Query:
 - `keywords`는 소유자 범위(`PUBLIC` + `PRIVATE_ONLY`) 집계이며, 없으면 `null`이 아니라 빈 배열이다. **AI 판정 전과 "키워드 0건"을 구분하지 않는다** — 6.1의 `keywordStatus`를 여기서는 제공하지 않으므로, 갓 만든 Record는 화면에 키워드 없이 그려진다.
 - 7일 안에 Record가 없으면 `items: []`인 200이다. 404가 아니다.
 - 페이징 도중 7일 경계는 요청마다 다시 계산된다. 커서를 오래 쥐고 있다가 다음 페이지를 부르면 경계에 걸친 항목이 빠질 수 있으나, 최신순이라 **이미 받은 항목이 다시 오지는 않는다.**
+
+## 5.10 Record가 담긴 내 Collection 목록
+
+```http
+GET /api/core/v1/records/{recordId}/collections?cursor={cursor}&size=20&sort=CREATED_AT_ASC
+```
+
+Record 상세 화면에서 "이 기록이 담긴 내 책" 목록을 Collection 카드로 보여줄 때 쓴다. **본인 소유 Record만** 대상이다.
+
+Query:
+
+| 이름 | 필수 | 설명 |
+|---|---:|---|
+| `cursor` | X | 1.4의 불투명 커서. 없으면 첫 페이지 |
+| `size` | X | 1.4의 공통 규칙. 기본 20, 서버 방어 상한 100 |
+| `sort` | X | `CREATED_AT_ASC`(기본, 오래된순) 또는 `CREATED_AT_DESC`. 7.2와 같은 규칙 |
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "collectionId": 41,
+        "title": "비 오는 날 카페",
+        "recordCount": 7,
+        "keywords": ["조용한", "디저트"],
+        "coverImageUrl": "/image/files/3f2a9c1e-8d4b-4f6a-9c0e-5b7d2e8a1c44_image_0.webp",
+        "publishedAt": "2026-08-01T02:11:07Z",
+        "createdAt": "2026-08-01T02:11:07Z"
+      }
+    ],
+    "nextCursor": "MjAyNi0wOC0wMVQwMjoxMTowN1osNDE",
+    "hasNext": true
+  }
+}
+```
+
+- **정렬 기준은 Collection의 생성 시각이다**(7.2와 같음). 그 Record를 담은 시각이 아니다 — 사용자가 책장에서 보던 순서가 여기서도 유지된다. 같은 시각은 `collectionId`로 끊는다.
+- 어느 Collection에도 담기지 않은 Record는 `items: []`인 200이다. 404가 아니다.
+- 없는 `recordId`와 **타인의 `recordId`는 모두 404**다. 존재 여부를 응답으로 구분하지 않는다(5.2와 같은 규약).
+- `keywords`는 Collection 단위 `PUBLIC` 집계이며 없으면 `null`이 아니라 빈 배열이다. 내 목록이지만 **남이 보는 표지와 같은 글자**를 싣는다. AI 판정 전과 "키워드 0건"을 구분하지 않는다(10.1과 같은 계약).
+- `coverImageUrl`은 `null`이어도 필드를 생략하지 않는다(7.7).
+- **목록 길이에 상한이 없다.** 한 Record가 담길 수 있는 Collection 수에는 제한이 없으므로(1.9의 상한은 요청 1회의 배열 크기다) 프론트는 커서를 끝까지 따라갈 수 있어야 한다.
+- 이 목록은 추천이 아니라 내 데이터 조회다. `requestId`·`position`이 없으며 **Feed 이벤트(10.2)를 보내지 않는다.**
 
 ---
 
@@ -1678,6 +1843,22 @@ type RecentRecordCard = {
 ```
 
 5.9 전용이다. `RecordDetail`(11.1)과 달리 `contexts` 필드 자체가 없다 — 본문을 담을 자리를 두지 않는다.
+
+## 11.6 `RecordCollectionCard`
+
+```typescript
+type RecordCollectionCard = {
+  collectionId: number;
+  title: string;
+  recordCount: number;
+  keywords: string[];          // PUBLIC 집계. 없으면 [] — null이 아니다
+  coverImageUrl: string | null;
+  publishedAt: string;
+  createdAt: string;
+};
+```
+
+5.10 전용이다. `CollectionDetail`(11.3)과 달리 `records`가 없고, Feed 항목(10.1)과 달리 `position`이 없다 — 목록 카드에 필요한 것만 싣는다.
 
 ---
 

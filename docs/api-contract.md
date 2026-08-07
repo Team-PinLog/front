@@ -75,6 +75,10 @@
   - 생략하거나 빈 문자열·공백뿐이면 필터하지 않는다.
   - bbox와 **독립적으로 조합**된다(AND). bbox의 "모두 주거나 모두 생략" 규칙에 `keyword`는 포함되지 않는다 — `keyword`만 단독으로 보낼 수 있다.
   - `items`는 장소명 오름차순(동명이면 `recordId` 오름차순)으로 정렬돼 온다. 프론트는 재정렬하지 않는다.
+  - **`keywordId`(선택) 파라미터가 추가됐다** — 아래 "지도 키워드 칩" 절의 `items[].keywordId`를 **그대로** 넘겨 그 AI 키워드가 붙은 Record의 마커만 남긴다. <!-- 근거: 08_API_명세.md §4.2 -->
+    - ⚠️ **`keyword`(글자 검색)와 `keywordId`(AI 키워드 필터)는 다른 것이다.** 전자는 장소명·주소 부분 일치, 후자는 4.3이 내려준 키워드 id다. 이름이 비슷하니 섞어 쓰지 않는다.
+    - 존재하지 않거나 비활성·비공개 처리된 `keywordId`는 **400이 아니라 빈 `items`의 200**이다. 프리셋이 꺼지는 것은 사용자 잘못이 아니므로 오류로 다루지 않는다.
+    - `keyword`·`keywordId`·bbox는 전부 독립 조합(AND)이며, bbox의 "모두 주거나 모두 생략" 규칙에 이 둘은 포함되지 않는다.
   - **컬렉션 만들기의 장소 선택 화면도 별도 API 없이 이 엔드포인트를 목록으로 재사용한다**(`08_API_명세` 13.11).
 - `POST /search/records`(AI 자연어 검색, Record 대상)는 위 둘과 또 별개다 — 백엔드 API이며 카카오와 무관하고, 장소명이 아니라 Context 맥락을 찾는다.
 - **카카오 키**: JS 키·REST 키 모두 프론트 `.env`에 저장한다(`.gitignore`로 커밋 제외). **보안은 `.gitignore`가 아니라 카카오 개발자 콘솔의 도메인(플랫폼) 등록에 의존한다** — 등록되지 않은 도메인에서는 키가 유출돼도 호출이 거부된다.
@@ -134,6 +138,20 @@
 - 프론트 처리: `latestCollectionId` 기반 해시로 마커 asset(색) 결정, `null`이면 별도 고정 asset(미분류) 적용. 구현은 `getRecordMarkerAsset`(S15P11A705-307).
 - **back 구현은 아직 머지되지 않았다** — back PR #191(`S15P11A705-308`)이 2026-08-04 기준 **OPEN**이다. 그래서 프론트 Zod 스키마는 이 필드를 **optional로 받는다**(필드가 없거나 명시적 `null`이면 동일하게 "미분류"로 취급). 현재 지도 마커가 전부 미분류 색으로 보이는 것은 **정상**이며, #191이 머지·배포된 뒤에야 색이 갈린다. 그 시점에 optional 제거를 검토한다.
 
+### [확정] 지도 키워드 칩 (`GET /records/map/keywords`)
+
+<!-- 근거: 08_API_명세.md §4.3, docs PR #52 -->
+
+- **목적**: 현재 지도 범위(bbox) 안 내 기록의 AI 키워드 상위 5건을 칩으로 내려준다. 칩을 누르면 그 `keywordId`로 `GET /records/map`을 다시 호출해 지도를 거른다.
+- 요청은 bbox 4개뿐이며 규칙은 `GET /records/map`과 같다 — **넷 다 주거나 모두 생략**, 일부만 주면 400. 개수는 서버가 5로 고정한다(파라미터 없음).
+- 응답 `items[]`: `{ keywordId, displayName, recordCount }`. 정렬은 `recordCount` 내림차순, 동률이면 `keywordId` 오름차순 — 프론트는 재정렬하지 않는다.
+- `recordCount`는 **Record 수**다(같은 키워드가 한 Record의 Context 여러 개에 붙어도 1). 핀 하나 = Record 하나와 같은 규칙이라 칩 숫자와 필터 후 핀 수가 일치한다.
+- 5개 미만이면 있는 만큼, 없으면 `items: []`인 200이다. 404가 아니다. AI 판정이 끝나지 않은 Context는 집계에서 빠진다 — 갓 만든 Record는 칩 반영이 늦는 것이 정상이다.
+- **프론트 구현 규약**(원본 §4.3이 명시, 구현 착오 방지용):
+  - **칩 계산은 bbox만 반영한다.** 검색창의 `keyword`도, 적용 중인 `keywordId`도 반영하지 않는다 — 적용 중 필터를 반영하면 나머지 칩이 전부 0이 되어 다른 칩으로 갈아탈 수 없다.
+  - **4.2(마커)와 4.3(칩)의 bbox 동기화는 프론트 책임이다.** 두 호출은 완료 순서 보장이 없으므로 요청마다 토큰을 들고 **늦게 도착한 응답을 버린다**.
+  - 호출 절감 3종을 함께 적용한다: 지도 idle 후 **디바운스 약 300ms** · **bbox 양자화**(격자 반올림으로 동일 요청화) · **줌 임계**(전국 뷰에서는 호출하지 않음).
+
 ### 회원 탈퇴 — 2단계
 
 > **`DELETE /me`는 더 이상 "탈퇴 완료"가 아니다.** `204`(완료) → **`200` + 이동할 곳**으로 바뀌었다. 엔드포인트·메서드는 그대로다. <!-- 근거: 08_API_명세.md §3.6, 06_데이터모델_및_무결성.md §6.9 -->
@@ -175,6 +193,20 @@
 - **실패한 경우 아무것도 삭제되지 않는다.** 회원 데이터가 그대로 남고 세션도 유지되므로 사용자는 다시 시도할 수 있다 — 실패 문구는 "탈퇴에 실패했습니다. 계정은 그대로입니다"에 해당하는 의미여야 하며, 로그인 실패(`OAUTH_FAILED`)와 같은 문구로 묶지 않는다.
 - 사용자가 공급자 화면에서 이탈해 돌아오지 않으면 아무 일도 일어나지 않는다.
 
+### [확정] 나의 활동 기록 집계 (`GET /me/activity`)
+
+<!-- 근거: 08_API_명세.md §3.7, docs PR #54, docs#55 -->
+
+- **목적**: 내 기록의 월별·지역별 집계 한 벌. 활동 기록 화면 진입 시 **1회 호출**한다. 기간·페이지네이션·필터 파라미터가 **없다** — 전체 누적이 계약이다.
+- 응답 `data`: `totals { placeCount, districtCount, firstRecordedOn }` · `months[] { month, recordCount }` · `areas[] { district, recordCount }` · `counts { contextCount, collectionCount, recordedMonthCount }` · `highlights { firstPlaceName, lastPlaceName, busiestDay { date, recordCount } }`.
+- **서버가 정렬·상한·빈 달 채우기를 전부 끝내서 내려준다. 프론트에서 다시 자르거나 정렬하지 않는다.**
+  - `months`는 첫 기록 달부터 **이번 달까지 빈칸 없이** 이어진다. 기록 없는 달은 `recordCount: 0` — 그대로 그린다.
+  - `areas`는 건수 내림차순 **상위 5곳**(동점은 지역명 오름차순)으로 이미 잘려 온다.
+- ⚠️ **`counts.recordedMonthCount` ≠ `months.length`.** 전자는 기록이 실제로 있는 달 수, 후자는 빈 달까지 채운 구간 길이다. 화면이 둘 다 쓴다("8개월"(기간) vs "기록한 달 7개월").
+- **날짜 경계는 전부 KST**다(서버가 KST 벽시계 기준으로 집계). 프론트가 UTC로 재해석하지 않는다.
+- **기록이 하나도 없으면 404가 아니라 200**이다 — `months`·`areas` 빈 배열, 카운트 0, `firstRecordedOn`·`highlights` 세 값은 `null`. 빈 상태 화면으로 처리한다.
+- AI 키워드 집계는 담지 않는다(그건 위 "지도 키워드 칩"). `memberId`도 반환하지 않는다. 마이페이지 요약(3.5)을 대체하지 않는다.
+
 ### DTO — `PlaceSummary`
 
 ```typescript
@@ -213,6 +245,12 @@ type PlaceSummary = {
   - Record 삭제: 마지막 Record인 Collection이 있으면 `409`, 없으면 `204`.
   - Collection에서 마지막 Record 제거도 `409` → 확인 후 `DELETE /collections/{collectionId}`.
 - **`GET /records/recent`** — 최근 7일 안에 만든 **내** Record 목록(홈 최근 기록 카드). 기간(7일)과 정렬(`createdAt` 내림차순, 동시각은 `recordId` 내림차순)은 **서버 고정**이라 파라미터가 없다 — 프론트가 재계산·재정렬하지 않는다. 쿼리는 `cursor`/`size`뿐이며 `size` 기본 1, 100 초과는 100으로 접힌다. 항목은 `RecentRecordCard`(`recordId`·`place: PlaceSummary`·`keywords: string[]`·`createdAt`)로 **`contexts` 필드 자체가 없다** — 본문이 필요하면 `recordId`로 상세(5.2)를 재조회한다. `keywords`는 없으면 `null`이 아니라 `[]`이고 `keywordStatus`가 없어 'AI 판정 전'과 '0건'을 구분하지 않는다(둘 다 정상). 7일 내 기록이 없으면 404가 아니라 `items: []`인 200이다. <!-- 근거: 08_API_명세.md §5.9·§11.5·§13.13 -->
+- **`GET /records/{recordId}/collections`** — 그 Record가 담긴 **내** Collection 목록(Record 상세의 "이 기록이 담긴 내 책" 카드). **본인 소유 Record만** 대상이며, 없는 `recordId`와 **타인의 `recordId`는 모두 404**다(존재 여부를 응답으로 구분하지 않는다 — 5.2와 같은 규약). <!-- 근거: 08_API_명세.md §5.10·§11.6, docs PR #53 -->
+  - 커서 페이지네이션(`cursor`/`size` 기본 20/`sort=CREATED_AT_ASC` 기본, 7.2와 같은 규칙 — BD-46 제약대로 정렬은 프론트 상수 고정). **정렬 기준은 Collection 생성 시각**이지 그 Record를 담은 시각이 아니다 — 책장에서 보던 순서가 유지된다.
+  - 항목은 `RecordCollectionCard`(`collectionId`·`title`·`recordCount`·`keywords: string[]`·`coverImageUrl`·`publishedAt`·`createdAt`). `records`가 없고 `position`도 없다 — 목록 카드에 필요한 것만 싣는다.
+  - 어느 Collection에도 안 담긴 Record는 `items: []`인 200이다. `keywords`는 Collection 단위 PUBLIC 집계로 없으면 `[]`(내 목록이지만 **남이 보는 표지와 같은 글자**를 싣는다). `coverImageUrl`은 `null`이어도 필드 생략 없음(7.7).
+  - **목록 길이에 상한이 없다** — 한 Record가 담기는 Collection 수 제한이 없으므로 커서를 끝까지 따라갈 수 있어야 한다.
+  - 이 목록은 추천이 아니라 내 데이터 조회다. `requestId`·`position`이 없으며 **Feed 이벤트(10.2)를 보내지 않는다.**
 
 ### Collection
 
@@ -324,6 +362,7 @@ type PlaceSummary = {
 - 응답은 **현행 `display_name`(표시 문자열, 구 컬럼명 `label`) 문자열 배열**을 사용한다.
 - `{ code, display_name, visibility }` 형태는 AI 파트가 확장용으로 보유하나 **MVP 범위 밖**이다.
 - 단, 프론트가 Keyword를 내부 키로 다뤄야 하는 경우(아이콘 매핑·필터 상태)에는 `display_name`이 아니라 **향후 도입될 `code`**를 쓰도록 설계 여지를 남긴다.
+- **`keywordId`(지도 키워드 칩·마커 필터의 숫자 id)는 이 규칙과 별개다.** 지도 칩(`GET /records/map/keywords`)이 내려주는 서버 발급 preset id로, 프론트는 해석·매핑 없이 **불투명 값으로 그대로 되돌려 보내는**(4.3 → 4.2 pass-through) 용도만 갖는다. 본인 전용 엔드포인트라 공개 정책(타인 화면에 Keyword `code`/내부 id 노출 금지)과도 충돌하지 않는다. `display_name`을 키로 쓰지 말라는 규칙은 그대로이고, `keywordId`를 `code`의 대체 식별 체계로 확장하지 않는다 — 그 결정이 필요해지면 [협의 필요]로 올린다. <!-- 근거: 08_API_명세.md §4.2·§4.3, 2026-08-08 doc-sync -->
 
 ## [협의 필요]
 
