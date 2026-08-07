@@ -7,7 +7,7 @@ WOFF2로 변환한 것이다. 변환 절차는 저장소의 fonts-src/README.md 
 서브셋 결과물에도 원본의 저작권·상표·라이선스 정보(OpenType name table ID 0/7/13/14)를
 그대로 보존했다. 폰트 파일을 열어 직접 확인할 수 있다.
 
-근거: Jira S15P11A705-357, S15P11A705-380
+근거: Jira S15P11A705-357, S15P11A705-380, S15P11A705-414
 
 
 -------------------------------------------------------------------------------
@@ -50,7 +50,55 @@ Copyright (c) 2010 Sandoll Communications Inc. All rights reserved.
 
 
 -------------------------------------------------------------------------------
-4. 나눔손글씨 금은보화 (Nanum GeumEunBoHwa)  —  nanum-geumeunbohwa.woff2
+4. 여기어때 잘난체 2 (Jalnan 2)  —  jalnan2.woff2
+5. 여기어때 잘난체 고딕 (Jalnan Gothic)  —  jalnan-gothic.woff2
+-------------------------------------------------------------------------------
+
+414: 380에서 걷어냈던 두 폰트를 **종이 무대(features/paper·features/home)의 조판 전용**으로
+다시 들였다. design-ver2 원본 조판이 이 서체를 전제로 짜여 있어 제주 서체로 치환하면 판형이
+어긋난다. 무대 밖 화면 전반은 그대로 제주 3종을 쓴다.
+
+Copyright (c) GC COMPANY All rights reserved.
+Font Designed by Sandoll Inc.
+Jalnan 2 / Jalnan Gothic is a registered trademark of GC COMPANY.
+
+저작권자: ㈜여기어때컴퍼니 (GC COMPANY)   https://gccompany.co.kr
+제작:     산돌 (Sandoll Inc.)             https://www.sandoll.co.kr
+라이선스 문의: ygot_font@gccompany.co.kr
+
+[폰트 파일에 내장된 라이선스 전문 — OpenType name table ID 13]
+
+  Jalnan 2:
+    "The intellectual property rights of Jalnan 2 is with GC COMPANY.
+     Jalnan 2 is provided free of charge to all users, including individual and
+     corporate users, and can be freely modified and redistributed."
+
+  Jalnan Gothic:
+    "The intellectual property rights of Jalnan Gothic is with GC COMPANY.
+     Jalnan Gothic is provided free of charge to all users, including individual
+     and corporate users, and can be freely modified and redistributed."
+
+  License URL (name table ID 14): http://www.gccompany.co.kr
+
+[서브셋 재배포의 근거]
+
+  이 저장소가 원본이 아닌 서브셋(= 수정본)을 재배포하는 근거는 위 내장 라이선스 문구다.
+  두 폰트 모두 "can be freely modified and redistributed"(자유롭게 수정 및 재배포 가능)를
+  명시하고 있다.
+
+  사용한 파일은 저작권자 공식 홈페이지(gccompany.co.kr)에서 직접 내려받은 배포본이며,
+  위 문구는 그 배포본 바이너리에 저작권자가 직접 기입한 것이다.
+
+  참고 — 일부 폰트 아카이브 사이트에는 구버전 '여기어때 잘난체'(2017) 기준의 안내문
+  ("임의 수정/개작하여 글꼴을 재배포 하는 것은 금지")이 게시되어 있으나, 이 저장소가
+  사용하는 Jalnan 2(2022)·Jalnan Gothic(2023) 배포본의 내장 라이선스는 위와 같이
+  수정·재배포를 허용한다. 판단 근거는 배포본 파일 자체의 고지를 따랐다.
+
+  ※ 폰트 파일 자체를 유료로 판매하지 않는다.
+
+
+-------------------------------------------------------------------------------
+6. 나눔손글씨 금은보화 (Nanum GeumEunBoHwa)  —  nanum-geumeunbohwa.woff2
 -------------------------------------------------------------------------------
 
 Copyright (c) 2019 NAVER Corporation. All rights reserved.

@@ -14,7 +14,7 @@
    block(기본값에 가까운 동작)이면 최대 3초간 글자가 아예 안 보인다. 로컬 파일이라 교체까지
    걸리는 시간이 짧아 깜빡임이 눈에 잘 띄지 않는다.
 
-   font-weight를 400 하나로만 선언하는 이유 — 네 폰트 모두 단일 굵기 파일이다. 여기서 범위를
+   font-weight를 400 하나로만 선언하는 이유 — 여기 선언한 폰트가 모두 단일 굵기 파일이다. 여기서 범위를
    넓게(예: 100 900) 잡으면 브라우저가 "이 파일이 모든 굵기를 담당한다"고 믿어 font-bold에
    합성 굵게(가짜 볼드)를 적용하지 않는다. 400만 선언하면 그 밖의 굵기는 브라우저가 합성해
    준다 — 볼드 파일이 없는 서체에서 제목이 본문과 구분되려면 이 합성이 필요하다.
@@ -23,7 +23,32 @@
    교체 후에도 그대로라 위 400 규칙도 그대로 간다. 역할 배정과 그 근거는 tailwind.config.js의
    fontFamily 주석에 있다.
    손글씨체(금은보화)는 그대로 남았다 — 교보 손글씨로 바꾸려 했으나 라이선스가 서브셋·포맷
-   변환·재배포를 금지해 반입을 보류했다(public/fonts/LICENSE 하단). */
+   변환·재배포를 금지해 반입을 보류했다(public/fonts/LICENSE 하단).
+
+   414: 380이 걷어냈던 잘난체 2·잘난고딕을 **되돌린 것이 아니라 다시 들였다.** 두 선언은
+   아래 제주 3종과 나란히 살아 있고 역할만 다르다 —
+     · 화면 전반(tailwind.config.js fontFamily): 제주 3종 그대로. 380의 결정은 유효하다.
+     · 종이 무대(features/paper·features/home)의 조판 5곳: 잘난체.
+   무대 CSS는 design-ver2 원본이 이 서체의 글자 폭·획 굵기를 전제로 크기와 자간을 잡아 둔
+   것이라, 획이 가는 제주로 치환하면 같은 값에서 판형이 헐거워진다(410에서 치환했다가
+   "폰트가 원본과 다르다"는 사용자 지적을 받은 자리다). 그래서 전면 교체가 아니라
+   **무대 안쪽만** 원본 스택으로 되돌린다. */
+@font-face {
+  font-family: 'Jalnan2';
+  src: url('/fonts/jalnan2.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JalnanGothic';
+  src: url('/fonts/jalnan-gothic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @font-face {
   font-family: 'JejuGothic';
   src: url('/fonts/jeju-gothic.woff2') format('woff2');
