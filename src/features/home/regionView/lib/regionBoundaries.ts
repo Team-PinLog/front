@@ -152,6 +152,16 @@ export function getGeoBounds(regions: readonly RegionBoundary[]): GeoBounds {
   return { minLng, minLat, maxLng, maxLat };
 }
 
+/**
+ * 제주 지역 코드 접두. 377 후속에서 제주를 본토와 분리해 **우하단 인셋 박스**로 옮기는 데 쓴다.
+ * 한국 지도의 관례적 처리이며, 사용자가 허용한 방식이다.
+ */
+export const JEJU_CODE_PREFIX = '39';
+
+export function isJejuRegion(code: string): boolean {
+  return code.startsWith(JEJU_CODE_PREFIX);
+}
+
 export interface ProjectionSize {
   width: number;
   height: number;
@@ -168,6 +178,17 @@ export function getProjectionSize(bounds: GeoBounds, height: number): Projection
   const lngSpan = (bounds.maxLng - bounds.minLng) * Math.cos(midLat);
   const latSpan = bounds.maxLat - bounds.minLat;
   return { width: (height * lngSpan) / latSpan, height };
+}
+
+/**
+ * 폭을 먼저 정하고 높이를 따라가게 하는 투영 크기. 인셋 박스처럼 "가로 자리는 이만큼"이 먼저
+ * 정해지는 경우에 쓴다(본토는 반대로 높이가 먼저다).
+ */
+export function getProjectionSizeByWidth(bounds: GeoBounds, width: number): ProjectionSize {
+  const midLat = ((bounds.minLat + bounds.maxLat) / 2) * (Math.PI / 180);
+  const lngSpan = (bounds.maxLng - bounds.minLng) * Math.cos(midLat);
+  const latSpan = bounds.maxLat - bounds.minLat;
+  return { width, height: (width * latSpan) / lngSpan };
 }
 
 /** 경위도 → SVG 좌표. y는 위가 북쪽이 되도록 뒤집는다. */

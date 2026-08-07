@@ -6,7 +6,9 @@ import {
   getProjectionSize,
   getRegionCenter,
   getRegionLabel,
+  getProjectionSizeByWidth,
   getRegionPathData,
+  isJejuRegion,
   projectPoint,
   REGION_BOUNDARIES,
 } from '../lib/regionBoundaries';
@@ -31,6 +33,20 @@ const REGION_HIT_RADIUS = 11;
 
 /** 한 번에 띄우는 최대 칩 수. 넘치면 마지막 칩이 "+N"이 된다. */
 const MAX_BURST_ITEMS = 12;
+
+/**
+ * 제주 인셋 박스가 본토 지도 폭에서 차지하는 비율과 여백(SVG 단위).
+ *
+ * 제주를 인셋으로 뺀 이유(사용자 허용, 한국 지도의 관례):
+ * 제주까지 한 화면에 담으면 세로 범위가 위도 33.19~38.61(5.42도)인데, 제주를 빼면 34.30~38.61
+ * (4.31도)로 **20% 줄어든다**. 지역 뷰는 위쪽 히어로에 가려지는 높이를 뺀 나머지에 지도를 넣어야
+ * 해서 세로가 늘 부족한데, 같은 높이에서 본토를 그만큼 크게 그릴 수 있다(폭 기준 566 → 711 단위,
+ * 약 1.26배). 시군구가 커지면 클릭도 그만큼 쉬워진다 — 이 화면의 가장 큰 약점이 도심 자치구가
+ * 몇 px이라는 점이었다.
+ */
+const JEJU_INSET_WIDTH_RATIO = 0.26;
+const JEJU_INSET_MARGIN = 12;
+const JEJU_INSET_PADDING = 8;
 
 interface RegionMapViewProps {
   items: RecordMapItem[];
@@ -69,15 +85,40 @@ export function RegionMapView({ items, onSelectRecord, topObstructionPx = 0 }: R
   const groups = useMemo(() => groupRecordsByRegion(REGION_BOUNDARIES, items), [items]);
 
   const geometry = useMemo(() => {
-    const bounds = getGeoBounds(REGION_BOUNDARIES);
-    const size = getProjectionSize(bounds, MAP_VIEW_HEIGHT);
-    return {
-      size,
-      paths: REGION_BOUNDARIES.map((region) => ({
+    // 본토와 제주를 **따로 투영한다.** 하나로 묶으면 제주까지의 빈 바다가 세로를 다 먹는다.
+    const mainlandRegions = REGION_BOUNDARIES.filter((region) => !isJejuRegion(region.code));
+    const jejuRegions = REGION_BOUNDARIES.filter((region) => isJejuRegion(region.code));
+
+    const mainBounds = getGeoBounds(mainlandRegions);
+    const mainSize = getProjectionSize(mainBounds, MAP_VIEW_HEIGHT);
+
+    const jejuBounds = getGeoBounds(jejuRegions);
+    const jejuSize = getProjectionSizeByWidth(jejuBounds, mainSize.width * JEJU_INSET_WIDTH_RATIO);
+    // 인셋은 우하단에 놓는다. 제주가 원래 남쪽에 있으므로 아래쪽에 두는 편이 방향 감각과 어긋나지
+    // 않는다(관례적으로도 우하단이다).
+    const jejuOffset = {
+      x: mainSize.width - jejuSize.width - JEJU_INSET_MARGIN - JEJU_INSET_PADDING,
+      y: mainSize.height - jejuSize.height - JEJU_INSET_MARGIN - JEJU_INSET_PADDING,
+    };
+
+    const toShape = (
+      regions: typeof REGION_BOUNDARIES,
+      bounds: typeof mainBounds,
+      size: typeof mainSize,
+    ) =>
+      regions.map((region) => ({
         region,
         d: getRegionPathData(region, bounds, size),
         center: projectPoint(getRegionCenter(region), bounds, size),
-      })),
+      }));
+
+    return {
+      size: mainSize,
+      mainland: toShape(mainlandRegions, mainBounds, mainSize),
+      // 인셋 안의 좌표는 <g transform>이 옮겨 주므로 여기서는 인셋 자체의 좌표계로 둔다.
+      jeju: toShape(jejuRegions, jejuBounds, jejuSize),
+      jejuSize,
+      jejuOffset,
     };
   }, []);
 
@@ -134,80 +175,115 @@ export function RegionMapView({ items, onSelectRecord, topObstructionPx = 0 }: R
 
   const origin = { xPx: burst?.originXPx ?? 0, yPx: burst?.originYPx ?? 0 };
 
+  type RegionShape = {
+    region: (typeof REGION_BOUNDARIES)[number];
+    d: string;
+    center: readonly [number, number];
+  };
+
+  /** 색칠 도형. 본토와 제주 인셋이 **같은 규칙**을 쓰도록 함수로 뽑았다 — 인셋만 다르게 칠해지면 안 된다. */
+  const renderShapes = (shapes: RegionShape[]) =>
+    shapes.map(({ region, d }) => {
+      const count = groups.byCode.get(region.code)?.length ?? 0;
+      const level = getRegionShadeLevel(count, groups.maxCount);
+      const isActive = region.code === burst?.regionCode;
+      return (
+        <path
+          key={region.code}
+          d={d}
+          // 색은 currentColor로 받는다 — 브랜드 토큰을 그대로 쓰면서 새 색 토큰을 만들지 않기
+          // 위해서다(tailwind.config의 색 변경은 금지).
+          className={count > 0 ? 'text-log-mint' : 'text-pin-navy'}
+          fill="currentColor"
+          fillOpacity={count > 0 ? getRegionFillOpacity(level) : 0.04}
+          stroke="currentColor"
+          strokeOpacity={isActive ? 0.9 : 0.18}
+          strokeWidth={isActive ? 1.6 : 0.5}
+          // 도형 자체는 클릭 대상이 아니다 — 아래 원이 그 일을 한다(너무 작아서다).
+          pointerEvents="none"
+        />
+      );
+    });
+
+  /** 클릭 대상. 제주 인셋 안에서도 **같은 반지름**이라 조작감이 본토와 다르지 않다. */
+  const renderHitTargets = (shapes: RegionShape[]) =>
+    shapes.map(({ region, center }) => {
+      const count = groups.byCode.get(region.code)?.length ?? 0;
+      if (count === 0) {
+        return null;
+      }
+      const isActive = region.code === burst?.regionCode;
+      return (
+        <circle
+          key={`hit-${region.code}`}
+          cx={center[0]}
+          cy={center[1]}
+          r={REGION_HIT_RADIUS}
+          // 보이지 않지만 눌린다. fill을 none으로 두면 안이 비어 클릭이 통과한다.
+          fill="transparent"
+          className="cursor-pointer text-log-mint"
+          stroke="currentColor"
+          strokeOpacity={isActive ? 0.9 : 0}
+          strokeWidth={1.5}
+          tabIndex={0}
+          role="button"
+          aria-label={`${getRegionLabel(region)} 기록 ${count}개 펼치기`}
+          onClick={(event) => openBurst(region.code, count, event)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              openBurst(region.code, count, {
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top + rect.height / 2,
+              });
+            }
+          }}
+        />
+      );
+    });
+
   return (
     <div
       ref={containerRef}
       // 377-D: 한반도가 세로로 다 보이도록 지도를 **좌측**에 붙인다.
-      // 오른쪽 자리 비우기는 여기서 하지 않는다 — 377 정정으로 **배경 레이어 자체**가 lg 이상에서
-      // 좁아지고 오른쪽이 페이드된다(HomePage). 여기서 또 pr을 주면 자리를 두 번 빼 지도가 그만큼
-      // 더 작아진다.
+      // 오른쪽 자리 비우기는 여기서 하지 않는다 — 배경 레이어 자체가 md 이상에서 좁아져 '최근의
+      // 장소' 자리를 비운다(HomePage). 여기서 또 pr을 주면 자리를 두 번 빼 지도만 작아진다.
       className="relative flex h-full w-full items-center justify-start overflow-hidden p-4"
       style={{ paddingTop: topObstructionPx + 16 }}
     >
       <svg
         viewBox={`0 0 ${geometry.size.width} ${geometry.size.height}`}
+        // 377 후속 안전판: 컨텐츠가 늘어 <main>이 뷰포트보다 커지더라도 지도는 화면 안에 머문다.
+        // 카드를 흐름에서 뺀 지금은 평소 걸리지 않지만, 검색 결과처럼 나중에 세로가 늘어나는 것이
+        // 생겼을 때 지도가 따라 자라 다시 스크롤을 만드는 일을 막는다.
         className="h-full max-h-full w-auto max-w-full"
+        style={{ maxHeight: `calc(100dvh - ${topObstructionPx + 120}px)` }}
         role="img"
         aria-label="시군구별 기록 지도"
       >
-        {geometry.paths.map(({ region, d }) => {
-          const count = groups.byCode.get(region.code)?.length ?? 0;
-          const level = getRegionShadeLevel(count, groups.maxCount);
-          const isActive = region.code === burst?.regionCode;
-          return (
-            <path
-              key={region.code}
-              d={d}
-              // 색은 currentColor로 받는다 — 브랜드 토큰을 그대로 쓰면서 새 색 토큰을 만들지 않기
-              // 위해서다(tailwind.config의 색 변경은 금지).
-              className={count > 0 ? 'text-log-mint' : 'text-pin-navy'}
-              fill="currentColor"
-              fillOpacity={count > 0 ? getRegionFillOpacity(level) : 0.04}
-              stroke="currentColor"
-              strokeOpacity={isActive ? 0.9 : 0.18}
-              strokeWidth={isActive ? 1.6 : 0.5}
-              // 도형 자체는 클릭 대상이 아니다 — 아래 원이 그 일을 한다(너무 작아서다).
-              pointerEvents="none"
-            />
-          );
-        })}
+        {renderShapes(geometry.mainland)}
+        {renderHitTargets(geometry.mainland)}
 
-        {/* 기록이 있는 지역의 클릭 대상. 도형이 몇 px이어도 이 원은 항상 누를 수 있다. */}
-        {geometry.paths.map(({ region, center }) => {
-          const count = groups.byCode.get(region.code)?.length ?? 0;
-          if (count === 0) {
-            return null;
-          }
-          const isActive = region.code === burst?.regionCode;
-          return (
-            <circle
-              key={`hit-${region.code}`}
-              cx={center[0]}
-              cy={center[1]}
-              r={REGION_HIT_RADIUS}
-              // 보이지 않지만 눌린다. fill을 none으로 두면 안이 비어 클릭이 통과한다.
-              fill="transparent"
-              className="cursor-pointer text-log-mint"
-              stroke="currentColor"
-              strokeOpacity={isActive ? 0.9 : 0}
-              strokeWidth={1.5}
-              tabIndex={0}
-              role="button"
-              aria-label={`${getRegionLabel(region)} 기록 ${count}개 펼치기`}
-              onClick={(event) => openBurst(region.code, count, event)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  openBurst(region.code, count, {
-                    clientX: rect.left + rect.width / 2,
-                    clientY: rect.top + rect.height / 2,
-                  });
-                }
-              }}
-            />
-          );
-        })}
+        {/* 제주 인셋. 본토와 축척이 다르므로 테두리로 "다른 상자"임을 알린다 — 테두리가 없으면
+            제주가 본토 바로 옆에 붙어 있는 것처럼 읽힌다. */}
+        <g transform={`translate(${geometry.jejuOffset.x}, ${geometry.jejuOffset.y})`}>
+          <rect
+            x={-JEJU_INSET_PADDING}
+            y={-JEJU_INSET_PADDING}
+            width={geometry.jejuSize.width + JEJU_INSET_PADDING * 2}
+            height={geometry.jejuSize.height + JEJU_INSET_PADDING * 2}
+            rx={6}
+            fill="none"
+            className="text-pin-navy"
+            stroke="currentColor"
+            strokeOpacity={0.22}
+            strokeDasharray="4 3"
+            strokeWidth={0.8}
+          />
+          {renderShapes(geometry.jeju)}
+          {renderHitTargets(geometry.jeju)}
+        </g>
       </svg>
 
       {/* 범례. 색칠이 "많이 간 곳일수록 진하다"는 뜻임을 알려 준다. */}

@@ -16,13 +16,6 @@ import {
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
 
-/**
- * 377 정정: 지도 오른쪽 끝을 배경으로 스며들게 하는 마스크. 잘린 단면이 그대로 드러나면 지도가
- * "잘렸다"로 읽히는데, 여기서 필요한 것은 "지도가 여기까지고 그 너머는 배경"이라는 인상이다.
- * 값은 취향 조정 지점이다 — 더 부드럽게 하려면 6rem을 키운다.
- */
-const MAP_RIGHT_FADE_MASK = 'linear-gradient(to right, black calc(100% - 6rem), transparent 100%)';
-
 // 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
 // src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
 // lazy인 이유는 코드 분할이다 — 경계 데이터(약 64KB)와 지역 뷰 코드가 별도 청크로 빠져, 기본값인
@@ -139,18 +132,17 @@ export function HomePage() {
             `fixed inset-0`을 쓰지 않은 이유 — 뷰포트 전체를 덮으므로 위 ②가 성립하지 않고, 스크롤
             영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
             "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
-        {/* 377 정정: lg 이상에서 **지도 폭을 줄이고 오른쪽 가장자리를 페이드**한다.
-            이유는 "맵과 레코드가 겹쳐 보여 정신없다"는 피드백이다 — '최근의 장소' 카드는 지도에
-            꽂힌 것이 아니라 **페이지 배경에** 꽂혀 있어야 한다. 카드 밑에 판을 깔아 지도를 가리는
-            대신 지도 자체를 비켜 세운다(판을 깔면 배경이 하나 더 생겨 층이 늘어난다).
-            - `lg:right-[22rem]`이 자리를 비우고, `lg:mr-0`이 368의 음수 오른쪽 마진을 되돌린다
-              (그 마진은 지도를 padding box까지 넓히려던 것이라 여기서는 반대로 작동한다).
-            - 잘린 단면이 그대로 보이면 지도가 "잘렸다"로 읽히므로, 마지막 6rem을 알파로 떨어뜨려
-              배경으로 스며들게 한다. 히어로 오버레이와 같은 mask 기법이다. */}
-        <div
-          className="isolate absolute inset-0 mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mr-4 md:-mt-4 lg:right-[22rem] lg:mr-0 xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:mr-0"
-          style={{ maskImage: MAP_RIGHT_FADE_MASK, WebkitMaskImage: MAP_RIGHT_FADE_MASK }}
-        >
+        {/* 377 후속: **지도의 실제 렌더 폭을 줄여** '최근의 장소' 카드와 물리적으로 분리한다.
+            시각적 페이드만으로는 부족했다 — 카드 뒤로 도로가 비치면 그것도 겹침이다.
+            ⚠️ 앞선 시도가 실패한 이유 두 가지를 여기서 함께 고쳤다:
+            ① 조건이 `lg`(≥1024px)뿐이라 그보다 좁은 창에서는 지도가 전폭 그대로였다 → **md부터**
+               걸고 화면이 넓어질수록 예약 폭을 키운다(카드 폭과 짝을 맞춘다).
+            ② 오른쪽 6rem에 걸어 둔 페이드 마스크가 **그 안에 있는 줌·"내 주변" 버튼까지 함께
+               지웠다**(버튼은 right-8 = 32px 자리다). 마스크를 걷어내고, 잘린 단면은 라운드와
+               그림자로 마감해 "잘렸다"가 아니라 "여기까지가 지도"로 읽히게 한다.
+            지도 컨트롤은 이 좁아진 상자를 기준으로 배치되므로 자동으로 카드 왼쪽에 남는다.
+            fitBounds 여유와 "화면 밖" 배지도 컨테이너 실측값을 쓰므로 새 폭에 자동으로 맞는다. */}
+        <div className="isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] shadow-[8px_0_24px_-18px_rgba(4,33,66,0.5)] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 md:rounded-r-2xl lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0">
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
           {isRegionView ? (
@@ -199,7 +191,7 @@ export function HomePage() {
             아래쪽은 이 오버레이가 고정 높이로 끝나는 레이어라 상쇄할 padding이 없다. */}
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mr-4 md:-mt-4 lg:right-[22rem] lg:mr-0 xl:-ml-6 xl:-mt-6 xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
+          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
           style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 
@@ -253,24 +245,6 @@ export function HomePage() {
             />
           </div>
 
-          {/* 371: 지도 위 우측의 "요즘 붙여둔 것".
-              - 검색 결과가 떠 있는 동안에는 감춘다. 결과 갤러리와 최근 카드가 같은 폭을 두고 세로로
-                이어지면 어느 쪽이 지금 화면의 주인공인지 흐려진다. 검색은 사용자가 방금 요청한 일이라
-                그때는 결과가 주인공이다(idle·0건 상태에서는 다시 나타난다).
-              - 로딩 중과 미구현(recentPage === null)에는 자리표시자도 두지 않는다. 부가 영역이라
-                스켈레톤이 지도 위에 떠 있으면 그 자체가 노이즈다. */}
-          {!hasResults && recentPage && (
-            <div className="pointer-events-auto flex justify-end">
-              <RecentRecordCardStack
-                items={recentItems}
-                activeIndex={activeRecentIndex}
-                onActiveIndexChange={handleActiveRecentIndexChange}
-                hasNext={recentPage.hasNext}
-                onSelectRecord={setOpenRecordId}
-              />
-            </div>
-          )}
-
           {hasResults && (
             <div className="pointer-events-auto">
               <SearchResultGallery
@@ -292,6 +266,28 @@ export function HomePage() {
             </p>
           )}
         </div>
+
+        {/* 377 후속: '최근의 장소'를 **컨텐츠 흐름에서 빼내** 예약된 우측 띠에 붙인다.
+            이것이 "지역 뷰에서 페이지 스크롤이 생긴다"의 근본 원인이었다 — 리치 카드 2장이
+            컨텐츠 열의 높이를 뷰포트 예산(PAGE_MIN_HEIGHT_CLASS) 밖으로 밀어냈고, <main>이 늘어나자
+            그 안에서 inset-0으로 붙어 있던 배경 레이어가 함께 늘어났으며, 지역 지도는 h-full이라
+            같이 커져 제주가 화면 밖으로 나갔다. 스크롤은 그 결과였지 지도 자체의 문제가 아니었다.
+            흐름에서 빼면 페이지 높이는 토글+검색만으로 정해져 359의 "본문만 스크롤" 계약이 회복된다.
+            위치 기준을 컨텐츠 열이 아니라 <main>으로 잡는 이유: 컨텐츠 열은 max-w-6xl로 가운데
+            정렬돼 있어 넓은 화면에서 오른쪽 끝이 뷰포트 오른쪽과 어긋난다. 지도가 비워 둔 띠와
+            정확히 겹치려면 <main> 기준이어야 한다.
+            sm에서는 흐름에 그대로 둔다 — 좁은 화면에는 띠로 뺄 가로가 없다. */}
+        {!hasResults && recentPage && (
+          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-0 md:top-[19rem] md:w-[15rem] md:px-0 lg:top-[21rem] lg:w-[19rem] xl:right-2">
+            <RecentRecordCardStack
+              items={recentItems}
+              activeIndex={activeRecentIndex}
+              onActiveIndexChange={handleActiveRecentIndexChange}
+              hasNext={recentPage.hasNext}
+              onSelectRecord={setOpenRecordId}
+            />
+          </div>
+        )}
       </main>
 
       <PlaceRecordSheet onRecordSaved={handleRecordSaved} />

@@ -124,6 +124,29 @@ describe('RegionMapView — 색칠된 지역 클릭', () => {
     expect(container.textContent).not.toContain('시청 앞 카페');
   });
 
+  it('제주 인셋 안에서도 색칠·클릭이 본토와 똑같이 동작한다', () => {
+    // 제주는 본토와 축척이 다른 별도 <g>로 옮겼다(377 후속). 옮기면서 조작이 달라지면 안 된다.
+    const JEJU = { lng: 126.5312, lat: 33.4996 }; // 제주시청
+    render([makeItem(1, '한라산 근처 카페', JEJU.lng, JEJU.lat)]);
+
+    const hitTarget = container.querySelector('circle[role="button"]')!;
+    expect(hitTarget).not.toBeNull();
+    expect(hitTarget.getAttribute('aria-label')).toContain('제주');
+    // 인셋 그룹 안에 있어야 한다 — 본토 좌표계에 남아 있으면 엉뚱한 자리에 그려진다.
+    expect(hitTarget.closest('g')).not.toBeNull();
+    // 반지름이 본토와 같아야 조작감이 다르지 않다.
+    expect(Number(hitTarget.getAttribute('r'))).toBeGreaterThan(6);
+
+    act(() => hitTarget.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(container.textContent).toContain('한라산 근처 카페');
+  });
+
+  it('본토 지역은 인셋 밖에 그려진다', () => {
+    render([makeItem(1, '시청 앞 카페', SEOUL.lng, SEOUL.lat)]);
+    const hitTarget = container.querySelector('circle[role="button"]')!;
+    expect(hitTarget.closest('g')).toBeNull();
+  });
+
   it('기록이 하나도 없으면 누를 대상이 없다', () => {
     render([]);
     expect(container.querySelectorAll('circle[role="button"]')).toHaveLength(0);
