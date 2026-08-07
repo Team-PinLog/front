@@ -17,10 +17,15 @@ function folioNo(recordId: number): string {
 export function HomeTopType() {
   return (
     <>
-      {/* <em>은 민트 하이라이트가 깔리는 자리다(paperAperture.css .pl-display em).
-          이 화면에서 브랜드 색이 가장 크게 나는 지점이라 브랜드 이름에 얹는다. */}
+      {/* 414: 두 곳에 서로 다른 강조를 얹는다(paperAperture.css .pl-display mark / em).
+          · <mark>기억</mark> — 형광펜으로 슥 그은 자국. 이 서비스가 다루는 것이 무엇인지
+            한 단어로 말하는 자리다. <mark>은 "참고하려고 표시해 둔 부분"이라는 뜻이라
+            형광펜과 의미가 정확히 겹친다 — <span>에 클래스를 붙이는 것보다 정직하다.
+          · <em>핀로그</em> — 자를 대고 그은 밑줄. 이 화면에서 브랜드 색이 가장 크게 나는
+            지점이라 이름에 얹는다.
+          손짓이 다른 두 강조를 쓰는 것이 핵심이다. 같은 모양을 두 번 쓰면 둘 다 장식이 된다. */}
       <h1 className="pl-display">
-        기억이 머무는 자리
+        <mark>기억</mark>이 머무는 자리
         <br />
         <em>핀로그</em>
       </h1>
@@ -144,11 +149,13 @@ export function HomeRightType() {
  * 대응하는 정보가 없고, 없는 걸 지어내면 표지가 거짓말을 한다.
  *
  * ⚠️ 크기는 시안 비율을 그대로 쓰지 않는다. 시안 라벨은 판 폭의 2.4%(11px/456)인데 우리 표지는
- * 288px이라 그대로 옮기면 7px이 되어 안 읽힌다. 앱의 Collection 표지가 같은 문제를 두고 내린
+ * 240px이라 그대로 옮기면 6px이 되어 안 읽힌다. 앱의 Collection 표지가 같은 문제를 두고 내린
  * 결론(coverParts.tsx 주석)을 따라 **라벨류는 가독 하한에 두고 시안의 인상은 자간·괘선·여백으로**
  * 가져온다.
  *
- * 표제는 평소 감춰 두고 호버·포커스에서 드러난다(pl-pile-title). 프레임·괘선·라벨은 항상 보인다.
+ * 414: 표제(pl-pile-title)를 평소에도 보인다(0.62 → 호버 1). 감춰 뒀더니 쉬는 상태의 표지에
+ * 남는 글자가 하단 라벨 하나뿐이라 "허전하다"는 피드백을 받은 자리다. 프레임·괘선·라벨은
+ * 그대로 항상 보이고, 「이동하기」 띠지만 호버·포커스에서 풀려 나온다.
  *
  * 탐색 화면(features/explore)도 같은 표지를 진입점으로 쓴다 — 두 화면이 같은 종이 세계라
  * 표지 조판이 달라지면 "같은 시리즈의 책"이라는 인상이 깨진다. 그래서 복제하지 않고 내보낸다.
@@ -162,10 +169,11 @@ export function PaperCoverFace({ title }: { title: string }) {
         <span className="pl-pile-title">{title}</span>
         <span className="pl-cover-rule" aria-hidden="true" />
       </span>
-      {/* 표지 한가운데. 조판 덩어리(.pl-cover-block)는 판 상단에 고정돼 있어서 그 안에 두면
+      {/* 표지에 두르는 띠지. 조판 덩어리(.pl-cover-block)는 판 상단에 고정돼 있어서 그 안에 두면
           가운데로 못 온다 — 표지 기준으로 따로 앉힌다.
-          호버·포커스에서 드러나며 깜빡인다. 링크 이름은 표제(탐색/책장)가 이미 읽어 주므로
-          이 줄은 장식이다 — aria-hidden으로 두 번 읽히지 않게 한다. */}
+          414: 호버·포커스에서 제본 쪽부터 풀려 나오고 그 자리에 멎는다(이전에는 무한 깜빡임).
+          링크 이름은 표제(탐색/책장)가 이미 읽어 주므로 이 줄은 장식이다 — aria-hidden으로 두 번
+          읽히지 않게 한다. */}
       <span className="pl-cover-go" aria-hidden="true">
         이동하기
       </span>

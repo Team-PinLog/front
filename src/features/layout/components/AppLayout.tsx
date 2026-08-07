@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet } from '@tanstack/react-router';
-import logoFull from '@/assets/logo-full.png';
 import { SettingsTriggerContext } from '@/contexts/SettingsTriggerContext';
 import { WithdrawConfirmProvider } from '@/contexts/WithdrawConfirmProvider';
 import { useWithdrawConfirm } from '@/contexts/useWithdrawConfirm';
@@ -20,6 +19,9 @@ interface NavItem {
 // 169(설정/프로필)에서 진입점 구성이 바뀌면 이 매핑을 조정한다.
 // 330: 이 배열과 아이콘은 sm의 하단 탭바와 md 이상의 좌측 사이드바가 그대로 함께 쓴다 — 새 SVG를
 // 만들지 않고 배치만 다른 컨테이너에서 바꾼다.
+// 414: md 이상의 좌측 네비(330 레일 → 394 플로팅 카드)가 사라져 이제 소비자는 **sm 하단 탭바
+// 하나**다. 배열을 유지하는 이유는 그 탭바가 여전히 세 칸을 그리기 때문이고, md 이상의 이동은
+// 각 화면이 지면 위에 얹는 PaperCornerNav가 맡는다.
 const NAV_ITEMS: NavItem[] = [
   {
     to: '/',
@@ -47,6 +49,8 @@ const NAV_ITEMS: NavItem[] = [
 // 사이드바에 같은 path가 두 벌 복제돼 있었는데, 탭바가 생기면서 세 벌이 될 참이라 하나로 모았다.
 // NAV_ITEMS에 합치지 않는 이유: 설정은 라우트 이동이 아니라 패널을 여는 <button>이라 Link로
 // 렌더되면 안 된다.
+// 414: 남은 자리는 sm 탭바 4번째 칸뿐이다. md 이상은 PaperCornerNav의 「설정」이 대신한다 —
+// 그쪽은 아이콘이 아니라 글자라 이 path를 쓰지 않는다.
 const SETTINGS_ICON = (
   <>
     <circle cx="12" cy="12" r="3" />
@@ -54,30 +58,9 @@ const SETTINGS_ICON = (
   </>
 );
 
-// 사이드바 아이콘 크기. 접힘/펼침에서 같은 값을 써야 한다 — 상태에 따라 크기가 달라지면 호버할
-// 때마다 아이콘이 커졌다 작아졌다 한다(디자인 피드백).
-// 디자인 피드백으로 한 차례 85% 축소했다(26 → 22, 하단 탭바 18 → 15).
-const SIDEBAR_ICON_SIZE = 22;
-// 떠 있는 하단 탭바 아이콘. 알약이 두꺼워 보이지 않게 사이드바보다 작다.
+// 떠 있는 하단 탭바 아이콘. 디자인 피드백으로 한 차례 85% 축소한 값이다(18 → 15).
+// 414: 짝이던 SIDEBAR_ICON_SIZE(22)와 카드 조판 상수(NAV_CARD_*)는 카드와 함께 지웠다.
 const BOTTOM_NAV_ICON_SIZE = 15;
-
-// 394: 아이콘이 놓이는 고정폭 슬롯. 접힌 카드(56px)에서 이 슬롯의 중앙이 곧 카드의 중앙이고
-// (카드 padding 6 + 슬롯 44의 절반 = 28 = 56/2), 펼쳐도 슬롯이 그대로라 아이콘이 1px도 움직이지
-// 않는다. 폭을 아이콘 크기와 분리해 두는 것이 핵심이다 — 아이콘 크기를 바꿔도 정렬 계산을 다시
-// 하지 않는다. (카드 좌측 여백 8px을 더하면 슬롯 중앙이 화면 x=36 = 예약 폭 72의 절반이라,
-// 330 레일 시절과 아이콘의 화면상 위치가 같다.)
-const NAV_CARD_ICON_SLOT_CLASS = 'flex w-11 flex-none items-center justify-center';
-
-// 394: 카드 안 메뉴 한 줄의 공통 모양. 비활성은 회색 아이콘+회색 라벨이고, 활성만 아래
-// NAV_CARD_ITEM_ACTIVE_CLASS의 연회색 알약이 얹힌다(시안).
-// rounded-full을 비활성에도 두는 이유 — 호버 배경과 포커스 링이 활성 알약과 같은 모양이어야
-// "같은 자리에 같은 것이 켜진다"로 읽힌다.
-const NAV_CARD_ITEM_CLASS =
-  'flex items-center gap-1 rounded-full py-2.5 text-sm font-medium text-ink-gray transition-colors hover:text-log-mint';
-const NAV_CARD_ITEM_ACTIVE_CLASS = 'bg-pin-navy/[0.06] text-pin-navy font-bold';
-// 접힘에서 숨고 펼침(호버·키보드 포커스·xl)에서만 드러나는 라벨.
-const NAV_CARD_LABEL_CLASS =
-  'hidden whitespace-nowrap group-hover:inline group-has-[:focus-visible]:inline xl:inline';
 
 // 358 후속(디자인 피드백 — "너무 팍 하고 바뀐다"): 설정 등장·퇴장 모션.
 // keyframe 본체는 src/index.css에 있다.
@@ -150,11 +133,28 @@ export function AppLayout() {
 }
 
 /**
- * 394: md 이상의 좌측 네비가 **화면 높이를 꽉 채우던 레일에서 좌상단에 떠 있는 카드로** 바뀌었다.
- * 설정 진입점은 그 카드 안 구분선 아래로 들어갔다(<aside> 주석의 근거 ①②③). sm의 하단 알약
- * 탭바는 **그대로 둔다** — 이미 "떠 있는 알약"이라 카드와 같은 문법이고, 4번째 칸의 설정도 이미
- * 같은 자리에 있으며, 무엇보다 이 탭바는 아래 ResizeObserver로 세로 예산 계약에 물려 있어 형태를
- * 바꾸면 홈·탐색·책장의 세로 계산이 함께 흔들린다. 이 개편은 md 이상만의 이야기다.
+ * 414: **md 이상의 좌측 네비를 완전히 걷어냈다**(사용자 결정 — 394 카드도, 그 앞의 330 레일도).
+ * design-ver2 원본 셸이 도달한 지점과 같다: 셸에 남은 책임은 ①화면 높이 계약과 ②설정 패널
+ * 뿐이고, 화면 이동은 각 지면이 자기 위에 인쇄하는 조판 링크(shared/ui/PaperCornerNav)가 맡는다.
+ *
+ * 함께 사라진 것 둘:
+ *  · `<main>`의 좌측 예약 padding(md 5.5rem / xl 16.5rem) — appChrome.ts getSidebarWidthPx가
+ *    이제 모든 구간에서 0을 돌려준다. 예약이 사라지면 무대 컨테이너 폭 = 뷰포트 폭이 되어,
+ *    홈 곁열이 사라지는 경계(컨테이너 1080px)와 코너 링크가 접히는 경계(뷰포트 1081px)의
+ *    어긋남도 함께 해소된다(410 보고 관찰 ②, index.css .paper-corner-nav--rails).
+ *  · `<main>`의 사방 여백(364의 SHELL_INSET) — 종이 무대가 가장자리까지 가야 한다는 요구다.
+ *    ⚠️ 그 결과 shelfCabinetLayout.ts의 SHELL_INSET_PX_BY_TIER·PAGE_MIN_HEIGHT_CLASS는 실제보다
+ *    32/48px 더 덜어내는 **보수적인** 값이 됐다(캐비닛이 조금 작아질 뿐 넘치지는 않는다).
+ *    그 파일은 이 티켓 범위 밖이라 값 정리는 후속으로 넘긴다.
+ *
+ * ⚠️ **sm 하단 탭바는 남긴다.** 판단 근거 셋:
+ *  ① 조판 링크는 종이 지면 위에 절대 위치로 앉는 요소라 좁은 폭에서 지면 조판과 자리를 다툰다.
+ *     반대로 탭바는 이미 "떠 있는 알약"이고 세이프에어리어까지 맞춰져 있다.
+ *  ② 이 탭바는 아래 ResizeObserver로 **세로 예산 계약**에 물려 있다(navChromeHeightPx →
+ *     LayoutMetricsContext → getPageContentBudgetPx). 지우면 sm의 캐비닛 세로 계산과
+ *     PAGE_MIN_HEIGHT_CLASS의 sm 리터럴(5rem)이 함께 흔들리는데, 그 파일이 범위 밖이다.
+ *  ③ 홈의 곁열(표지 두 권)은 컨테이너 1080px 미만에서 display:none이라 sm에는 애초에 없다.
+ *     탭바까지 지우면 sm에서 이동 수단이 조판 링크 한 줄뿐이 된다.
  *
  * 330: sm(<768)은 하단 고정 탭바(홈·탐색·책장·설정 4칸), md 이상은 좌측 고정 사이드바였다 —
  * 태블릿도 데스크탑과 같은 사이드바를 쓴다. 이전의 상단 고정 헤더는 없앴다. 사이드바는 md~lg에서
@@ -377,147 +377,34 @@ function AppShell() {
           </nav>
         </div>
 
-        {/* 394: md(≥768) 이상 **좌상단에 떠 있는 네비게이션 카드** — sm에서는 hidden으로 완전히
-            숨긴다(마운트는 유지, CSS로만 전환).
-
-            330이 만든 "화면 높이를 꽉 채우고 border-r로 본문과 갈라지는 레일"을 이 카드가 대체한다
-            (시안: 연크림 배경 위에 크게 둥근 흰 카드가 그림자와 함께 떠 있다). 바뀐 것은 **무엇이
-            그 자리를 차지하는가**뿐이고, **얼마를 비워 두는가**(<main>의 왼쪽 padding, 캐비닛 가로
-            예산)는 그대로다 — appChrome.ts의 getSidebarWidthPx 주석 참고. 그래서 홈을 뺀 모든 화면의
-            배치가 1px도 바뀌지 않는다.
-
-            아래 세 가지는 330·358의 구조를 그대로 물려받는다:
-            ① md~lg는 아이콘만 있는 56px 카드이고 **호버(또는 내부 focus-visible) 시 208px로
-               펼쳐진다**. xl은 처음부터 펼친 상태다. 펼침은 레이아웃을 밀지 않고 컨텐츠 위에
-               겹친다 — 실제 폭을 밀면 Feed 카드 크기·행 수 계산이 호버할 때마다 다시 돌아 화면이
-               출렁인다.
-            ② :focus-within이 아니라 :has(:focus-visible)인 이유 — 메뉴를 클릭해 페이지를 옮기면 그
-               <Link>에 포커스가 남아 마우스를 떼도 계속 펼쳐진 채였다. :has()를 모르는 구형
-               브라우저에서는 호버 전용으로 후퇴하고, 그때도 <Link> title과 aria-label이 남아 접근성
-               이름은 유지된다.
-            ③ 폭·좌측 여백 리터럴은 appChrome.ts의 NAV_CARD_WIDTH_PX·NAV_CARD_INSET_PX와 쌍둥이다
-               (클래스 문자열엔 JS 상수를 주입할 수 없다). 홈 지도가 "카드에 가려지는 폭"을 그 값에서
-               읽는다.
-
-            카드 배경은 본문(bg-paper-white)보다 한 단계 흰 snow-white다 — 시안의 "연크림 위 흰
-            카드"가 정확히 이 관계이고, 330 사이드바가 쓰던 토큰을 그대로 이어받는다.
-
-            ⚠️ inset-y-0가 사라졌으므로 카드 높이는 **내용만큼**이다. 이 카드는 더 이상 화면 세로를
-            나누지 않으며, 카드 아래 영역은 그냥 페이지 배경이다.
-            ml-[env(safe-area-inset-left)]: viewport-fit=cover를 켜면 가로 인셋도 활성화되는데,
-            폰 가로(예: 932x430)는 tier가 mdlg라 이 카드가 뜨고 그대로 두면 노치에 가린다. */}
-        {/* 385: 358이 여기 걸어 뒀던 `data-settings-open`(설정이 열린 동안 펼친 채 고정하고 z를
-            배경막 위로 올리던 장치)은 중앙 모달로 바뀌면서 함께 걷어냈다. 카드는 설정이 열려 있든
-            아니든 평소 규칙만 따르고 배경막(z-40, DOM상 뒤) 아래에 잠긴다. */}
-        <aside className="group fixed left-2 top-3 z-40 hidden w-14 flex-col overflow-hidden rounded-3xl border border-line-card bg-snow-white p-1.5 shadow-[0_16px_36px_-12px_rgba(4,33,66,0.30)] ml-[env(safe-area-inset-left)] transition-[width] duration-200 ease-out hover:w-52 has-[:focus-visible]:w-52 md:flex xl:left-6 xl:top-6 xl:w-52">
-          {/* 접힘↔펼침에서 심볼이 제자리에 머물고 워드마크만 드러나야 한다(디자인 피드백 —
-              "번쩍이지 말고 텍스트만 생기는 것처럼"). 그래서 이미지를 갈아끼우지 않고 **같은 이미지의
-              보이는 폭만** 24px↔81px로 늘린다 — 배경 위치가 고정이라 심볼은 1px도 움직이지 않는다.
-              시안의 "네이비 마크 + 볼드 네이비 워드마크"가 이 이미지 한 장에 그대로 들어 있어 새
-              에셋을 만들지 않는다.
-              ml-[10px]: 심볼(24px)의 중앙을 아래 아이콘 슬롯과 같은 28px에 맞춘다(6 + 10 + 12 = 28).
-              이게 없으면 로고만 왼쪽으로 치우쳐 보인다(330에서 받은 디자인 피드백과 같은 건이다).
-              logo-full.png(1447x1087)는 심볼+워드마크 주위에 넓은 투명 여백이 있어(내용 bbox 약
-              x:170-1280, y:364-690) 파일은 원본 그대로 두고 컨테이너로 잘라 쓴다. */}
-          <Link
-            to="/"
-            title="홈으로 이동"
-            aria-label="핀로그 홈으로 이동"
-            onClick={closeSettings}
-            className="mb-4 ml-[10px] mt-2 block h-6 w-6 flex-none overflow-hidden bg-no-repeat transition-[width] duration-200 ease-out group-hover:w-[81px] group-has-[:focus-visible]:w-[81px] xl:w-[81px]"
-            style={{
-              backgroundImage: `url(${logoFull})`,
-              backgroundSize: '105px 79px',
-              backgroundPosition: '-13px -26px',
-            }}
-          />
-
-          <nav aria-label="주요 메뉴" className="flex flex-col gap-1.5">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                title={item.label}
-                // 358: 카드는 배경막 아래에 있어도 클릭은 살아 있다. 여기서 페이지를 옮길 수 있는데,
-                // 옮긴 뒤에도 설정이 새 화면 위에 남으면 안 된다.
-                onClick={closeSettings}
-                activeOptions={{ exact: true }}
-                className={NAV_CARD_ITEM_CLASS}
-                activeProps={{ className: NAV_CARD_ITEM_ACTIVE_CLASS }}
-              >
-                <span className={NAV_CARD_ICON_SLOT_CLASS}>
-                  <NavIcon size={SIDEBAR_ICON_SIZE}>{item.icon}</NavIcon>
-                </span>
-                <span className={NAV_CARD_LABEL_CLASS}>{item.label}</span>
-              </Link>
-            ))}
-          </nav>
-
-          {/* 394 — 설정 진입점. 시안에 자리가 지정돼 있지 않아 **카드 안 구분선 아래 4번째 항목**으로
-              뒀다. 근거 셋:
-              ① 좌하단에 원형 버튼을 따로 띄우는 안은 화면에 떠 있는 조각을 하나 더 만든다. 홈은
-                 배경 지도가 풀블리드라 떠 있는 조각마다 "지도를 가리는 영역"이 생기고(아래 홈의
-                 fitBounds 보정), 그 대상이 둘이 되면 보정 규칙도 둘이 된다.
-              ② 330 이후 사용자가 설정을 찾던 자리가 "좌측 네비의 맨 아래"다. 카드로 바뀌어도 같은
-                 열의 맨 아래에 남으면 근육기억이 그대로 이어진다.
-              ③ 구분선은 성격 차이를 표시한다 — 위 셋은 라우트 이동(<Link>)이고 이것은 패널을 여는
-                 <button>이다. 그래서 NAV_ITEMS에 합치지 않는 것이기도 하다(Link로 렌더되면 안 된다).
-              mt-auto를 쓰지 않는다: 카드 높이가 내용만큼이라 밀어낼 남는 세로가 없다. */}
-          <div aria-hidden="true" className="mx-2 my-2 h-px flex-none bg-line-card" />
-
-          <button
-            type="button"
-            onClick={openSettings}
-            title="설정"
-            aria-label="설정 열기"
-            aria-haspopup="dialog"
-            aria-expanded={isSettingsOpen}
-            className={`${NAV_CARD_ITEM_CLASS} mb-1`}
-          >
-            <span className={NAV_CARD_ICON_SLOT_CLASS}>
-              <NavIcon size={SIDEBAR_ICON_SIZE}>{SETTINGS_ICON}</NavIcon>
-            </span>
-            <span className={NAV_CARD_LABEL_CLASS}>설정</span>
-          </button>
-        </aside>
+        {/* 414: 이 자리에 있던 md 이상의 좌측 네비(330 레일 → 394 플로팅 카드)를 삭제했다.
+            로고 링크·메뉴 세 줄·설정 기어가 통째로 사라졌고, 그 역할은 각 지면이 오른쪽 어깨에
+            인쇄하는 조판 링크(shared/ui/PaperCornerNav)가 이어받는다 — 홈·탐색·책장 셋 다
+            그 줄에 「설정」을 항상 포함하므로 계정·로그아웃·탈퇴로 가는 길도 끊기지 않는다.
+            셸에 떠 있는 조각이 하나도 남지 않아야 종이 무대가 화면 전체를 차지할 수 있다. */}
 
         {/* 330: sm은 떠 있는 탭바가 차지하는 높이(알약 + 위아래 여백 = 5rem)만큼 아래를 비운다 —
-            이전의 pt-14가 뒤집힌 것이다. safe-area 인셋만큼 더 내려가므로 그만큼도 함께 뺀다. md 이상은 탭바가 없어
-            pb가 필요 없고, 대신 좌측 네비가 예약하는 폭만큼 민다(md 72px / xl 240px —
-            appChrome.ts의 getSidebarWidthPx와 동일 값).
-            394: 그 자리를 차지하는 것이 레일에서 떠 있는 카드로 바뀌었지만 **예약 폭은 그대로다** —
-            카드가 예약 구간 안에 들어앉으므로 여기 값을 손댈 이유가 없다. FeedPage/LibraryPage/HomePage의
-            PAGE_MIN_HEIGHT_CLASS도 이 값과 짝을 맞춘다.
-            (이슈 1.1: pb/pl 값 자체는 여전히 레이아웃 시프트 방지용 Tailwind 리터럴이고, sm의 실제
-            예산 계산은 아래 Context로 흘려보내는 navChromeHeightPx 실측값을 쓴다 — 둘은 별개다.) */}
+            safe-area 인셋만큼 더 내려가므로 그만큼도 함께 뺀다. 이 pb는 스크롤 **내용 안쪽**에
+            남아야 한다 — 목록 맨 아래까지 스크롤했을 때 마지막 항목이 떠 있는 알약에 가리지 않게
+            하는 여백이라, 스크롤 박스 바깥으로 빼면 효과가 없다.
+            (이슈 1.1: 이 리터럴은 레이아웃 시프트 방지용이고, sm의 실제 세로 예산 계산은 아래
+            Context로 흘려보내는 navChromeHeightPx 실측값을 쓴다 — 둘은 별개다.)
+
+            414: 그 밖의 padding은 **전부 사라졌다.**
+            · 좌측 예약(md 5.5rem / xl 16.5rem)은 밀어낼 네비가 없어졌다.
+            · 364가 md 이상에 두던 사방 여백(pt/pr/pb 4·6)도 함께 걷었다 — 종이 무대(홈)가
+              가장자리까지 가야 한다는 요구가 그 여백과 정면으로 부딪힌다. 여백의 소유권은
+              화면 쪽에 있다: Feed·Library는 이미 PAGE_CONTAINER_CLASS(px-4/6/8)와
+              PAGE_VERTICAL_PADDING_CLASS(py-3/6)로 자기 여백을 갖고 있어 가장자리에 붙지 않는다.
+            ⚠️ shelfCabinetLayout.ts의 SHELL_INSET_PX_BY_TIER·PAGE_MIN_HEIGHT_CLASS는 아직 그
+            여백이 있다고 보고 32/48px을 더 덜어낸다. **넘치는 쪽이 아니라 남기는 쪽**의 오차라
+            (캐비닛이 그만큼 작아질 뿐 가로 넘침·상시 스크롤바는 생기지 않는다) 안전하지만,
+            그 파일은 이 티켓 범위 밖이므로 값 정리는 후속으로 넘긴다. */}
         {/* 359 — 전역 높이 계약 ③: 남는 세로를 전부 차지하는 **유일한 스크롤 영역**.
             flex-1로 셸의 남은 높이를 받고, min-h-0으로 "flex 자식은 내용보다 작아지지 않는다"는
             기본값을 푼다 — 이 한 줄이 없으면 내용 높이만큼 늘어나 overflow-y-auto가 영영 발동하지
-            않는다(flex 스크롤 박스의 고전적인 함정). 페이지 스크롤이 이 영역 안의 스크롤로 옮겨온다.
-
-            pb는 그대로 스크롤 내용 안쪽에 남는다 — sm에서 목록 맨 아래까지 스크롤했을 때 마지막
-            항목이 떠 있는 탭바에 가리지 않게 하는 여백이라, 스크롤 박스 바깥으로 빼면 안 된다.
-
-            PAGE_MIN_HEIGHT_CLASS(shelfCabinetLayout.ts)와 정확히 짝이 맞는다: 이 영역의 content
-            box 높이는 sm에서 100dvh - 5rem - 인셋, md 이상에서 100dvh이고 그게 곧 그 상수의 값이다.
-            따라서 기존 페이지들은 "딱 맞아 스크롤 없음"이 되고, 넘치는 화면만 여기서 스크롤된다. */}
-        {/* 364: md 이상에서 사방 여백을 준다("요소가 화면 끝까지 퍼져 있다"는 피드백).
-            shelfCabinetLayout.ts의 SHELL_INSET_PX_BY_TIER와 **반드시 같은 값**이다 — 그쪽이 카드
-            폭·세로 예산을 이 값 기준으로 계산한다. 한쪽만 고치면 선반이 가로로 넘치거나 상시
-            스크롤바가 생긴다.
-
-            ⚠️ p-4 같은 shorthand를 쓰지 않고 네 방향을 따로 쓴다. 이 자리의 왼쪽 padding은 여백이
-            아니라 **고정 사이드바가 먹는 자리 예약**(md 72px / xl 240px)이고 아래쪽은 sm에서 떠 있는
-            탭바 자리라, shorthand를 얹으면 그 둘을 덮어쓰거나 Tailwind의 출력 순서에 따라 조용히
-            어느 한쪽이 이긴다.
-
-            왼쪽 값은 "사이드바 폭 + 셸 여백"을 **미리 더한 리터럴**이다:
-              md  = 72px(사이드바) + 16px(여백) = 88px  = 5.5rem
-              xl  = 240px(사이드바) + 24px(여백) = 264px = 16.5rem
-            calc로 쓰지 않은 이유 — Tailwind 추출기가 arbitrary value 안의 `+`를 잡지 못해 클래스가
-            **아무 CSS도 만들지 않고 조용히 사라진다**(빌드 산출 CSS로 확인). conventions 2장이 말하는
-            "Tailwind는 원시 텍스트 스캔이라 양방향으로 조용히 틀린다"의 실례다. */}
-        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-4 md:pl-[5.5rem] md:pr-4 md:pt-4 xl:pb-6 xl:pl-[16.5rem] xl:pr-6 xl:pt-6">
+            않는다(flex 스크롤 박스의 고전적인 함정). 페이지 스크롤이 이 영역 안의 스크롤로 옮겨온다. */}
+        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
           <SettingsTriggerContext.Provider value={settingsTrigger}>
             <LayoutMetricsContext.Provider
               value={{ navChromeHeightPx, titleHeightPx, reportTitleHeightPx: setTitleHeightPx }}
