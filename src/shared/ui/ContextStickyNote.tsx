@@ -1,6 +1,25 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { formatDate } from '@/shared/lib/formatDate';
 
+/**
+ * 415-27: 종이 한 장의 **치수**. Record 상세는 맥락이 몇 장이든 스크롤 없이 한 화면에 담아야 해서
+ * (사용자 제약), 장수가 늘면 글자와 여백을 단계적으로 조인다. 그 단계값을 바깥(배치기)이 정하고
+ * 여기로 넘긴다 — 종이는 "얼마나 조일지"를 모르고 "받은 치수대로 그릴" 뿐이다.
+ *
+ * attachment='flat'에만 적용된다. 넘기지 않으면 Tailwind 클래스에 박힌 기본 치수(px-5/pt-8/pb-6,
+ * text-xl/leading-6, 메타 11px)가 그대로 쓰이고, Collection 상세(lifted)는 늘 그 기본값이다.
+ */
+export interface StickyNoteMetrics {
+  bodyFontPx: number;
+  bodyLineHeightPx: number;
+  metaFontPx: number;
+  padXPx: number;
+  padTopPx: number;
+  padBottomPx: number;
+  /** 본문과 점선, 점선과 `created:` 줄 사이 간격의 기준값. */
+  dividerGapPx: number;
+}
+
 interface ContextStickyNoteProps {
   contextId: number;
   body: string;
@@ -25,6 +44,8 @@ interface ContextStickyNoteProps {
    * 기본값이 'lifted'라 기존 사용처(Collection 상세)의 모양은 그대로다.
    */
   attachment?: 'lifted' | 'flat';
+  /** flat 전용 치수(415 — 맥락이 많을수록 조인다). 없으면 기본 치수. */
+  metrics?: StickyNoteMetrics;
 }
 
 // 378 사용자 레퍼런스(인덱스 카드 4장): 형광 포스트잇 톤을 버리고 **채도 낮은 종이색**으로 간다.
@@ -66,16 +87,9 @@ const NOTE_FLAT_RADII = [
   '4px 9px 3px 8px / 9px 4px 8px 3px',
 ] as const;
 
-/**
- * 오른쪽 아래 **접힌 귀퉁이(dog-ear)** 크기(px). 사각형을 가장 확실하게 깨는 장치라 하나만
- * 크게 쓴다(네 귀퉁이를 다 접으면 종이가 아니라 도형이 된다).
- *
- * 구현: 종이 레이어를 clip-path로 잘라 내고, 잘린 삼각형 자리에 접힌 면을 따로 그린다. 자른 자리는
- * 뒤에 깔린 다른 포스트잇이 비쳐 보이는데, 겹쳐 붙인 종이에서는 그게 맞는 그림이다.
- * ⚠️ clip-path는 1px 잉크 테두리도 함께 자른다. 접힌 자리에 테두리가 없는 것이 맞다 —
- * 거기는 잘린 단면이 아니라 종이가 이어져 넘어가는 곳이고, 그 선은 접힌 면이 대신 낸다.
- */
-const NOTE_DOG_EAR_PX = 20;
+// 415-24: 오른쪽 아래 접힌 귀퉁이(dog-ear)를 **뺐다**. 실물에서는 "이 표시가 뭐냐"는 물음부터
+// 나왔다 — 종이의 물성으로 읽히지 않고 정체 모를 배지로 읽혔다는 뜻이다. 실루엣을 깨는 일은
+// 손으로 뜯은 테이프와 제각각인 모서리 반경(NOTE_FLAT_RADII)이 이미 맡고 있다.
 // 호버 시 더해지는 미세 흔들림(±0.5~1도). 노트마다 방향이 갈려야 "흔들"로 읽힌다.
 const NOTE_HOVER_NUDGES = ['0.8deg', '-0.9deg', '0.7deg', '-0.6deg'] as const;
 // 332 시안: 위쪽 가장자리를 덮던 "접힌 종이 띠"를 폭이 좁고 비스듬한 마스킹 테이프로 바꿨다.
@@ -170,51 +184,70 @@ export function ContextStickyNote({
   createdAt,
   stackIndex = 0,
   attachment = 'lifted',
+  metrics,
 }: ContextStickyNoteProps) {
   const noteIndex = pickNoteIndex(contextId);
   const isFlat = attachment === 'flat';
+  // 치수는 flat에만 먹인다. 인라인이라 Tailwind 클래스보다 우선하므로 클래스는 그대로 두고 덮어쓴다.
+  const size = isFlat ? metrics : undefined;
+  // ✎/× 칩도 같은 단계를 따른다(아래 주석 참고).
+  const chipPx = size && size.bodyFontPx <= 16 ? 18 : 24;
+  const chipSizeStyle =
+    chipPx < 24 ? { width: chipPx, height: chipPx, fontSize: 11, lineHeight: 1 } : undefined;
   const { paper, ink } = NOTE_PAPERS[noteIndex];
   const rotate = (isFlat ? NOTE_FLAT_ROTATIONS : NOTE_ROTATIONS)[noteIndex];
   const tapeRotate = NOTE_TAPE_ROTATIONS[noteIndex];
 
   const { ref, overlapPx } = useStackOverlapPx(stackIndex > 0);
 
-  // flat은 종이를 안쪽 레이어로 내린다 — 귀퉁이를 접으려면 clip-path가 필요한데, 그걸 바깥에
-  // 걸면 밖으로 튀어나온 테이프까지 함께 잘린다. lifted는 예전 구조 그대로 바깥이 곧 종이다.
-  const paperStyle: CSSProperties = {
+  // 접힌 귀퉁이를 빼면서 clip-path가 사라졌고(415-24), 그와 함께 안쪽 종이 레이어도 필요 없어졌다.
+  // 두 변형 모두 바깥이 곧 종이다.
+  const style: StickyNoteStyle = {
+    '--note-rotate': rotate,
+    '--note-hover-nudge': NOTE_HOVER_NUDGES[noteIndex],
     backgroundColor: paper,
     // 378 레퍼런스: 종이보다 한 단계 진한 동일 계열 1px 잉크 테두리(인덱스 카드 문법).
     border: `1px solid ${ink}`,
     borderRadius: isFlat ? NOTE_FLAT_RADII[noteIndex] : undefined,
-    clipPath: isFlat
-      ? `polygon(0 0, 100% 0, 100% calc(100% - ${NOTE_DOG_EAR_PX}px), calc(100% - ${NOTE_DOG_EAR_PX}px) 100%, 0 100%)`
-      : undefined,
-  };
-
-  const style: StickyNoteStyle = {
-    '--note-rotate': rotate,
-    '--note-hover-nudge': NOTE_HOVER_NUDGES[noteIndex],
-    ...(isFlat ? null : paperStyle),
     marginTop: stackIndex > 0 ? -overlapPx : 0,
+    paddingTop: size?.padTopPx,
+    paddingBottom: size?.padBottomPx,
+    paddingLeft: size?.padXPx,
+    paddingRight: size?.padXPx,
   };
 
   const noteBody = (
     <>
       {/* font-hand(Nanum Pen Script)는 같은 px에서 Pretendard보다 훨씬 작게 보여 text-xl로 올린다.
           폰트가 도착하기 전에는 Pretendard로 그려지므로 그때만 평소보다 크게 보인다(FOUT 허용). */}
-      <p className="whitespace-pre-wrap font-hand text-xl leading-6 text-pin-navy">{body}</p>
+      {/* 415-24: flat만 `break-keep`이다. 한글은 기본 줄바꿈이 글자 단위라 "부드/러워졌다"처럼
+          단어 한복판에서 끊긴다 — 어절 단위로 끊으면 같은 폭에서도 훨씬 자연스럽게 읽힌다.
+          긴 URL 같은 끊을 곳 없는 토큰이 상자를 넘지 않도록 break-words를 함께 둔다.
+          Collection 상세(lifted)는 폭 규칙이 달라 이번 변경 범위 밖이다. */}
+      <p
+        className={`whitespace-pre-wrap font-hand text-xl leading-6 text-pin-navy${
+          isFlat ? ' break-keep break-words' : ''
+        }`}
+        style={{ fontSize: size?.bodyFontPx, lineHeight: size && `${size.bodyLineHeightPx}px` }}
+      >
+        {body}
+      </p>
 
       {createdAt && (
         <>
           <div
             aria-hidden="true"
             className="mt-3 h-0 border-t border-dashed"
-            style={{ borderColor: ink }}
+            style={{ borderColor: ink, marginTop: size?.dividerGapPx }}
           />
           {/* 메타는 본문(손글씨)과 대비되도록 작은 고딕이다. 색도 잉크색을 그대로 써서 저채도로 물린다. */}
           <p
-            className={`mt-2 font-sans text-[11px] tracking-wide${isFlat ? ' pr-6' : ''}`}
-            style={{ color: ink }}
+            className="mt-2 font-sans text-[11px] tracking-wide"
+            style={{
+              color: ink,
+              fontSize: size?.metaFontPx,
+              marginTop: size && Math.round(size.dividerGapPx * 0.7),
+            }}
           >
             created: {formatDate(createdAt)}
           </p>
@@ -227,45 +260,18 @@ export function ContextStickyNote({
     <div
       ref={ref}
       className={`context-sticky-note relative${
-        isFlat ? ' group/note context-sticky-note--flat' : ' rounded-sm px-5 pb-6 pt-9'
+        isFlat ? ' context-sticky-note--flat px-5 pb-6 pt-8' : ' rounded-sm px-5 pb-6 pt-9'
       }`}
       style={style}
     >
-      {isFlat ? (
-        <>
-          <div className="relative px-5 pb-6 pt-8" style={paperStyle}>
-            {noteBody}
-          </div>
-          {/* 접힌 귀퉁이의 **접힌 면**. 종이가 잘려 나간 삼각형 자리를 그대로 채운다.
-              ⚠️ 종이 레이어 **밖**이어야 한다 — clip-path는 자식까지 자르므로 안에 두면 접힘 면이
-              바로 그 잘린 자리에서 함께 지워지고, 귀퉁이가 접힌 게 아니라 뚫린 것처럼 보인다
-              (실렌더에서 흰 삼각형으로 드러났다). 종이 레이어가 root의 유일한 흐름 자식이라
-              root의 bottom-right가 곧 종이의 bottom-right다.
-              색: 넘어온 종이 뒷면이라 앞면보다 어둡고, 접힌 선(빗변) 쪽이 가장 짙다. */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute bottom-0 right-0"
-            style={{
-              width: NOTE_DOG_EAR_PX,
-              height: NOTE_DOG_EAR_PX,
-              clipPath: 'polygon(100% 0, 100% 100%, 0 100%)',
-              background: `linear-gradient(135deg, ${ink} 0%, ${paper} 92%)`,
-            }}
-          />
-        </>
-      ) : (
-        <>
-          {/* 378 레퍼런스: 대시(- - -) 점선으로 머리말 칸과 본문을 가른다.
-              ⚠️ flat에는 넣지 않는다 — 이 선은 항상 떠 있던 ✎/× 버튼을 가두는 울타리였고,
-              415-18에서 그 버튼이 호버 시에만 나오게 바뀌면서 가둘 것이 없어졌다. */}
-          <div
-            aria-hidden="true"
-            className="mb-3 h-0 border-t border-dashed"
-            style={{ borderColor: ink }}
-          />
-          {noteBody}
-        </>
-      )}
+      {/* 378 레퍼런스: 대시(- - -) 점선으로 머리말 칸과 본문을 가른다. 본문 위아래에 한 줄씩 있는
+          것이 이 카드의 판형이다(415-28 확정 스크린샷 — flat에서 뺐던 윗줄을 되돌렸다). */}
+      <div
+        aria-hidden="true"
+        className="mb-3 h-0 border-t border-dashed"
+        style={{ borderColor: ink, marginBottom: size?.dividerGapPx }}
+      />
+      {noteBody}
 
       {/* 위쪽 가장자리에 걸친 마스킹 테이프. 노트 바깥으로 살짝 튀어나오게 두는 게 "붙였다"는
           인상의 핵심이라 -top-3으로 넘긴다(부모에 overflow-hidden이 없어 잘리지 않는다). */}
@@ -288,26 +294,24 @@ export function ContextStickyNote({
       </div>
 
       {editable && (
-        // 415-18: 항상 떠 있던 흰 원형 버튼 두 개가 종이를 사무적으로 만들었다. 호버·포커스일
-        // 때만 꺼낸다. 포커스로도 열리므로 키보드로 여전히 닿는다(탭 순서에서 빠지지 않는다).
+        // 415-28: 한때 flat에서만 호버·포커스일 때 꺼내 보이게 했다가 되돌렸다(확정 스크린샷).
+        // 카드 우상단에 늘 떠 있는 흰 원형 칩 두 개가 이 카드의 판형이고, 늘 보이는 편이
+        // "여기서 고치고 지운다"를 훨씬 분명하게 알린다.
+        // ⚠️ 이 칩들은 종이 위에 떠 있으므로 **머리말 칸 안에 들어와야** 한다. 밀도가 조여진
+        //    카드에서 칩이 그대로 24px이면 첫 줄 글자를 덮는다(실렌더에서 확인) — 그래서 조인
+        //    단계에서는 칩도 함께 작아지고 모서리에 더 붙는다. 위쪽 여백(padTopPx)은 이 칩 높이를
+        //    담도록 잡혀 있다(contextNoteScatter의 COLLAGE_DENSITIES).
         <div
-          className={`absolute right-2 top-2 z-10 flex gap-0.5${
-            isFlat
-              ? ' opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/note:opacity-100 motion-reduce:transition-none'
-              : ''
-          }`}
+          className="absolute right-2 top-2 z-10 flex gap-0.5"
+          style={chipPx < 24 ? { top: 4, right: 4 } : undefined}
         >
           <button
             type="button"
             onClick={onEdit}
             disabled={busy}
             aria-label="맥락 수정"
-            className={
-              isFlat
-                ? 'grid h-6 w-6 place-items-center rounded-full text-xs font-bold hover:bg-white/60 disabled:opacity-40'
-                : 'grid h-6 w-6 place-items-center rounded-full bg-white/80 text-xs font-bold text-ink-gray shadow-sm hover:bg-white hover:text-pin-navy disabled:opacity-40'
-            }
-            style={isFlat ? { color: ink } : undefined}
+            className="grid h-6 w-6 place-items-center rounded-full bg-white/80 text-xs font-bold text-ink-gray shadow-sm hover:bg-white hover:text-pin-navy disabled:opacity-40"
+            style={chipSizeStyle}
           >
             ✎
           </button>
@@ -316,12 +320,8 @@ export function ContextStickyNote({
             onClick={onDelete}
             disabled={busy}
             aria-label="맥락 삭제"
-            className={
-              isFlat
-                ? 'grid h-6 w-6 place-items-center rounded-full text-sm font-bold hover:bg-white/60 hover:text-red-600 disabled:opacity-40'
-                : 'grid h-6 w-6 place-items-center rounded-full bg-white/80 text-sm font-bold text-ink-gray shadow-sm hover:bg-white hover:text-red-600 disabled:opacity-40'
-            }
-            style={isFlat ? { color: ink } : undefined}
+            className="grid h-6 w-6 place-items-center rounded-full bg-white/80 text-sm font-bold text-ink-gray shadow-sm hover:bg-white hover:text-red-600 disabled:opacity-40"
+            style={chipSizeStyle}
           >
             ×
           </button>

@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import {
   ContextStickyNote,
   CONTEXT_STICKY_NOTE_STACK_OFFSET_PX,
+  type StickyNoteMetrics,
 } from '@/shared/ui/ContextStickyNote';
 import type { RecordDetail } from '../api/getRecordDetail';
 import { useDeleteContextMutation } from '../hooks/useDeleteContextMutation';
@@ -19,6 +20,8 @@ interface ContextStickyNoteCardProps {
   stackIndex: number;
   /** ContextStickyNote의 부착감 변형을 그대로 넘긴다(373 — Record 상세는 'flat'). */
   attachment?: 'lifted' | 'flat';
+  /** flat 전용 종이 치수(415 — 맥락이 많을수록 조인다). 그대로 흘려보낸다. */
+  metrics?: StickyNoteMetrics;
 }
 
 /**
@@ -34,6 +37,7 @@ export function ContextStickyNoteCard({
   ownedByMe,
   stackIndex,
   attachment,
+  metrics,
 }: ContextStickyNoteCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftBody, setDraftBody] = useState(context.body);
@@ -98,8 +102,16 @@ export function ContextStickyNoteCard({
       // 작성 자리(ContextComposerSlot)와 같은 인덱스 카드 문법(크림 종이·잉크 테두리·대시 점선·
       // 손글씨 본문)으로 맞춰, 고치는 동안에도 같은 포스트잇으로 읽히게 한다. 동작은 그대로다.
       <div
-        className="relative flex flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5 shadow-[0_1px_1px_rgba(4,33,66,0.1),0_2px_4px_-2px_rgba(4,33,66,0.14)]"
-        style={{ marginTop: stackIndex > 0 ? -CONTEXT_STICKY_NOTE_STACK_OFFSET_PX : 0 }}
+        // 415-24: 그림자 없음 — 무리의 다른 포스트잇과 같은 규칙이다.
+        className="relative flex flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5"
+        // 치수는 무리와 같은 단계를 따른다 — 한 장만 커지면 그 줄이 밀려 무리가 흐트러진다.
+        style={{
+          marginTop: stackIndex > 0 ? -CONTEXT_STICKY_NOTE_STACK_OFFSET_PX : 0,
+          paddingLeft: metrics?.padXPx,
+          paddingRight: metrics?.padXPx,
+          paddingTop: metrics && Math.round(metrics.padTopPx * 0.6),
+          paddingBottom: metrics && Math.round(metrics.padBottomPx * 0.7),
+        }}
       >
         <textarea
           autoFocus
@@ -111,6 +123,10 @@ export function ContextStickyNoteCard({
           disabled={updateContextMutation.isPending}
           aria-label="맥락 본문 수정"
           className="min-h-[76px] flex-1 resize-none bg-transparent font-hand text-xl leading-6 text-pin-navy outline-none disabled:opacity-60"
+          style={{
+            fontSize: metrics?.bodyFontPx,
+            lineHeight: metrics && `${metrics.bodyLineHeightPx}px`,
+          }}
         />
         <div aria-hidden="true" className="mt-2 h-0 border-t border-dashed border-[#CFC5AC]" />
         <p className="mt-2 text-right font-sans text-[11px] tracking-wide text-[#a89f8a]">
@@ -135,6 +151,7 @@ export function ContextStickyNoteCard({
         createdAt={context.createdAt}
         stackIndex={stackIndex}
         attachment={attachment}
+        metrics={metrics}
       />
       {showDeleteError && (
         <p className="relative z-30 mt-1 text-xs text-red-600">

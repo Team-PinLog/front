@@ -97,13 +97,16 @@ export function RecordPolaroidStack({
         겹치는 깊이를 정한다. 19번 피드백("사진이 지도 위 절반을 덮는다")으로 50%→72%까지 내렸다 —
         폴라로이드 아래끝(≈열 폭의 74%)보다 조금 작은 값이라 이제 **모서리만** 스친다.
         88%까지 내려 봤더니 겹침이 아예 사라져 두 장이 따로 놀았다(실렌더 확인).
+        25번("지도는 조금 더 위로")으로 72%→70%. 폴라로이드가 26px 내려간 만큼 겹침이 22→40px로
+        깊어져 두 장이 한 손으로 붙인 것처럼 물린다. 58%까지 올려 봤더니 겹침이 85px이 되어
+        지도 위쪽 4분의 1이 사진 뒤로 사라졌다(실렌더 확인) — 지도는 정보라 가리면 안 된다.
         지도는 열 폭의 92%에 오른쪽 정렬이다 — 왼쪽으로 기운 폴라로이드와 어긋나야 겹침이 산다.
 
         높이는 비율로 잡는다(5:6). 한때 flex-1로 남는 높이를 다 먹게 했더니 모달이 세로로 커지면서
         지도가 열 끝까지 늘어난 **두루마리**가 됐다 — 종이 한 조각으로 읽히지 않는다. 비율로 두면
         어떤 모달 높이에서도 같은 모양이고, 남는 높이는 페이지 여백으로 둔다.
       */}
-      <div className="relative mt-[72%] aspect-[5/6] w-[92%] flex-none self-end rotate-[-1.2deg] text-log-mint">
+      <div className="relative mt-[70%] aspect-[5/6] w-[92%] flex-none self-end rotate-[-1.2deg] text-log-mint">
         {/* 지도 **포스터**. 20번 지시로 재단선·캡션 판형을 걷어내고 레퍼런스대로 **사방 균일한
             흰 매트**를 두른다. 폴라로이드는 아래만 두꺼운 판형이라 두 장이 같은 형식이 아니고,
             그 차이가 "사진"과 "지도"를 가른다.
@@ -111,7 +114,7 @@ export function RecordPolaroidStack({
             남긴 인쇄물 문법은 하프톤 하나뿐이다 — 캡션(장소명·좌표)은 균일한 매트 안에서는 아래
             여백만 두껍게 만들어 매트를 깨므로 뺐다. 지도 색은 건드리지 않는다(3번 지시).
             21번: 그림자는 포스트잇 수준(alpha 0.10/0.14)까지 낮춘다. */}
-        <div className="h-full w-full rounded-[2px] bg-white p-2.5 shadow-[0_1px_1px_rgba(60,54,48,0.10),0_3px_6px_-3px_rgba(60,54,48,0.16)]">
+        <div className="h-full w-full rounded-[2px] bg-white p-2.5">
           <div className="relative h-full w-full overflow-hidden">
             <RecordPlaceMapSnapshot lat={lat} lng={lng} name={placeName} />
             {/* 하프톤: 3px 격자의 검정 3.5% 점. 색조를 바꾸지 않는 무채색 질감이다. */}
@@ -133,9 +136,12 @@ export function RecordPolaroidStack({
           기울어 있어 사진까지 오른쪽으로 기울면 둘이 서로 벌어져 보였다 — 같은 방향으로 기울되
           각도를 크게 벌리면 한 손으로 붙인 두 장으로 읽힌다.
           아래 테두리를 두껍게 준 것이 폴라로이드의 "적는 칸"이다. */}
-      {/* 21번: 그림자를 포스트잇과 같은 급으로 낮춘다(alpha 0.5 → 0.10/0.16). 종이 세 종류가
-          모두 같은 세기로 눌려 있어야 한 판 위에 놓인 것으로 읽힌다. */}
-      <div className="absolute -left-2 top-0 z-20 w-[88%] rotate-[-3.2deg] rounded-[3px] border-[9px] border-b-[30px] border-white bg-white text-log-mint shadow-[0_1px_1px_rgba(60,54,48,0.10),0_3px_6px_-3px_rgba(60,54,48,0.16)]">
+      {/* 25번: 사진이 좌측 맥락 무리와 너무 가까웠다 — 오른쪽(-8 → +20px)·아래(0 → 26px)로 옮겨
+          두 열 사이에 숨 쉴 자리를 만든다. 지도는 반대로 조금 올려(mt 72% → 64%) 두 장이 그만큼
+          더 붙는다.
+          24번: 그림자를 **뺐다**(포스트잇·사진·지도 모두). 종이의 물성은 기울임과 압정, 그리고
+          폴라로이드 아래 두꺼운 여백 같은 판형만으로 낸다. */}
+      <div className="absolute left-5 top-[26px] z-20 w-[88%] rotate-[-3.2deg] rounded-[3px] border-[9px] border-b-[30px] border-white bg-white text-log-mint">
         <PinPushMount height={36} className="-top-4 left-1/2 -translate-x-1/2" />
         <div className="overflow-hidden">
           {photoUrl ? (

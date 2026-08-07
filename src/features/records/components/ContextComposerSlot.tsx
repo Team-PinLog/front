@@ -9,6 +9,11 @@ interface ContextComposerSlotProps {
   recordId: number;
   /** 아직 맥락이 하나도 없으면 문구가 "첫 기억"으로 바뀐다. */
   isFirst: boolean;
+  /**
+   * 실루엣의 최소 높이(px). 415-27 — 맥락이 많아지면 무리 전체가 조여지는데 이 자리만 그대로면
+   * 맨 윗줄 높이를 혼자 붙잡아 그 조임이 헛돈다. 없으면 기본(104px).
+   */
+  minHeightPx?: number;
 }
 
 /**
@@ -21,7 +26,7 @@ interface ContextComposerSlotProps {
  *
  * 데이터 경로는 그대로다: useAddRecordContextMutation(추가 후 캐시 무효화까지 훅이 담당).
  */
-export function ContextComposerSlot({ recordId, isFirst }: ContextComposerSlotProps) {
+export function ContextComposerSlot({ recordId, isFirst, minHeightPx }: ContextComposerSlotProps) {
   const [isComposing, setIsComposing] = useState(false);
   const [draftBody, setDraftBody] = useState('');
   const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
@@ -67,23 +72,38 @@ export function ContextComposerSlot({ recordId, isFirst }: ContextComposerSlotPr
   };
 
   if (!isComposing) {
+    // 415-27: 맥락이 많아 무리 전체가 조여진 판에서는 이 자리도 함께 줄어든다. 두 줄짜리 안내는
+    // 그 높이에 들어가지 않아 한 줄로 바꾼다 — 자리가 하는 말("여기 눌러 한 장 더")은 같다.
+    const isCompact = minHeightPx !== undefined && minHeightPx < 88;
     return (
-      // 415 실물 피드백: 이 자리는 포스트잇 무리의 꼬리가 아니라 **맥락 섹션 우상단에 고정된**
-      // 자리다(RecordDetailView가 위치를 정한다). 폭은 호출부가 주므로 여기서는 w-full로 받고,
+      // 415 실물 피드백: 이 자리는 포스트잇 무리의 꼬리가 아니라 **그리드에 고정 예약된 칸**이다
+      // (RecordDetailView가 위치를 정한다). 폭은 호출부가 주므로 여기서는 w-full로 받고,
       // 카드 자체는 "다음에 붙을 한 장"의 빈 실루엣 모양을 유지한다.
       <button
         ref={slotButtonRef}
         type="button"
         onClick={() => setIsComposing(true)}
-        className="flex min-h-[104px] w-full flex-col items-center justify-center gap-1.5 rounded-sm border-2 border-dashed border-[#ded8cd] bg-white/45 px-4 py-5 text-center transition-colors hover:border-[#c7bda9] hover:bg-white/70 focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white/70"
+        className={`flex min-h-[104px] w-full items-center justify-center rounded-sm border-2 border-dashed border-[#ded8cd] bg-white/45 px-4 py-5 text-center transition-colors hover:border-[#c7bda9] hover:bg-white/70 focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white/70 ${
+          isCompact ? 'gap-2' : 'flex-col gap-1.5'
+        }`}
+        style={{ minHeight: minHeightPx, paddingBlock: isCompact ? 8 : 20 }}
       >
-        <span className="text-xl leading-none text-[#c9c2b6]" aria-hidden="true">
+        <span
+          className="text-xl leading-none text-[#c9c2b6]"
+          aria-hidden="true"
+          style={isCompact ? { fontSize: 16 } : undefined}
+        >
           ＋
         </span>
-        <span className="whitespace-pre-line font-hand text-xl leading-6 text-[#a29d95]">
-          {isFirst
-            ? '이 장소의 첫 기억을\n여기에 적어 붙여보세요'
-            : '이 장소의 기억이\n더 쌓이길 기다려요'}
+        <span
+          className="whitespace-pre-line font-hand text-xl leading-6 text-[#a29d95]"
+          style={isCompact ? { fontSize: 16, lineHeight: '20px' } : undefined}
+        >
+          {isCompact
+            ? '맥락 한 장 더'
+            : isFirst
+              ? '이 장소의 첫 기억을\n여기에 적어 붙여보세요'
+              : '이 장소의 기억이\n더 쌓이길 기다려요'}
         </span>
       </button>
     );
@@ -93,7 +113,8 @@ export function ContextComposerSlot({ recordId, isFirst }: ContextComposerSlotPr
     <>
       {/* 인덱스 카드 문법(378)을 그대로 쓴다 — 크림 종이 + 잉크 테두리 + 대시 점선. 작성 중인
           메모가 이미 붙어 있는 메모들과 같은 종류로 보여야 "이 자리에 적는다"가 성립한다. */}
-      <div className="flex min-h-[124px] flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5 shadow-[0_1px_1px_rgba(4,33,66,0.1),0_2px_4px_-2px_rgba(4,33,66,0.14)]">
+      {/* 415-24: 그림자를 뺐다 — 이 상자는 곧 포스트잇 한 장이라 무리와 같은 규칙을 따른다. */}
+      <div className="flex min-h-[124px] flex-col rounded-sm border border-[#CFC5AC] bg-[#F7F3E8] px-5 pb-4 pt-5">
         <textarea
           autoFocus
           value={draftBody}

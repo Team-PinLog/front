@@ -263,21 +263,21 @@
    이 규칙이 기본형을 덮는다.
    - 퍼짐이 큰 그림자(0 12px 22px) 대신 바로 밑에 깔리는 얇은 접촉 그림자
    - 호버는 들어올림(translateY+scale) 없이 미세한 회전 흔들림(±0.5~1도)만, 지속시간도 짧게 */
-/* 415-18: box-shadow → drop-shadow. 뜯긴 테이프 끝과 접힌 귀퉁이(clip-path)가 생기면서
-   box-shadow로는 안 된다 — box-shadow는 border-box 사각형을 따르므로 잘라 낸 자리에 그림자만
-   네모나게 남는다. drop-shadow는 실제로 그려진 실루엣을 따라가서 톱니와 접힌 면에 각각 맞는
-   그림자가 저절로 생긴다. 세기는 종전과 같은 급(alpha 0.10/0.14)으로 아주 얕게 유지한다. */
+/* 415-24: **그림자를 완전히 걷어냈다**(사용자 명시 — 포스트잇·사진·지도 모두). 얕은 그림자라도
+   종이마다 들려 있는 것처럼 보였고, 여러 장이 겹치면 그 그림자들이 서로 겹쳐 화면이 탁해졌다.
+   종이의 물성은 이제 기울임·손으로 뜯은 테이프·제각각인 모서리 반경·1px 잉크 테두리가 낸다.
+   호버도 미세한 흔들림만 남는다(들어올림·그림자 변화 없음). */
 .context-sticky-note--flat {
-  filter: drop-shadow(0 1px 1px rgba(4, 33, 66, 0.1)) drop-shadow(0 2px 3px rgba(4, 33, 66, 0.1));
-  transition:
-    transform 0.12s ease,
-    filter 0.12s ease;
+  box-shadow: none;
+  filter: none;
+  transition: transform 0.12s ease;
 }
 .context-sticky-note--flat:hover,
 .context-sticky-note--flat:focus-within {
   z-index: 20;
   transform: rotate(calc(var(--note-rotate, 0deg) + var(--note-hover-nudge, 0.8deg)));
-  filter: drop-shadow(0 1px 1px rgba(4, 33, 66, 0.1)) drop-shadow(0 4px 6px rgba(4, 33, 66, 0.13));
+  box-shadow: none;
+  filter: none;
 }
 /* 움직임을 줄여 달라고 한 사용자에게는 흔들림을 생략한다(그림자 변화만 남는다). */
 @media (prefers-reduced-motion: reduce) {
@@ -285,7 +285,7 @@
   .context-sticky-note--flat:hover,
   .context-sticky-note--flat:focus-within {
     transform: rotate(var(--note-rotate, 0deg));
-    transition: filter 0.12s ease;
+    transition: none;
   }
 }
 

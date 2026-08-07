@@ -10,10 +10,12 @@ import { RecordDetailContent } from './RecordDetailContent';
  *
  * 리디자인이라 "무엇이 어떻게 보이느냐"가 요구사항이고, 그중 눈으로만 확인하면 다음 작업에서
  * 조용히 깨질 것들만 골라 잡는다:
- * - 포스트잇이 **겹친다**(둘째 장부터 음수 marginTop) — 겹침이 사라지면 무리가 목록으로 돌아간다
- * - 포스트잇 폭이 **본문 길이에 따라 달라진다** — 세 장이 모두 같은 폭이면 규칙이 죽은 것이다
- * - 추가 자리(점선 실루엣)는 맥락이 몇 개든 **항상** 있다(389의 유일한 추가 진입점)
- * - 수정·삭제 버튼이 각 포스트잇에 남아 있다(기능 무손실)
+ * - 맥락 무리는 **2열 그리드**이고 카드끼리 겹치지 않는다(음수 마진 없음)
+ * - 추가 자리(점선 실루엣)는 맥락이 몇 개든 **늘 네 번째 칸(2행 2열)**이다 — 개수에 따라 자리가
+ *   옮겨 다니면 눈이 그 자리를 외울 수 없다(389의 유일한 추가 진입점이다)
+ * - 카드 폭이 **본문 길이에 따라 달라진다** — 세 장이 모두 같은 폭이면 규칙이 죽은 것이다
+ * - 맥락이 많아지면 **글자를 조여** 담는다(스크롤 금지 제약). 다만 15px 아래로는 줄이지 않는다
+ * - 종이에는 **그림자가 없다**, 수정·삭제 버튼은 **늘 보인다**(사용자 명시)
  *
  * @testing-library가 없는 저장소라 react-dom/client로 직접 렌더한다(RegionMapView.test.tsx 선례).
  * 지도는 카카오 SDK를 네트워크로 받아오므로 대역한다 — 이 테스트의 대상이 아니다.
@@ -86,17 +88,16 @@ async function renderDetail(bodies: string[]) {
   });
 }
 
-/** 포스트잇 한 장을 감싼 콜라주 래퍼들(인라인 width·marginTop이 붙는 자리). */
-function noteWrappers() {
-  return Array.from(container.querySelectorAll<HTMLElement>('div[style*="width"]')).filter((el) =>
+/** 포스트잇 한 장을 감싼 칸 래퍼들(인라인 width가 붙는 자리). */
+function noteWrappers(scope: ParentNode = container) {
+  return Array.from(scope.querySelectorAll<HTMLElement>('div[style*="width"]')).filter((el) =>
     el.querySelector('.context-sticky-note'),
   );
 }
 
 /**
- * 본문 텍스트로 그 포스트잇의 콜라주 래퍼를 찾는다(2열이라 DOM 순서 = 목록 순서가 아니다).
- * 부분 일치가 아니라 **본문 단락 전체 일치**로 찾는다 — 긴 본문이 짧은 본문을 그대로 품고 있으면
- * 부분 일치는 엉뚱한 장을 집는다.
+ * 본문 텍스트로 그 포스트잇의 칸 래퍼를 찾는다. 부분 일치가 아니라 **본문 단락 전체 일치**로
+ * 찾는다 — 긴 본문이 짧은 본문을 그대로 품고 있으면 부분 일치는 엉뚱한 장을 집는다.
  */
 function wrapperOf(body: string) {
   return noteWrappers().find(
@@ -104,53 +105,74 @@ function wrapperOf(body: string) {
   )!;
 }
 
-/** 콜라주의 두 열. 각 열 안에서만 계단·겹침이 성립한다. */
-function collageColumns() {
-  const scrollBox = container.querySelector('.place-scroll')!;
-  return Array.from(scrollBox.children).map((column) =>
-    Array.from(column.querySelectorAll<HTMLElement>('div[style*="width"]')).filter((el) =>
-      el.querySelector('.context-sticky-note'),
-    ),
-  );
+/** 콜라주 그리드의 칸들(읽는 순서). */
+function collageCells() {
+  return Array.from(container.querySelector('.place-scroll')!.children) as HTMLElement[];
+}
+
+/** '새로운 맥락 추가' 자리가 몇 번째 칸인지. */
+function composerSlotCellIndex() {
+  // 슬롯 버튼만 aria-label이 없다(카드의 ✎/×는 라벨을 갖는다).
+  return collageCells().findIndex((cell) => cell.querySelector('button:not([aria-label])'));
 }
 
 describe('RecordDetailView — 다이어리 콜라주(415)', () => {
-  it('맥락 콜라주는 2열이고 추가 슬롯이 우측 열 맨 위 고정석을 차지한다', async () => {
-    await renderDetail([SHORT_BODY, MEDIUM_BODY, LONG_BODY]);
-
-    const columns = collageColumns();
-    expect(columns).toHaveLength(2);
-
-    // 슬롯은 우측 열(두 번째) 안에 있고, 스크롤해도 남도록 sticky다.
-    const scrollBox = container.querySelector('.place-scroll')!;
-    const slotSeat = scrollBox.children[1].querySelector('.sticky');
-    expect(slotSeat).not.toBeNull();
-    expect(slotSeat?.textContent).toContain('이 장소의 기억이');
-    // 좌측 열에는 슬롯이 없다 — 우상단 한 자리뿐이어야 한다.
-    expect(scrollBox.children[0].querySelector('.sticky')).toBeNull();
-  });
-
-  it('포스트잇은 좌측 열부터 채우고 넘치면 우측 열로 이어진다', async () => {
-    // 슬롯이 우측 열의 출발 높이를 먹고 있으므로 첫 장들은 좌측에 쌓인다.
-    await renderDetail([SHORT_BODY, SHORT_BODY, SHORT_BODY, SHORT_BODY, SHORT_BODY]);
-
-    const columns = collageColumns();
-    expect(columns[0].length).toBeGreaterThan(0);
-    expect(columns[1].length).toBeGreaterThan(0);
-    expect(columns[0].length + columns[1].length).toBe(5);
-    // 좌측이 먼저 차야 한다 — 우측은 슬롯만큼 늦게 시작한다.
-    expect(columns[0].length).toBeGreaterThanOrEqual(columns[1].length);
-  });
-
-  it('한 열 안에서 둘째 장부터 앞 장을 덮는다(음수 marginTop)', async () => {
-    await renderDetail([SHORT_BODY, SHORT_BODY, SHORT_BODY, SHORT_BODY, SHORT_BODY]);
-
-    for (const column of collageColumns()) {
-      expect(Number.parseFloat(column[0].style.marginTop || '0')).toBe(0);
-      for (const wrapper of column.slice(1)) {
-        expect(Number.parseFloat(wrapper.style.marginTop)).toBeLessThan(0);
-      }
+  it('추가 슬롯은 맥락 개수와 상관없이 늘 같은 칸(2행 2열)에 있다', async () => {
+    for (const bodies of [[], [SHORT_BODY], [SHORT_BODY, MEDIUM_BODY, SHORT_BODY]]) {
+      await renderDetail(bodies);
+      // 0-based 세 번째 = 2행 2열. 노트가 몇 장이든 이 자리는 노트에게 내주지 않는다.
+      expect(composerSlotCellIndex()).toBe(3);
+      // 맥락이 없어도 그리드는 두 줄을 유지한다(윗줄이 납작해지며 슬롯이 올라오지 않게).
+      expect(collageCells().length).toBeGreaterThanOrEqual(4);
+      act(() => root.unmount());
+      container.remove();
+      container = document.createElement('div');
+      document.body.appendChild(container);
+      root = createRoot(container);
     }
+  });
+
+  it('카드는 2열 그리드에 앉고 서로 겹치지 않는다', async () => {
+    await renderDetail([SHORT_BODY, MEDIUM_BODY, SHORT_BODY, LONG_BODY, SHORT_BODY]);
+
+    const grid = container.querySelector<HTMLElement>('.place-scroll')!;
+    expect(grid.className).toContain('grid-cols-2');
+    // 앞 장을 덮는 음수 마진이 없다 — 겹침으로 콜라주감을 내던 판을 되돌린 규칙이다.
+    for (const wrapper of noteWrappers()) {
+      expect(Number.parseFloat(wrapper.style.marginTop || '0')).toBeGreaterThanOrEqual(0);
+      expect(Number.parseFloat(wrapper.style.marginLeft || '0')).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('맥락이 많아지면 글자를 조여 담는다(스크롤 대신 밀도)', async () => {
+    await renderDetail([SHORT_BODY, MEDIUM_BODY]);
+    const loose = Number.parseFloat(
+      (container.querySelector('.context-sticky-note p') as HTMLElement).style.fontSize || '20',
+    );
+
+    act(() => root.unmount());
+    container.remove();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await renderDetail(Array.from({ length: 8 }, () => MEDIUM_BODY));
+    const dense = Number.parseFloat(
+      (container.querySelector('.context-sticky-note p') as HTMLElement).style.fontSize || '20',
+    );
+
+    expect(dense).toBeLessThan(loose);
+    // 읽을 수 없을 만큼 줄이지는 않는다.
+    expect(dense).toBeGreaterThanOrEqual(15);
+  });
+
+  it('수정·삭제 버튼은 늘 보인다(호버로 숨기지 않는다)', async () => {
+    await renderDetail([SHORT_BODY]);
+
+    const editButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="맥락 수정"]',
+    )!;
+    expect(editButton.parentElement?.className).not.toContain('opacity-0');
   });
 
   it('본문이 길수록 포스트잇이 커진다', async () => {
@@ -163,10 +185,19 @@ describe('RecordDetailView — 다이어리 콜라주(415)', () => {
     expect(medium).toBeLessThan(long);
   });
 
+  it('종이에는 그림자가 없다', async () => {
+    await renderDetail([SHORT_BODY, MEDIUM_BODY]);
+
+    for (const note of container.querySelectorAll('.context-sticky-note')) {
+      expect(note.className).not.toContain('shadow');
+      expect((note as HTMLElement).style.boxShadow).toBe('');
+    }
+  });
+
   it('맥락이 많아도 추가 슬롯은 사라지지 않는다', async () => {
     await renderDetail([SHORT_BODY, MEDIUM_BODY, LONG_BODY, SHORT_BODY, MEDIUM_BODY]);
 
-    expect(container.textContent).toContain('이 장소의 기억이');
+    expect(composerSlotCellIndex()).toBe(3);
   });
 
   it('맥락이 하나도 없으면 첫 기억을 청하는 자리만 남는다', async () => {

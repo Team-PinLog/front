@@ -1,11 +1,12 @@
+import { useEffect, useState } from 'react';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { AddToCollectionButton } from '@/features/collections/components/AddToCollectionButton';
 import { useRecordDetailQuery } from '../hooks/useRecordDetailQuery';
 import { ContextComposerSlot } from './ContextComposerSlot';
 import { ContextStickyNoteCard } from './ContextStickyNoteCard';
 // 378: 컬렉션 펼침 화면도 같은 손붙임 배치를 쓰게 되어 오프셋 표를 모듈로 뽑았다(문법 공유).
-// 415: 이 화면만 "겹쳐 흘러내리는" 콜라주로 바뀌어 별도 표(contextNoteCollageStyle)를 쓴다.
-import { contextNoteCollageStyle, splitContextNotesIntoColumns } from './contextNoteScatter';
+// 415: 이 화면만 줄 단위 혼합 콜라주라 별도 배치기(planContextNoteCollage)를 쓴다.
+import { COMPOSER_SLOT_CELL_INDEX, planContextNoteCollage } from './contextNoteScatter';
 import { RecordNotebookPage } from './RecordNotebookPage';
 import { RecordPolaroidStack } from './RecordPolaroidStack';
 
@@ -41,6 +42,22 @@ interface RecordDetailViewProps {
  */
 export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
   const detailQuery = useRecordDetailQuery(recordId);
+  // 맥락 영역의 실높이(px). 이 높이 안에 스크롤 없이 담기는 밀도 단계를 배치기가 고른다(27번 제약).
+  // 이 상자는 flex-1 + min-h-0이라 **내용과 무관하게** 남는 높이로 정해진다 — 그래서 관찰해도
+  // 되먹임 고리가 생기지 않는다(밀도가 바뀌어도 이 높이는 그대로다).
+  const [collageBox, setCollageBox] = useState<HTMLDivElement | null>(null);
+  const [collageHeightPx, setCollageHeightPx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!collageBox || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      setCollageHeightPx(entries[0]?.contentRect.height ?? collageBox.clientHeight);
+    });
+    observer.observe(collageBox);
+    return () => observer.disconnect();
+  }, [collageBox]);
 
   if (detailQuery.isPending) {
     return (
@@ -74,8 +91,12 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
   // 항상 배열이지만, 타인 응답과 같은 DTO(RecordDetail)를 쓰는 만큼 문서의 표준 분기 방식을 그대로 따른다.
   const isOwner = record.contexts !== null;
   const contexts = record.contexts ?? [];
-  // 2열 콜라주 배분(우측 열은 '새로운 맥락 추가' 슬롯이 맨 위를 차지한 상태로 시작한다).
-  const noteColumns = splitContextNotesIntoColumns(contexts.map((context) => context.body.length));
+  // 줄 단위 혼합 콜라주(짧은 노트는 나란히, 긴 노트는 한 줄을 통째로). 맥락이 많아지면 배치기가
+  // 글자·여백·줄 간격을 단계적으로 조여 스크롤 없이 담는다.
+  const collage = planContextNoteCollage(
+    contexts.map((context) => context.body.length),
+    collageHeightPx,
+  );
 
   return (
     <RecordNotebookPage onClose={onClose}>
@@ -83,7 +104,7 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
           32px로 벌린다 — 좁힌 탓에 '컬렉션에 담기' 버튼이 폴라로이드에 거의 닿아 있었다.
           갈라져 보이던 문제는 간격이 아니라 우측 열이 짧아 아래가 비어 있던 것이 원인이었고,
           그건 지도를 아래로 내리면서(19번) 함께 해소된다. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row lg:gap-8">
+      <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row lg:gap-10">
         {/* ── 좌: 글과 기억 ─────────────────────────────────────────────── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex-none pr-12 lg:pr-0">
@@ -117,7 +138,7 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
             {/* keywords: []는 AI 미완료 상태의 정상 응답이다 — 오류·로딩 실패로 다루지 않는다.
                 label만 표시하고 식별에 쓰지 않는다(AGENTS.md 금지 2). React key도 label이 겹칠 수
                 있어 순번을 붙인다. */}
-            <div className="mt-5">
+            <div className="mt-6">
               {record.keywords.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {record.keywords.map((keyword, index) => (
@@ -137,78 +158,77 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
             </div>
           </div>
 
-          {/* "맥락"은 라벨이지 제목이 아니다 — 작게, 민트로, 무리 위에 표지처럼 올린다. */}
-          <h2 className="mt-8 flex-none text-[13px] font-extrabold tracking-[0.14em] text-[#4f9b78]">
-            맥락
+          {/* 소제목은 라벨이지 제목이 아니다 — 작게, 민트로, 무리 위에 표지처럼 올린다.
+              26번: 섹션끼리 붙어 보이지 않게 키워드 줄과의 사이를 벌린다(mt-8 → mt-10).
+              28번: 문구를 "맥락" → "기록한 맥락"으로 되돌린다(확정 스크린샷). */}
+          <h2 className="mt-10 flex-none text-[13px] font-extrabold tracking-[0.14em] text-[#4f9b78]">
+            기록한 맥락
           </h2>
 
           {isOwner && (
-            /* 415 맥락 콜라주 — **2열**이다(사용자 그림).
-                 · 우측 열 맨 위 칸은 '새로운 맥락 추가' 슬롯의 고정석이다.
-                 · 포스트잇은 매번 더 짧은 열에 얹히고(splitContextNotesIntoColumns), 우측 열은
-                   슬롯 높이만큼 차 있는 상태로 시작하므로 첫 장들이 좌측에 쌓이다가 넘치면
-                   우측 슬롯 아래로 이어진다.
-                 · 열 **안**에서는 1열 시절 문법 그대로다 — 계단형 들여쓰기, 앞 장 아래 여백만
-                   덮는 겹침, 기울임. 색·테이프·손글씨는 포스트잇 자신이 contextId로 정한다.
+            /* 415 맥락 콜라주 — **2열 그리드**다(28번 확정 스크린샷).
+                 · 카드는 각자의 칸에 앉고 서로 겹치지 않는다. 손붙임 느낌은 칸 안에서의 미세한
+                   어긋남·기울임과 본문 길이에 따라 달라지는 폭이 낸다.
+                 · '새로운 맥락 추가'는 **늘 네 번째 칸(2행 2열)**이다. 맥락이 0개든 8개든 같은
+                   자리라 눈이 그 자리를 외운다. 노트는 그 칸을 비켜 나머지를 순서대로 채운다.
+                 · 맥락이 많아지면 배치기가 글자·여백을 단계적으로 조여 **스크롤 없이** 담는다
+                   (27번 제약). overflow-y-auto는 가장 조인 단계로도 넘칠 때만 도는 마지막
+                   안전장치다 — 글자를 지우거나 가리는 대신 스크롤을 택한다.
 
-               슬롯은 sticky다. 스크롤 상자 밖으로 빼면 맥락이 0~1개일 때 슬롯만 덩그러니 뜨고
-               2열 콜라주가 성립하지 않는데, 안에 두면 스크롤에 실려 사라진다. sticky top-0이
-               둘 다 만족시킨다 — 콜라주의 한 칸이면서 스크롤해도 그 자리에 남는다.
-
-               여백: 마스킹 테이프가 위로 12px 튀어나오므로 pt-7/px-2/pb-4를 둔다.
+               여백: 마스킹 테이프가 위로 12px 튀어나오므로 pt-7/px-2, 아래는 마지막 줄의 기울임까지
+               담도록 pb-6을 둔다.
 
                z-index는 인라인으로 주지 않는다 — 래퍼의 transform이 쌓임 맥락을 만들어 포스트잇
-               자신의 호버 z-index를 가둬버린다. DOM 순서(뒤가 위)로 겹치고, 호버·포커스일 때만
-               래퍼를 z-20으로 올려 가려진 장을 꺼낸다. */
-            <div className="place-scroll -mx-2 mt-1 flex min-h-0 flex-1 gap-3 overflow-y-auto px-2 pb-4 pt-7">
-              {noteColumns.map((columnIndexes, columnIndex) => (
-                // 좌우 열 폭이 다르다(1.25 : 1). 긴 포스트잇을 잘림 없이 담으려면 한 열이 넉넉해야
-                // 하고(contextNoteScatter의 CONTEXT_NOTE_WIDTHS 주석), 폭이 같은 두 열은 콜라주가
-                // 아니라 그리드로 읽힌다. 넓은 쪽이 좌측이라 먼저 차는 열이 곧 넓은 열이다.
-                <div
-                  key={columnIndex}
-                  className={`flex min-w-0 flex-col items-start ${
-                    columnIndex === 0 ? 'flex-[1.25]' : 'flex-1'
-                  }`}
-                >
-                  {columnIndex === 1 && (
-                    // 흰 바탕은 스크롤해 올라오는 포스트잇이 슬롯 뒤로 비쳐 보이지 않게 하는
-                    // 가림막이다(페이지와 같은 흰색이라 눈에 띄지 않는다). 기울임은 가림막이 아니라
-                    // 슬롯 자신에게 준다 — 가림막을 돌리면 흰 사각형이 기울어 보인다.
-                    <div className="sticky top-0 z-30 mb-2 w-full flex-none bg-white pb-1">
-                      <div className="rotate-[1.4deg]">
-                        <ContextComposerSlot recordId={recordId} isFirst={contexts.length === 0} />
-                      </div>
+               자신의 호버 z-index를 가둬버린다. 호버·포커스일 때만 래퍼를 z-20으로 올린다. */
+            <div
+              ref={setCollageBox}
+              className="place-scroll -mx-2 mt-1 grid min-h-0 flex-1 grid-cols-2 content-start items-start overflow-y-auto px-2 pb-3 pt-7"
+              style={{ columnGap: collage.columnGapPx, rowGap: collage.rowGapPx }}
+            >
+              {collage.cells.map((cell, cellIndex) => {
+                if (cell.index === null) {
+                  // 슬롯 칸(고정석)과 빈 칸. 빈 칸은 그리드 자리만 지킨다.
+                  return cellIndex === COMPOSER_SLOT_CELL_INDEX ? (
+                    <div key="composer-slot" className="min-w-0" style={cell.style}>
+                      <ContextComposerSlot
+                        recordId={recordId}
+                        isFirst={contexts.length === 0}
+                        minHeightPx={collage.slotMinHeightPx}
+                      />
                     </div>
-                  )}
-                  {columnIndexes.map((contextIndex, indexInColumn) => {
-                    const context = contexts[contextIndex];
-                    return (
-                      <div
-                        key={context.contextId}
-                        className="relative hover:z-20 focus-within:z-20"
-                        style={contextNoteCollageStyle(indexInColumn, context.body.length)}
-                      >
-                        <ContextStickyNoteCard
-                          recordId={recordId}
-                          context={context}
-                          ownedByMe={isOwner}
-                          stackIndex={0}
-                          attachment="flat"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                  ) : (
+                    <div key={`empty-${cellIndex}`} aria-hidden="true" style={cell.style} />
+                  );
+                }
+
+                const context = contexts[cell.index];
+                return (
+                  <div
+                    key={context.contextId}
+                    className="relative min-w-0 hover:z-20 focus-within:z-20"
+                    style={cell.style}
+                  >
+                    <ContextStickyNoteCard
+                      recordId={recordId}
+                      context={context}
+                      ownedByMe={isOwner}
+                      stackIndex={0}
+                      attachment="flat"
+                      metrics={collage.metrics}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         {/* ── 우: 붙여 둔 물건들(꽂은 사진 + 붙인 지도) ───────────────── */}
         {/* 22번: 우측 열을 제목 줄 아래에서 시작시킨다. 폴라로이드 윗변이 '컬렉션에 담기' 버튼과
-            같은 높이에 있어 둘이 한 줄로 붙어 보였다. */}
-        <div className="flex min-h-0 w-full flex-none flex-col lg:w-[300px] lg:pt-7">
+            같은 높이에 있어 둘이 한 줄로 붙어 보였다.
+            25·26번: 그 간격이 아직 모자랐다 — '컬렉션에 담기'와 사진이 붙어 보이지 않도록
+            pt-7 → pt-14로 벌린다(사진 자신도 RecordPolaroidStack 안에서 한 번 더 내려간다). */}
+        <div className="flex min-h-0 w-full flex-none flex-col lg:w-[300px] lg:pt-14">
           <RecordPolaroidStack
             lat={record.place.lat}
             lng={record.place.lng}
