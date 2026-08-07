@@ -63,7 +63,12 @@
 
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  /* ⚠️ hidden이 아니라 clip이다. `overflow: hidden` 상자는 **스크롤할 수 없게 보일 뿐 여전히
+     스크롤 컨테이너**라, 밖으로 나간 자손에 포커스가 가거나 브라우저가 scrollIntoView를 하면
+     무대 전체가 슬쩍 밀린다 — 곁열이 가장자리로 물러나 있는 이 화면들에서는 표지 링크에 탭 키로
+     들어가는 것만으로 지면이 통째로 어긋났다(실측). `clip`은 잘라내되 스크롤 컨테이너를 만들지
+     않아 그 경로가 아예 없어진다. 잘리는 모양은 hidden과 같다. */
+  overflow: clip;
   isolation: isolate;
 
   /* 판형 전환과 도크 이동을 **본문 폭·높이** 기준으로 재려고 컨테이너로 선언한다.

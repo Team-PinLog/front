@@ -16,7 +16,10 @@ import {
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
   getFeedShelfWidthPx,
+  getShelfTierForGridWidth,
   solveFeedScale,
+  FEED_SIDE_GUTTER_PX,
+  FEED_PLANK_SHADOW_BLEED_PX,
 } from '@/shared/lib/shelfCabinetLayout';
 import { getSidebarWidthPx } from '@/shared/lib/appChrome';
 import {
@@ -127,15 +130,73 @@ let lastFeedPagePosition: FeedPagePosition | null = null;
  * 저장된 장소 수·날짜를 표지 위에 얹는다(CollectionBookCard). 그 결과 카드 높이에서 "scale과
  * 무관한 고정항"이 완전히 사라져 세로 예산 계산이 순수 비례식이 됐다(shelfCabinetLayout.ts).
  * 이 티켓에서도 페이지네이션·이벤트 큐잉 로직은 그대로다 — requestId·position은 응답 값 그대로다.
+ *
+ * 411(design-ver2 이식 3/3): 책장이 놓이는 **자리**를 호출부가 정할 수 있게 area prop을 뒀다.
+ * 아래 두 경로의 차이는 "책장이 쓸 수 있는 상자를 어떻게 아는가" 하나뿐이고, 열 수·행 수·카드
+ * 크기 역산은 완전히 같은 함수를 탄다. area가 없으면 지금까지의 뷰포트 경로 그대로다 —
+ * 이 컴포넌트를 쓰는 다른 자리(있다면)와 테스트가 시그니처 변경 없이 그대로 동작한다.
  */
-export function FeedList() {
+export interface ShelfBox {
+  widthPx: number;
+  heightPx: number;
+}
+
+export interface FeedListProps {
+  /**
+   * 책장이 쓸 수 있는 상자(px). 주면 뷰포트에서 페이지 크롬을 빼는 계산 대신 이 값을 쓴다.
+   *
+   * 탐색이 종이 지면 위로 올라가면서 필요해졌다 — 지면은 상단 조판과 좌·우 곁열에도 자리를
+   * 내주는데, 그 몫이 CSS의 clamp()/cqw에서 나와 JS가 알 수 없다. 기존 계산
+   * (getPageContainerWidthPx / getPageContentBudgetPx)은 "페이지 여백과 타이틀만 빠진다"는
+   * 전제 위에 있어 이 화면에서는 값이 맞지 않는다. 상자를 직접 재서 넘기면 그 항이 한 번에
+   * 들어오고, 이 컴포넌트는 "받은 상자를 어떻게 채울지"만 판단하면 된다.
+   *
+   * 아직 실측 전이면 null이다 — 그때는 지금까지의 뷰포트 기반 계산으로 폴백한다.
+   */
+  area?: ShelfBox | null;
+  /**
+   * **구성**(몇 칸 · 몇 줄 · pageSize)을 정할 때만 쓰는 상자. 주지 않으면 area와 같다.
+   *
+   * area와 나뉘어 있는 이유: 창을 끌어 크기를 바꾸는 동안 상자가 매 프레임 달라진다. 그 값으로
+   * 구성까지 다시 정하면 pageSize가 흔들려 Feed 목록을 그때마다 새로 요청하고, 반대로 크기까지
+   * 멎을 때까지 붙잡으면 지면은 넓어졌는데 책만 작은 채로 남아 있다가 뒤늦게 툭 커진다. 그래서
+   * **크기는 연속(area), 구성은 이산(이 값)** 으로 나눈다 — 근거는 PaperSpreadStage의
+   * ShelfAreaFeed 주석.
+   */
+  layoutArea?: ShelfBox | null;
+  /** 지금 펼친 쪽(1부터)을 알린다. 곁열의 쪽 번호 메모지가 쓴다. */
+  onPageNumberChange?: (pageNumber: number) => void;
+}
+
+export function FeedList({ area, layoutArea, onPageNumberChange }: FeedListProps = {}) {
   const navigate = useNavigate();
   const feedEventQueue = useFeedEventQueue();
 
-  const tier = useShelfWidthTier();
-  const isLandscape = useIsLandscapeOrientation();
+  // ⚠️ 훅은 분기와 무관하게 항상 부른다(호출 순서 고정). 상자를 받으면 값을 쓰지 않을 뿐이다.
+  const viewportTier = useShelfWidthTier();
+  const viewportIsLandscape = useIsLandscapeOrientation();
   const { width: viewportWidth, height: viewportHeight } = useViewportSize();
   const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
+
+  // 구성(열·행)을 정하는 상자와 크기(scale)를 정하는 상자. 둘을 따로 받지 않으면 같은 값이다.
+  const compositionBox = layoutArea ?? area ?? null;
+  const scaleBox = area ?? compositionBox;
+
+  // 상자 폭에서 선반 gutter와 판 그림자 자리를 뺀 것이 곧 그리드 가용 폭이다 —
+  // getFeedGridAreaWidthPx가 페이지 컨테이너 폭에서 빼는 것과 **같은 두 항**이라, 이어지는
+  // getFeedShelfWidthPx가 그만큼 다시 더해도 상자를 넘지 않는다.
+  const toGridWidthPx = (box: ShelfBox) =>
+    Math.max(0, box.widthPx - 2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX));
+
+  // 상자를 받으면 배치도 그 상자를 기준으로 정한다 — 뷰포트가 아무리 넓어도 책이 실제로 놓이는
+  // 자리가 좁으면 그 자리에 맞는 배치여야 한다(getShelfTierForGridWidth 주석).
+  const tier = compositionBox
+    ? getShelfTierForGridWidth(toGridWidthPx(compositionBox))
+    : viewportTier;
+  // 가로/세로 판정도 뷰포트가 아니라 상자로 한다 — mdlg 구간에서 열·행 수를 가르는 값이다.
+  const isLandscape = compositionBox
+    ? compositionBox.widthPx >= compositionBox.heightPx
+    : viewportIsLandscape;
 
   const columnsKey = getFeedColumnsKey(tier, isLandscape);
   const columns = FEED_COLUMNS_BY_KEY[columnsKey];
@@ -144,28 +205,40 @@ export function FeedList() {
   // 뜻이었고 캐비닛이 사라지면서 근거를 잃었다(그대로 두면 책장 아래가 크게 빈다).
   // 295 추가 수정(이슈 1.1): nav바·타이틀 높이는 하드코딩 추정치가 아니라 LayoutMetricsContext가
   // 실측해 보고한 값이다(AppLayout.tsx/PageTitle.tsx 참고).
-  // 315: budgetPx는 스크롤 박스 바깥 치수(maxHeight)이고, 카드·선반이 실제로 쓸 수 있는 몫은 위아래
-  // 여백을 뺀 contentBudgetPx다 — 이 구분을 빼먹으면 여백만큼 매번 예산이 넘쳐 스크롤바가 뜬다.
-  const budgetPx = getPageContentBudgetPx(
+  // 411: 아래 두 값은 상자를 받지 않았을 때만 쓰는 뷰포트 경로다. 두 경로가 갈리는 것은 여기와 아래 세 줄뿐이고,
+  // 이후 계산(decideFeedRows·solveFeedScale·getFeedCardDimensions)은 완전히 같다.
+  // 좌측 사이드바가 실제 가용 폭을 그만큼 줄인다. 330: 사이드바가 md부터 생기고 폭도 구간마다
+  // 다르므로 값을 getSidebarWidthPx가 판단한다(414 이후로는 모든 구간에서 0이다).
+  const viewportBudgetPx = getPageContentBudgetPx(
     viewportHeight,
     { navChromeHeightPx, titleHeightPx },
-    tier,
+    viewportTier,
   );
-  const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
-
-  // 좌측 사이드바가 실제 가용 폭을 그만큼 줄인다. 330: 사이드바가 md부터 생기고 폭도 구간마다
-  // 다르므로(레일 72 / 넓은 240) 값을 getSidebarWidthPx가 판단한다 — sm은 0이라 기존과 동일하다.
-  const availableGridWidthPx = getFeedGridAreaWidthPx(viewportWidth, getSidebarWidthPx(tier));
+  const viewportGridWidthPx = getFeedGridAreaWidthPx(
+    viewportWidth,
+    getSidebarWidthPx(viewportTier),
+  );
 
   // 314: 행 수도 더 이상 구간별 고정값이 아니다 — 세로 예산과 가로 폭을 둘 다 반영해 화면을 가장
   // 많이 덮는 배치를 고른다(decideFeedRows). 이전에는 xl·mdlgLandscape가 2행 고정이라 세로가 남고,
   // 나머지는 세로만 보고 행을 늘려 가로가 남았다.
+  // ⚠️ 411: 열 수와 마찬가지로 **구성**이므로 멎은 상자(compositionBox)로 정한다 — 전환 도중
+  // 흔들리면 pageSize가 바뀌어 목록을 다시 요청한다.
   const rows = decideFeedRows({
     columns,
     maxRows: FEED_MAX_ROWS_BY_KEY[columnsKey],
-    budgetPx: contentBudgetPx,
-    availableGridWidthPx,
+    budgetPx: getFeedRowsContentBudgetPx(
+      compositionBox ? compositionBox.heightPx : viewportBudgetPx,
+    ),
+    availableGridWidthPx: compositionBox ? toGridWidthPx(compositionBox) : viewportGridWidthPx,
   });
+
+  // 여기서부터는 **크기**다 — 지면이 자라는 동안 책도 함께 자라야 하므로 살아 있는 상자를 쓴다.
+  // 315: budgetPx는 스크롤 박스 바깥 치수(maxHeight)이고, 카드·선반이 실제로 쓸 수 있는 몫은
+  // 위아래 여백을 뺀 contentBudgetPx다 — 이 구분을 빼먹으면 여백만큼 매번 예산이 넘쳐 스크롤바가 뜬다.
+  const budgetPx = scaleBox ? scaleBox.heightPx : viewportBudgetPx;
+  const contentBudgetPx = getFeedRowsContentBudgetPx(budgetPx);
+  const availableGridWidthPx = scaleBox ? toGridWidthPx(scaleBox) : viewportGridWidthPx;
   // 382: 레이아웃에 따라 한 페이지가 담는 권수가 다르다. **바뀌는 것은 이 숫자 하나뿐이고**
   // cursor 체인·이벤트 큐잉·복원 계약은 두 레이아웃이 완전히 같은 코드를 쓴다(FEED_LAYOUT 주석).
   const isBookstore = FEED_LAYOUT === 'bookstore';
@@ -248,6 +321,14 @@ export function FeedList() {
     ...(feedQuery.data?.items ?? []).map((item) => item.coverImageUrl),
     ...pinned.items.map((item) => item.coverImageUrl),
   ]);
+
+  // 411: 쪽 번호를 바깥으로 알린다. 페이지네이션 상태는 계속 이 컴포넌트가 소유하고(cursorHistory는
+  // Feed Session에 묶인 opaque cursor 체인이라 밖으로 끌어내면 수명이 어긋난다) 읽기 전용 값만
+  // 흘려보낸다 — 곁열의 쪽 번호 메모지가 그 값을 그린다.
+  // ⚠️ 호출부는 콜백을 useCallback으로 고정한다. 매 렌더 새 함수를 넘기면 이 effect가 매번 돈다.
+  useEffect(() => {
+    onPageNumberChange?.(pageIndex + 1);
+  }, [onPageNumberChange, pageIndex]);
 
   const emptyShelfLayout: EmptyShelfLayout = {
     columns,
