@@ -17,6 +17,8 @@ interface ContextStickyNoteCardProps {
   ownedByMe: boolean;
   /** 세로 스택에서 이 카드의 0-based 순서(포스트잇 겹침용). */
   stackIndex: number;
+  /** ContextStickyNote의 부착감 변형을 그대로 넘긴다(373 — Record 상세는 'flat'). */
+  attachment?: 'lifted' | 'flat';
 }
 
 /**
@@ -31,6 +33,7 @@ export function ContextStickyNoteCard({
   context,
   ownedByMe,
   stackIndex,
+  attachment,
 }: ContextStickyNoteCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftBody, setDraftBody] = useState(context.body);
@@ -125,6 +128,7 @@ export function ContextStickyNoteCard({
         onDelete={() => deleteContextMutation.mutate(context.contextId)}
         busy={deleteContextMutation.isPending}
         stackIndex={stackIndex}
+        attachment={attachment}
       />
       {showDeleteError && (
         <p className="relative z-30 mt-1 text-xs text-red-600">

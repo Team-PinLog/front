@@ -231,6 +231,38 @@
   box-shadow: 0 18px 32px rgba(4, 33, 66, 0.22);
 }
 
+/* 373 사용자 피드백: Record 상세(노트 페이지)의 포스트잇이 "종이에서 떠 보인다"·"호버 액션이
+   과하다". 위 기본형(lifted, 332 컬렉션 펼친 화면)은 건드리지 않고 변형만 덧붙인다 —
+   ContextStickyNote attachment='flat'일 때만 붙는 클래스다. 선택자 특이도가 같으므로 뒤에 온
+   이 규칙이 기본형을 덮는다.
+   - 퍼짐이 큰 그림자(0 12px 22px) 대신 바로 밑에 깔리는 얇은 접촉 그림자
+   - 호버는 들어올림(translateY+scale) 없이 미세한 회전 흔들림(±0.5~1도)만, 지속시간도 짧게 */
+.context-sticky-note--flat {
+  box-shadow:
+    0 1px 1px rgba(4, 33, 66, 0.1),
+    0 2px 4px -2px rgba(4, 33, 66, 0.14);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.context-sticky-note--flat:hover,
+.context-sticky-note--flat:focus-within {
+  z-index: 20;
+  transform: rotate(calc(var(--note-rotate, 0deg) + var(--note-hover-nudge, 0.8deg)));
+  box-shadow:
+    0 1px 1px rgba(4, 33, 66, 0.1),
+    0 3px 7px -3px rgba(4, 33, 66, 0.18);
+}
+/* 움직임을 줄여 달라고 한 사용자에게는 흔들림을 생략한다(그림자 변화만 남는다). */
+@media (prefers-reduced-motion: reduce) {
+  .context-sticky-note--flat,
+  .context-sticky-note--flat:hover,
+  .context-sticky-note--flat:focus-within {
+    transform: rotate(var(--note-rotate, 0deg));
+    transition: box-shadow 0.12s ease;
+  }
+}
+
 /* 장소 기록 팝업(저장 화면.dc.html, S15P11A705-323/366)의 커스텀 스크롤바.
    노트북 카드 안 스크롤 영역 전용이다. */
 .place-scroll::-webkit-scrollbar {
