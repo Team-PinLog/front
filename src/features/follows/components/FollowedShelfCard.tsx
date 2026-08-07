@@ -10,6 +10,7 @@ import {
 } from '@/shared/lib/shelfSpine';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { ShelfBookSpine, ShelfIconButton, ShelfLabel, ShelfTier } from '@/shared/ui/Shelf';
+import { PendingLabel } from '@/shared/ui/PendingLabel';
 import { useFollowShelfCollectionsQuery } from '../hooks/useFollowShelfCollectionsQuery';
 import { useUpdateFollowAliasMutation } from '../hooks/useUpdateFollowAliasMutation';
 import { useUnfollowMutation } from '../hooks/useUnfollowMutation';
@@ -267,9 +268,11 @@ export function FollowedShelfCard({
                     type="button"
                     onClick={handleRequestUnfollow}
                     disabled={unfollowMutation.isPending}
+                    aria-busy={unfollowMutation.isPending}
                     className="h-9 w-full rounded-md px-2.5 text-left text-xs font-bold text-pin-navy hover:bg-log-mint/10 disabled:opacity-40"
                   >
-                    {unfollowMutation.isPending ? '처리 중…' : '팔로우 해제'}
+                    {/* 396: 라벨 교체 대신 스피너를 겹친다 — 메뉴 항목 글자가 흔들리지 않는다. */}
+                    <PendingLabel pending={unfollowMutation.isPending}>팔로우 해제</PendingLabel>
                   </button>
                 </div>
               )}
