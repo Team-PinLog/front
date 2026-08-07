@@ -8,6 +8,7 @@ import {
   SHELF_SCROLL_BOTTOM_PADDING_PX,
   SHELF_SCROLL_TOP_PADDING_PX,
 } from '@/shared/lib/shelfSpine';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { ShelfBookSpine, ShelfIconButton, ShelfLabel, ShelfTier } from '@/shared/ui/Shelf';
 import { useFollowShelfCollectionsQuery } from '../hooks/useFollowShelfCollectionsQuery';
 import { useUpdateFollowAliasMutation } from '../hooks/useUpdateFollowAliasMutation';
@@ -63,6 +64,10 @@ export function FollowedShelfCard({
   const unfollowMutation = useUnfollowMutation();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  // 348: 팔로우 해제 확인. Context+Provider(기존 세 다이얼로그의 패턴)를 쓰지 않는다 — 이 동작은
+  // 이 카드 안에서 시작해서 끝나고, 다른 화면이 이 상태를 읽을 일이 없다. 전역 상태를 늘리는
+  // 비용만 남는다.
+  const [isUnfollowConfirmOpen, setIsUnfollowConfirmOpen] = useState(false);
   const [isEditingAlias, setIsEditingAlias] = useState(false);
   const [aliasInput, setAliasInput] = useState(alias ?? '');
 
@@ -110,9 +115,32 @@ export function FollowedShelfCard({
   // 입력되지 않는 상태"와 정확히 같다.
   const isAliasAtMaxLength = aliasInput.length >= ALIAS_MAX_LENGTH;
 
-  const handleUnfollow = () => {
-    setIsMenuOpen(false);
-    unfollowMutation.mutate({ followId });
+  // 348: 되돌리기 어려운 동작이라 확인을 한 겹 둔다. 재팔로우는 followId가 아니라 collectionId로만
+  // 가능해서(08_API_명세 8.2), 실수로 해제하면 그 작성자의 컬렉션을 다시 찾아가야 복구된다.
+  //
+  // ⚠️ 여기서 메뉴를 닫지 않는다. 닫으면 방금 누른 "팔로우 해제" 버튼이 DOM에서 사라져,
+  // 다이얼로그를 취소했을 때 포커스가 돌아갈 자리가 없어진다(ConfirmDialog의 복귀 대상은 열기
+  // 직전에 포커스돼 있던 요소다). 메뉴는 다이얼로그 뒤에 그대로 열려 있다가, 해제가 성공하면
+  // 카드와 함께 사라지고 취소하면 원래 자리로 돌아온다.
+  const handleRequestUnfollow = () => {
+    unfollowMutation.reset();
+    setIsUnfollowConfirmOpen(true);
+  };
+
+  const handleCancelUnfollow = () => {
+    setIsUnfollowConfirmOpen(false);
+  };
+
+  const handleConfirmUnfollow = () => {
+    unfollowMutation.mutate(
+      { followId },
+      {
+        onSuccess: () => {
+          setIsUnfollowConfirmOpen(false);
+          setIsMenuOpen(false);
+        },
+      },
+    );
   };
 
   return (
@@ -237,7 +265,7 @@ export function FollowedShelfCard({
                 <div className="absolute right-0 top-9 z-10 w-36 rounded-lg border border-line-card bg-snow-white p-1.5 shadow-[0_12px_28px_rgba(4,33,66,.18)] ring-1 ring-pin-navy/5">
                   <button
                     type="button"
-                    onClick={handleUnfollow}
+                    onClick={handleRequestUnfollow}
                     disabled={unfollowMutation.isPending}
                     className="h-9 w-full rounded-md px-2.5 text-left text-xs font-bold text-pin-navy hover:bg-log-mint/10 disabled:opacity-40"
                   >
@@ -253,10 +281,6 @@ export function FollowedShelfCard({
       {updateAliasMutation.isError && (
         <p className="text-xs text-red-600">{updateAliasMutation.error.message}</p>
       )}
-      {unfollowMutation.isError && (
-        <p className="text-xs text-red-600">{unfollowMutation.error.message}</p>
-      )}
-
       {collectionsQuery.isPending ? (
         <p className="text-sm text-ink-gray">불러오는 중…</p>
       ) : collectionsQuery.isError ? (
@@ -276,6 +300,21 @@ export function FollowedShelfCard({
           }}
         />
       )}
+
+      {/* 348: 문구에 별칭(없으면 일반 명칭)을 넣어 "어느 책장을 해제하는지"가 확인 화면에서
+          보이게 한다 — 카드가 여러 열에 나란히 있어 어느 카드의 메뉴였는지 헷갈리기 쉽다. */}
+      <ConfirmDialog
+        isOpen={isUnfollowConfirmOpen}
+        title={`'${alias ?? '이 책장'}' 팔로우를 해제할까요?`}
+        description="해제하면 이 책장이 내 라이브러리에서 사라져요. 다시 팔로우하려면 그 작성자의 컬렉션을 찾아가야 해요."
+        confirmLabel="해제"
+        pendingLabel="해제 중…"
+        tone="danger"
+        isPending={unfollowMutation.isPending}
+        errorMessage={unfollowMutation.isError ? unfollowMutation.error.message : null}
+        onConfirm={handleConfirmUnfollow}
+        onCancel={handleCancelUnfollow}
+      />
     </>
   );
 }
