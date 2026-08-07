@@ -28,6 +28,25 @@ import { DeskSurface, HOME_DESK_POSTER_ENABLED, MapPosterFrame } from '@/feature
 // 없고, 지도-카드 겹침도 종이 폭 자체로 해결된다. 스위치를 끄면 예전 페이드가 그대로 돌아온다.
 const MAP_RIGHT_FADE_PX = HOME_DESK_POSTER_ENABLED ? 0 : MAP_TONE_RIGHT_FADE_PX;
 
+/**
+ * 384 후속: 포스터 구도에서는 **히어로 블러 오버레이를 쓰지 않는다**(사용자 확정). 지도는 종이
+ * 안에서 네 변 모두 선명한 사각형으로 끝나야 한다.
+ *
+ * 그래서 지도에 넘기던 "위쪽이 가려진 높이"도 0이 된다 — 가리는 것이 없어졌기 때문이다. 이 값은
+ * fitBounds 여유·센터링 보정·"화면 밖 N개" 배지가 함께 쓰므로, 0으로 두지 않으면 지도가 있지도
+ * 않은 가림을 피해 계속 아래로 치우친다.
+ *
+ * 히어로와의 겹침은 **블러가 아니라 배치로** 푼다 — 아래 배경 레이어를 히어로 높이만큼 내린다.
+ */
+const MAP_TOP_OBSTRUCTION_PX = HOME_DESK_POSTER_ENABLED ? 0 : HERO_OVERLAY_OPAQUE_PX;
+
+/**
+ * 포스터가 시작하는 높이. 히어로(토글 + 제목 + 검색창)가 차지하는 높이에 여유를 더한 값이라,
+ * 지도가 그 아래에서 시작해 글자와 겹치지 않는다. **취향 조정 지점** — 히어로가 커지거나 줄면
+ * 이 값만 바꾼다.
+ */
+const POSTER_TOP_CLASS = HOME_DESK_POSTER_ENABLED ? 'top-[12.5rem] md:top-[13.5rem]' : '';
+
 // 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
 // src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
 // lazy인 이유는 코드 분할이다 — 경계 데이터(약 64KB)와 지역 뷰 코드가 별도 청크로 빠져, 기본값인
@@ -158,7 +177,11 @@ export function HomePage() {
             fitBounds 여유와 "화면 밖" 배지도 컨테이너 실측값을 쓰므로 새 폭에 자동으로 맞는다.
             오른쪽 단면은 **RecordMapView·RegionMapView 안에서** 그라데이션으로 지운다 — 여기서
             레이어 전체에 마스크를 걸면 그 안의 줌 버튼까지 함께 사라지기 때문이다(실제로 그랬다). */}
-        <div className="isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0">
+        {/* 384 후속 — 롤백 지점 ④: 포스터를 히어로 아래에서 시작시킨다. 스위치가 꺼져 있으면 빈
+            문자열이라 예전처럼 inset-0 전체를 덮는다. */}
+        <div
+          className={`isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${POSTER_TOP_CLASS}`}
+        >
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
           {/* 384 — 롤백 지점 ③: 지도·지역 뷰를 종이 포스터 안에 넣는다. 두 뷰가 같은 "책상 위
@@ -174,7 +197,7 @@ export function HomePage() {
               >
                 <RegionViewPanel
                   onSelectRecord={setOpenRecordId}
-                  topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+                  topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
                   rightFadePx={MAP_RIGHT_FADE_PX}
                 />
               </Suspense>
@@ -183,7 +206,7 @@ export function HomePage() {
             <MapPosterFrame variant="kakao">
               <HomeMapSection
                 onMarkerClick={setOpenRecordId}
-                topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
+                topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
                 focusRecordId={savedRecordId}
                 onFocusRecordHandled={handleSavedRecordFocused}
                 highlightRecordId={activeRecentRecordId}
@@ -194,30 +217,27 @@ export function HomePage() {
           )}
         </div>
 
-        {/* 히어로 쪽으로 갈수록 지도가 흐려지는 오버레이. 클릭은 지도로 통과시켜야 해서
-            pointer-events-none.
-            경계선(사각형 단차)의 근본 원인은 tint 그라데이션이 아니라 요소가 "고정 높이에서
-            끝난다"는 사실 자체였다 — backdrop-filter는 요소 영역 안에서만 균일하게 적용되고
-            영역 밖에서 즉시 사라지므로, tint가 이미 투명해진 지점에서도 "흐린 지도 / 선명한
-            지도"가 맞닿는 가로줄이 남는다. 높이가 다른 여러 겹을 겹쳐 단차를 잘게 쪼개는 방식도
-            써봤지만 단차를 줄일 뿐 없애지는 못한다.
-            그래서 레이어는 하나만 두고, mask-image(알파 그라데이션)로 이 요소의 "보이는 정도"
-            자체를 위에서 아래로 연속적으로 0까지 떨어뜨린다. 마스크는 요소의 합성 결과 전체에
-            적용되므로 backdrop-blur와 bg-paper-white(tint)가 같은 곡선을 따라 함께 사라진다 —
-            tint를 별도 레이어로 분리하지 않는 이유다. 알파가 0이 되는 지점에는 그릴 것이 남지
-            않아 끊기는 경계가 원리적으로 생기지 않는다.
-            Safari/구형 Chromium을 위해 -webkit-mask-image(WebkitMaskImage)를 함께 지정한다.
-            근거: Jira S15P11A705-307 후속 디자인 피드백. */}
-        {/* 368: 좌·우·위 음수 마진이 위 지도 레이어와 **같은 값**이어야 한다. 좌우가 다르면 넓어진
-            지도의 가장자리만 블러 없이 선명하게 남고, 위가 다르면 지도와 오버레이의 시작점이 어긋나
-            RecordMapView에 넘기는 topObstructionPx(HERO_OVERLAY_OPAQUE_PX)가 틀린 값이 된다 —
-            둘을 같이 올리면 "지도 위 몇 px이 가려지는가"라는 관계는 그대로 보존된다.
-            아래쪽은 이 오버레이가 고정 높이로 끝나는 레이어라 상쇄할 padding이 없다. */}
-        <div
-          aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
-          style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
-        />
+        {/* 384 후속 — 롤백 지점 ⑤: 히어로 블러 오버레이는 **포스터 구도에서 쓰지 않는다**(사용자
+            확정: "지도는 포스터 안에서 딱 네모 틀, 어떤 가장자리에도 페이드가 없어야 한다").
+            지도가 포스터 안으로 내려가 히어로와 겹치지 않으므로 가독성을 위해 흐릴 이유도 없어졌다.
+            스위치를 끄면 아래 오버레이가 그대로 돌아온다.
+
+            (아래는 스위치가 꺼졌을 때만 쓰이는 옛 오버레이다.)
+            히어로 쪽으로 갈수록 지도가 흐려지는 레이어이며, 클릭은 지도로 통과시켜야 해서
+            pointer-events-none이다. 경계선(사각형 단차)의 근본 원인은 tint 그라데이션이 아니라
+            요소가 "고정 높이에서 끝난다"는 사실 자체였다 — backdrop-filter는 요소 영역 안에서만
+            균일하게 적용되고 영역 밖에서 즉시 사라지므로, tint가 이미 투명해진 지점에서도 "흐린
+            지도 / 선명한 지도"가 맞닿는 가로줄이 남는다. 그래서 레이어는 하나만 두고 mask-image로
+            이 요소의 "보이는 정도" 자체를 위에서 아래로 0까지 떨어뜨린다. 근거: S15P11A705-307.
+            좌·우·위 음수 마진은 위 지도 레이어와 **같은 값**이어야 한다(368) — 다르면 지도
+            가장자리만 선명하게 남거나 시작점이 어긋난다. */}
+        {!HOME_DESK_POSTER_ENABLED && (
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
+            style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
+          />
+        )}
 
         {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다.
             ⚠️ 377: **pointer-events-none이 반드시 있어야 한다.** 이 div는 max-w-6xl 폭에 컨텐츠
