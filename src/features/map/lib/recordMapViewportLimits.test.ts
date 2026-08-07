@@ -6,6 +6,7 @@ import {
   FIT_BOUNDS_PADDING_MIN_PX,
   getFitBoundsBasePaddingPx,
   getFitPadding,
+  getVisibleCenterLngOffset,
   getMedianPoint,
   getVisibleCenterLatOffset,
   KOREA_PAN_BOUNDS,
@@ -227,5 +228,57 @@ describe('getFitBoundsBasePaddingPx', () => {
     const padding = getFitPadding(base, { topObstructionPx: 215, containerHeightPx: 900 });
     expect(padding.top).toBe(base + 215);
     expect(padding.bottom).toBe(base);
+  });
+});
+
+describe('오른쪽 페이드 가림(rightObstructionPx)', () => {
+  // 377 후속: 지도 오른쪽 128px이 그라데이션으로 지워진다. 그려지긴 하지만 보이지 않으므로
+  // 상단 오버레이와 똑같이 "없는 영역"으로 쳐야 한다. 이걸 빠뜨려 제주가 페이드에 가려졌다.
+  const FADED = {
+    topObstructionPx: 0,
+    containerHeightPx: 600,
+    rightObstructionPx: 128,
+    containerWidthPx: 800,
+  };
+  const VIEWPORT = { swLat: 33, swLng: 126, neLat: 38, neLng: 130 };
+
+  it('fitBounds 여유에 페이드 폭이 더해진다 — 동쪽 끝 마커가 페이드로 들어가지 않는다', () => {
+    const padding = getFitPadding(48, FADED);
+    expect(padding.right).toBe(48 + 128);
+    // 나머지 세 방향은 그대로다.
+    expect(padding.left).toBe(48);
+    expect(padding.bottom).toBe(48);
+  });
+
+  it('가려지는 폭이 없으면 여유도 그대로다', () => {
+    expect(getFitPadding(48, { topObstructionPx: 0, containerHeightPx: 600 }).right).toBe(48);
+  });
+
+  it('컨테이너 폭을 모르면 보정하지 않는다 — 0으로 나눠 NaN을 만들지 않는다', () => {
+    const padding = getFitPadding(48, {
+      topObstructionPx: 0,
+      containerHeightPx: 600,
+      rightObstructionPx: 128,
+    });
+    expect(padding.right).toBe(48);
+  });
+
+  it('보이는 영역의 동쪽 경계가 그만큼 안으로 들어온다', () => {
+    const visible = shrinkViewportFromTop(VIEWPORT, FADED);
+    // 800px 폭에 4도가 담기므로 128px은 0.64도다.
+    expect(visible.neLng).toBeCloseTo(130 - 0.64, 5);
+    expect(visible.swLng).toBe(126);
+  });
+
+  it('중심 보정이 서쪽(음수)으로 간다 — 목표 지점을 보이는 영역 한가운데로 옮긴다', () => {
+    const offset = getVisibleCenterLngOffset(VIEWPORT, FADED);
+    expect(offset).toBeCloseTo(-0.32, 5);
+  });
+
+  it('위·오른쪽이 함께 가려져도 각각 반영된다', () => {
+    const both = { ...FADED, topObstructionPx: 120 };
+    const visible = shrinkViewportFromTop(VIEWPORT, both);
+    expect(visible.neLat).toBeLessThan(38);
+    expect(visible.neLng).toBeLessThan(130);
   });
 });

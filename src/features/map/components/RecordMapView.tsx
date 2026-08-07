@@ -19,6 +19,7 @@ import {
   getFitPadding,
   getMedianPoint,
   getVisibleCenterLatOffset,
+  getVisibleCenterLngOffset,
   KOREA_PAN_BOUNDS,
   MAX_ZOOM_OUT_LEVEL,
   shrinkViewportFromTop,
@@ -220,8 +221,11 @@ function centerOnVisibleArea(
   insets: MapViewInsets,
   animate: boolean,
 ): void {
-  const latOffset = getVisibleCenterLatOffset(readViewport(map), insets);
-  const target = new kakao.maps.LatLng(point.lat + latOffset, point.lng);
+  const viewport = readViewport(map);
+  const latOffset = getVisibleCenterLatOffset(viewport, insets);
+  // 오른쪽이 페이드로 가려지면 중심을 서쪽으로 옮겨야 목표 지점이 보이는 영역 한가운데에 온다.
+  const lngOffset = getVisibleCenterLngOffset(viewport, insets);
+  const target = new kakao.maps.LatLng(point.lat + latOffset, point.lng + lngOffset);
   if (animate) {
     map.panTo(target);
   } else {
@@ -401,8 +405,12 @@ export function RecordMapView({
     (): MapViewInsets => ({
       topObstructionPx,
       containerHeightPx: containerRef.current?.clientHeight ?? 0,
+      // 377 후속: 오른쪽 페이드 띠는 그려지지만 보이지 않는다 — 상단 오버레이와 똑같이 "가려진
+      // 영역"으로 넘겨 fitBounds·센터링·"화면 밖" 배지가 모두 보이는 영역 기준으로 계산되게 한다.
+      rightObstructionPx: rightFadePx,
+      containerWidthPx: containerRef.current?.clientWidth ?? 0,
     }),
-    [topObstructionPx],
+    [topObstructionPx, rightFadePx],
   );
 
   /**

@@ -287,9 +287,14 @@ export function HomePage() {
             위치 기준을 컨텐츠 열이 아니라 <main>으로 잡는 이유: 컨텐츠 열은 max-w-6xl로 가운데
             정렬돼 있어 넓은 화면에서 오른쪽 끝이 뷰포트 오른쪽과 어긋난다. 지도가 비워 둔 띠와
             정확히 겹치려면 <main> 기준이어야 한다.
-            sm에서는 흐름에 그대로 둔다 — 좁은 화면에는 띠로 뺄 가로가 없다. */}
+            sm에서는 흐름에 그대로 둔다 — 좁은 화면에는 띠로 뺄 가로가 없다.
+            377 후속: **top을 크게 올렸다**(19~21rem → 6.5~7rem). 아래쪽에 두면 카드 2장(약 600px)
+            높이가 뷰포트 예산을 넘겨 그만큼 스크롤이 생겼다 — 절대 배치라도 스크롤 영역의 overflow에는
+            그대로 잡힌다. 폭도 md·lg를 15rem으로 통일했다(lg 19rem이면 사진 4:3이 커져 카드 한 장이
+            340px이 되고, 두 장이면 다시 예산을 넘는다). 히어로는 왼쪽 컬럼이라 카드가 위로 올라와도
+            검색창과 부딪히지 않는다. */}
         {!hasResults && recentPage && (
-          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-0 md:top-[19rem] md:w-[15rem] md:px-0 lg:top-[21rem] lg:w-[19rem] xl:right-2">
+          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-0 md:top-[6.5rem] md:w-[15rem] md:px-0 lg:top-[7rem] xl:right-2">
             <RecentRecordCardStack
               items={recentItems}
               activeIndex={activeRecentIndex}

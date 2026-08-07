@@ -92,6 +92,26 @@ export interface MapViewInsets {
   topObstructionPx: number;
   /** 지도 컨테이너 전체 높이(px). 픽셀 오프셋을 위도로 환산할 때 기준이 된다. */
   containerHeightPx: number;
+  /**
+   * 377 후속: 컨테이너 **오른쪽 끝에서 페이드로 지워지는 폭**(px). 그 띠는 그려지긴 하지만 알파가
+   * 떨어져 사용자에게는 보이지 않으므로, 상단 가림과 똑같이 "없는 영역"으로 쳐야 한다.
+   *
+   * 이걸 반영하지 않아 생긴 증상이 "지도 뷰에서 제주가 우측 페이드에 가려진다"였다 — fitBounds는
+   * 컨테이너 전체에 마커를 담았는데 오른쪽 끝 128px은 눈에 보이지 않으니, 그 안에 들어간 마커는
+   * 사라진 것처럼 보였다.
+   */
+  rightObstructionPx?: number;
+  /** 지도 컨테이너 전체 폭(px). 픽셀 오프셋을 경도로 환산할 때 기준이 된다. */
+  containerWidthPx?: number;
+}
+
+/** 계산에 쓸 수 있는 오른쪽 가림 폭. 컨테이너를 벗어나거나 음수인 값은 무시한다. */
+function usableRightObstructionPx(insets: MapViewInsets): number {
+  const { rightObstructionPx = 0, containerWidthPx = 0 } = insets;
+  if (!(rightObstructionPx > 0) || !(containerWidthPx > 0)) {
+    return 0;
+  }
+  return Math.min(rightObstructionPx, containerWidthPx);
 }
 
 /** 계산에 쓸 수 있는 가림 높이. 컨테이너를 벗어나거나 음수인 값은 무시한다. */
@@ -153,7 +173,9 @@ export interface MapFitPadding {
 export function getFitPadding(basePaddingPx: number, insets: MapViewInsets): MapFitPadding {
   return {
     top: basePaddingPx + usableObstructionPx(insets),
-    right: basePaddingPx,
+    // 377 후속: 오른쪽 페이드 띠도 상단 오버레이와 같은 취급이다 — 그만큼 여유를 더 줘야 마커가
+    // "보이는 영역" 안에 담긴다. 이게 없으면 동쪽 끝 마커(예: 제주)가 페이드 속으로 들어간다.
+    right: basePaddingPx + usableRightObstructionPx(insets),
     bottom: basePaddingPx,
     left: basePaddingPx,
   };
@@ -169,12 +191,23 @@ export function getFitPadding(basePaddingPx: number, insets: MapViewInsets): Map
  * 이유는 SDK 객체 없이 테스트할 수 있는 순수 함수로 두기 위해서다.
  */
 export function shrinkViewportFromTop(viewport: LatLngBox, insets: MapViewInsets): LatLngBox {
-  const obstruction = usableObstructionPx(insets);
-  if (obstruction === 0) {
+  const topObstruction = usableObstructionPx(insets);
+  const rightObstruction = usableRightObstructionPx(insets);
+  if (topObstruction === 0 && rightObstruction === 0) {
     return viewport;
   }
-  const latPerPx = (viewport.neLat - viewport.swLat) / insets.containerHeightPx;
-  return { ...viewport, neLat: viewport.neLat - latPerPx * obstruction };
+  let result = viewport;
+  if (topObstruction > 0) {
+    const latPerPx = (viewport.neLat - viewport.swLat) / insets.containerHeightPx;
+    result = { ...result, neLat: result.neLat - latPerPx * topObstruction };
+  }
+  if (rightObstruction > 0) {
+    // 오른쪽이 가려지면 **동쪽 경계**가 그만큼 안으로 들어온다. "화면 밖 N개" 배지가 세는 대상이
+    // 눈에 보이는 것과 일치하려면 이 축소가 필요하다.
+    const lngPerPx = (viewport.neLng - viewport.swLng) / (insets.containerWidthPx ?? 0);
+    result = { ...result, neLng: result.neLng - lngPerPx * rightObstruction };
+  }
+  return result;
 }
 
 /**
@@ -186,6 +219,19 @@ export function shrinkViewportFromTop(viewport: LatLngBox, insets: MapViewInsets
  * 하고, 뒤집으면 지도 중심이 목표 지점보다 그만큼 북쪽이어야 한다. 이 보정을 빼면 핀이 컨테이너
  * 중앙에 놓여 오버레이 높이의 절반만큼 위로 밀려 보인다.
  */
+/**
+ * 377 후속: 오른쪽이 가려졌을 때 지도 중심을 **서쪽으로** 얼마나 옮겨야 목표 지점이 보이는 영역의
+ * 가로 한가운데에 오는지(도 단위). 위 위도 보정과 같은 논리의 가로판이다.
+ */
+export function getVisibleCenterLngOffset(viewport: LatLngBox, insets: MapViewInsets): number {
+  const obstruction = usableRightObstructionPx(insets);
+  if (obstruction === 0) {
+    return 0;
+  }
+  const lngPerPx = (viewport.neLng - viewport.swLng) / (insets.containerWidthPx ?? 0);
+  return -(lngPerPx * obstruction) / 2;
+}
+
 export function getVisibleCenterLatOffset(viewport: LatLngBox, insets: MapViewInsets): number {
   const obstruction = usableObstructionPx(insets);
   if (obstruction === 0) {
