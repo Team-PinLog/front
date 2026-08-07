@@ -48,3 +48,7 @@
 - [컬렉션 펼친 화면 재설계에서 반복된 함정들](2026-08-06-collection-spread-redesign-lessons.md) — 레인 시야가 좁혀 만든 중복 구현·죽은 소비자, Tailwind 동적 클래스·지도 마커·레이아웃 증폭 함정
 - [조용히 잘못되는 CSS 셋](2026-08-06-silent-css-traps-nav-shell.md) — viewport-fit 없으면 safe-area가 0, :focus-within이 클릭 후 안 풀림, Tailwind가 주석을 스캔
 - [git worktree로 세션을 나눠 병렬 작업하기](2026-08-06-parallel-worktree-sessions.md) — 레인 분할 기준과 세팅 단계에서 조용히 잘못되는 함정 6개
+- [Home 컨텐츠 레이어가 지도·지역 클릭을 통째로 삼켰다](2026-08-07-content-layer-swallows-map-clicks.md) — 투명 z-10 사각형의 히트 박스 + 5.7×3.1px 클릭 타깃, pointer-events 재구성과 22px 클릭 원으로 해소
+- [스택 브랜치가 부모 squash 머지 후 CONFLICTING이 된다](2026-08-07-squash-merge-stacked-branch-rebase.md) — `git rebase --onto origin/dev <머지된 마지막 커밋>`으로 범위를 제외하면 충돌 0건
+- ["무료 폰트"여도 서브셋·WOFF2 변환이 라이선스 위반일 수 있다](2026-08-07-free-font-license-blocks-subset-pipeline.md) — 교보·온글잎 반입 불가 판정 경위와 폰트 라이선스 3단계 검증 절차
+- [병렬 dev 서버(5174·5175)에서 카카오맵이 안 뜬다](2026-08-07-kakao-sdk-401-on-parallel-dev-ports.md) — 카카오 콘솔에 5173만 등록돼 SDK 401, 코드 회귀로 오인 주의
