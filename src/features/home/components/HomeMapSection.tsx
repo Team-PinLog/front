@@ -8,6 +8,8 @@ interface HomeMapSectionProps {
   /** 저장 직후 이 Record로 지도를 옮긴다. 이동을 마치면 onFocusRecordHandled로 알린다. */
   focusRecordId: number | null;
   onFocusRecordHandled: () => void;
+  /** 371: 최근 기록 카드 스택의 앞장. 해당 마커를 강조하고, 앞장이 바뀌면 그 좌표로 이동한다. */
+  highlightRecordId: number | null;
 }
 
 /**
@@ -22,6 +24,7 @@ export function HomeMapSection({
   topObstructionPx,
   focusRecordId,
   onFocusRecordHandled,
+  highlightRecordId,
 }: HomeMapSectionProps) {
   return (
     <div className="h-full w-full">
@@ -30,6 +33,7 @@ export function HomeMapSection({
         topObstructionPx={topObstructionPx}
         focusRecordId={focusRecordId}
         onFocusRecordHandled={onFocusRecordHandled}
+        highlightRecordId={highlightRecordId}
       />
     </div>
   );

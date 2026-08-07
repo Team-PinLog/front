@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
@@ -7,6 +7,8 @@ import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecor
 import { SmartSearchPanel } from '@/features/home/components/SmartSearchPanel';
 import { HomeMapSection } from '@/features/home/components/HomeMapSection';
 import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
+import { RecentRecordCardStack } from '@/features/home/components/RecentRecordCardStack';
+import { useRecentRecordsQuery } from '@/features/records/hooks/useRecentRecordsQuery';
 import {
   HERO_MAP_FADE_MASK,
   HERO_OVERLAY_HEIGHT_CLASS,
@@ -42,6 +44,49 @@ export function HomePage() {
   // 지도 쪽 effect의 deps에 들어가므로 참조를 고정한다 — 인라인 화살표로 두면 홈이 리렌더될 때마다
   // 이동 effect가 다시 돈다.
   const handleSavedRecordFocused = useCallback(() => setSavedRecordId(null), []);
+
+  // 371: "요즘 붙여둔 것" 카드 스택. 쿼리와 앞장 인덱스를 스택 컴포넌트가 아니라 **여기서** 들고
+  // 있는 이유는, 같은 "앞장"이라는 사실을 지도(마커 강조·센터링)도 함께 봐야 하기 때문이다.
+  // 스택이 상태를 들고 콜백으로 올려주는 구조로 하면 자식 → 부모 setState를 effect로 동기화해야
+  // 하는데, 그건 하나의 사실을 두 벌로 만드는 일이고 첫 렌더에 한 박자 늦게 반영된다.
+  const recentRecordsQuery = useRecentRecordsQuery();
+  /**
+   * 앞장을 **인덱스가 아니라 recordId로** 들고 있는 것이 핵심이다. 목록은 저장·삭제로 언제든 다시
+   * 조회되는데, 인덱스로 들면 같은 번호가 갱신 뒤에는 다른 기록을 가리킨다. 특히 저장 직후를
+   * "0번(맨 앞)"으로 고정하면 CONTEXT_ADDED(기존 Record에 맥락만 추가)에서 어긋난다 — 그 경우
+   * Record의 createdAt이 갱신되지 않아 목록 맨 앞이 아니라 원래 자리에 그대로 있고, 그러면
+   * 카드 앞장과 지도가 강조·이동하는 대상이 서로 다른 기록이 된다.
+   *
+   * null이면 "아직 고른 적 없음"이라 가장 최근 기록(0번)이 앞장이다. 목록에서 사라진 id(삭제된
+   * 기록)도 자연히 0번으로 돌아가므로 인덱스를 접는 보정이 따로 필요 없다.
+   */
+  const [frontRecentRecordId, setFrontRecentRecordId] = useState<number | null>(null);
+
+  // data가 null이면 엔드포인트 미구현이라 영역 자체를 그리지 않는다(useRecentRecordsQuery 주석).
+  // 빈 배열(7일 내 기록 없음)과 구분되는 지점이다 — 그쪽은 스택이 빈 상태 안내를 그린다.
+  const recentPage = recentRecordsQuery.data ?? null;
+  // useMemo인 이유는 성능이 아니라 **참조 안정성**이다. `?? []`는 매 렌더 새 배열을 만들어, 이 값을
+  // deps로 쓰는 아래 useCallback이 렌더마다 새로 만들어진다(react-hooks/exhaustive-deps 경고).
+  const recentItems = useMemo(() => recentPage?.items ?? [], [recentPage]);
+  const frontRecentIndex = recentItems.findIndex((item) => item.recordId === frontRecentRecordId);
+  // 저장 직후에는 목록이 아직 다시 오기 전이라 findIndex가 -1이다. 그때는 최신 카드를 앞장으로
+  // 두고, 재조회가 도착하면 위 id가 있는 자리로 자연스럽게 옮겨간다.
+  const activeRecentIndex = frontRecentIndex >= 0 ? frontRecentIndex : 0;
+  const activeRecentRecordId = recentItems[activeRecentIndex]?.recordId ?? null;
+
+  const handleActiveRecentIndexChange = useCallback(
+    (nextIndex: number) => {
+      setFrontRecentRecordId(recentItems[nextIndex]?.recordId ?? null);
+    },
+    [recentItems],
+  );
+
+  // 저장한 기록을 앞장으로 세운다. 새 Record면 목록 맨 앞에, CONTEXT_ADDED면 원래 자리에 있는데
+  // id로 따라가므로 두 경우 모두 같은 코드로 맞는다. 지도 이동은 기존 focusRecordId 경로가 담당한다.
+  const handleRecordSaved = useCallback((recordId: number) => {
+    setSavedRecordId(recordId);
+    setFrontRecentRecordId(recordId);
+  }, []);
 
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
   // mockup의 homeSearchNoResults(검색은 했지만 0건)에 대응한다 — idle·pending·error와 달리
@@ -80,6 +125,7 @@ export function HomePage() {
             topObstructionPx={HERO_OVERLAY_OPAQUE_PX}
             focusRecordId={savedRecordId}
             onFocusRecordHandled={handleSavedRecordFocused}
+            highlightRecordId={activeRecentRecordId}
           />
         </div>
 
@@ -115,6 +161,24 @@ export function HomePage() {
             isPending={searchMutation.isPending}
           />
 
+          {/* 371: 지도 위 우측의 "요즘 붙여둔 것".
+              - 검색 결과가 떠 있는 동안에는 감춘다. 결과 갤러리와 최근 카드가 같은 폭을 두고 세로로
+                이어지면 어느 쪽이 지금 화면의 주인공인지 흐려진다. 검색은 사용자가 방금 요청한 일이라
+                그때는 결과가 주인공이다(idle·0건 상태에서는 다시 나타난다).
+              - 로딩 중과 미구현(recentPage === null)에는 자리표시자도 두지 않는다. 부가 영역이라
+                스켈레톤이 지도 위에 떠 있으면 그 자체가 노이즈다. */}
+          {!hasResults && recentPage && (
+            <div className="flex justify-end">
+              <RecentRecordCardStack
+                items={recentItems}
+                activeIndex={activeRecentIndex}
+                onActiveIndexChange={handleActiveRecentIndexChange}
+                hasNext={recentPage.hasNext}
+                onSelectRecord={setOpenRecordId}
+              />
+            </div>
+          )}
+
           {hasResults && (
             <SearchResultGallery
               items={searchMutation.data.items}
@@ -136,7 +200,7 @@ export function HomePage() {
         </div>
       </main>
 
-      <PlaceRecordSheet onRecordSaved={setSavedRecordId} />
+      <PlaceRecordSheet onRecordSaved={handleRecordSaved} />
 
       {openRecordId !== null && (
         <RecordDetailOverlay recordId={openRecordId} onClose={() => setOpenRecordId(null)} />
