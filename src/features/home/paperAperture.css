@@ -1,0 +1,927 @@
+/* ══════════════════════════════════════════════════════════════════════
+   홈 "종이에 오려낸 창"
+   출처: 디자인 시안 home-paper-aperture.html. 값·구조는 그 파일을 따른다.
+
+   왜 Tailwind가 아니라 CSS 파일인가 — 이 화면은 `calc(var(--open) * …)` 식이
+   transform·opacity·box-shadow·scaleX에 동시에 들어가고 ::before/::after 층이
+   판마다 다르다. 임의값 클래스로 옮기면 한 줄이 200자를 넘고 무엇이 무엇을
+   구동하는지 읽을 수 없게 된다. 공용 컴포넌트가 index.css에 사는 것과 같은
+   이유이고(.context-sticky-note), 다만 홈 전용이라 feature 폴더에 둔다.
+
+   ⚠️ 시안은 화면 전체(position:fixed, 100vw/100vh)를 썼다. 여기서는 사이드바를
+   남기기로 해서 모든 기준을 **컨테이너(<main>) 기준 %**로 바꿨다. vw/vh를 그대로
+   두면 사이드바 폭만큼 창이 오른쪽으로 밀리고 좌판이 사이드바 밑으로 들어간다.
+
+   ⚠️ 원본에서 **의도적으로 빼고 들여온 두 블록**이 있다(409 인수인계):
+     ① `.pl-stage` 토큰 선언부(--pl-paper/--pl-navy/--pl-sweep/--pl-sh-* 등, position/overflow/
+        container 선언 포함)
+     ② 종이 표면 세 겹 `.pl-grain` / `.pl-emboss` / `.pl-spot`
+   둘 다 홈 전용이 아니라 종이 화면 전부가 쓰는 것이라 `features/paper/paperStage.css`가
+   이미 값 그대로 들고 있다. 같은 규칙을 두 파일에 두면 종이 색을 한 번 바꿀 때 어느 쪽이
+   이기는지가 **import 순서**로 정해진다 — 그래서 여기에는 홈 전용(`.pl-sheet*`·`.pl-deckle`·
+   조판·레일·메모지·표지·도크·결과)만 남는다.
+   그래서 이 파일만 불러오면 토큰이 비어 무대가 회색으로 뜬다. `PaperApertureStage.tsx`가
+   paperStage.css를 **먼저** 불러오는 이유가 이것이다.
+
+   ⚠️ 아래 `@container pl-stage` 블록은 `.pl-stage`를 다시 열지만 토큰 **선언이 아니라
+   재정의**다(--pl-sh-*, 홈 판형). paperStage.css의 기본값을 폭에 따라 덮는 것이고,
+   `--pl-sh-*`는 홈 밖에서 쓰이지 않아 다른 종이 화면에는 영향이 없다.
+
+   폰트: 원본의 `'Jalnan2'/'JalnanGothic'` 5곳은 dev 현행 제주 서체(표제용 JejuHallasan,
+   폴백 JejuGothic — tailwind.config.js fontFamily.display와 같은 스택)로 치환했다. 380에서
+   잘난체를 걷어냈으므로 그대로 두면 전부 sans-serif 폴백으로 떨어진다.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── 종이 네 판 ──────────────────────────────────────────────────────── */
+.pl-sheet {
+  position: absolute;
+  background: var(--pl-paper);
+  /* 종이 두께가 지도 위로 드리운다 */
+  box-shadow: 0 0 26px rgba(4, 33, 66, 0.14);
+  /* 한 글자만 쳐도 --open이 0 → 1로 뛰고, 그 뒤는 이 transition이 통째로 쓸어 연다.
+     감속 곡선(0.2,0.8,0.2,1)이라 처음에 확 나갔다가 끝에서 부드럽게 멎는다. */
+  transition:
+    transform var(--pl-sweep) var(--pl-ease),
+    box-shadow var(--pl-sweep) var(--pl-ease);
+  will-change: transform;
+}
+/* 네 판을 아주 조금씩 어긋나게 출발시킨다. 동시에 움직이면 "사각형이 커진다"로 보이고,
+   순서가 생기면 "펼쳐진다"로 읽힌다. 창은 가로로 넓으니 위아래가 먼저 갈라지고
+   좌우 여백 기둥이 뒤따르는 순서다.
+   ⚠️ 지연은 닫힐 때도 같은 순서로 적용된다. --pl-sweep의 1/8을 넘기면 되돌아올 때 판이 따로
+   노는 게 눈에 띄므로, 속도를 바꾸면 이 값도 같은 비율로 움직인다. */
+.pl-sheet-t {
+  transition-delay: 0ms;
+}
+.pl-sheet-b {
+  transition-delay: 80ms;
+}
+
+/* 접힌 자국. 밝은 선 + 바로 옆 어두운 선 = 접힌 능선. 명도차 3% 안쪽으로 억제한다.
+   접지도는 세로로 접고 가로로 한 번 더 접는다 — 상하판(full width)에는 세로 자국을,
+   좌우판(창 높이)에는 가로 자국을 넣는다. 판마다 %가 자기 폭 기준이라 전 판에 같은
+   규칙을 걸면 선이 어긋난다. */
+.pl-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* 접힌 자국 + 모눈.
+   ⚠️ 순서가 곧 위아래다 — 먼저 적은 것이 위에 그려진다. 접힌 자국(물리적 주름)이 위, 인쇄된
+   모눈이 아래다. 반대로 두면 주름이 모눈에 덮여 종이가 평평해 보인다.
+   ⚠️ 모눈을 ::after가 아니라 이 ::before에 얹는 이유: 의사요소 ::after는 **마지막 자식**으로
+   그려져 조판(.pl-type-t) 위를 덮는다. ::before는 첫 자식이라 글자 아래에 깔리고, 결·요철
+   레이어(.pl-grain/.pl-emboss)가 그 위에서 블렌드돼 "인쇄된 모눈"으로 읽힌다.
+   창이 열리면 판과 함께 나가므로 펼치기 전에만 보인다. */
+.pl-sheet-t::before,
+.pl-sheet-b::before {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent calc(33.3% - 2px),
+      rgba(255, 255, 255, 0.9) calc(33.3% - 2px) 33.3%,
+      rgba(4, 33, 66, 0.05) 33.3% calc(33.3% + 2px),
+      transparent calc(33.3% + 2px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(66.6% - 2px),
+      rgba(255, 255, 255, 0.9) calc(66.6% - 2px) 66.6%,
+      rgba(4, 33, 66, 0.05) 66.6% calc(66.6% + 2px),
+      transparent calc(66.6% + 2px)
+    ),
+    /* 굵은 눈(5칸마다) — 모눈종이의 5mm/10mm 구획에 해당한다. */
+    repeating-linear-gradient(0deg, transparent 0 109px, rgba(4, 33, 66, 0.09) 109px 110px),
+    repeating-linear-gradient(90deg, transparent 0 109px, rgba(4, 33, 66, 0.09) 109px 110px),
+    /* 잔눈 */ repeating-linear-gradient(0deg, transparent 0 21px, rgba(4, 33, 66, 0.05) 21px 22px),
+    repeating-linear-gradient(90deg, transparent 0 21px, rgba(4, 33, 66, 0.05) 21px 22px);
+}
+
+.pl-sheet-t {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--pl-sh-t);
+  transform: translateY(calc(var(--open) * -101%));
+  z-index: 6;
+}
+.pl-sheet-b {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--pl-sh-b);
+  transform: translateY(calc(var(--open) * 101%));
+  z-index: 6;
+}
+
+/* 재단면(손으로 자른 가장자리). 필터가 요소 전체에 걸리므로 조판이 들어간 판에는
+   못 걸고 별도 띠로 뺀다. 창 쪽 모서리에만 건다. */
+/* 띠 두께는 필터의 변위 진폭(scale=18)과 짝이다. 진폭의 2.5배 남짓은 돼야 찢긴 윤곽만 생기고
+   살은 안 끊긴다 — 얇은 띠에 큰 변위를 걸면 골이 깊은 자리에서 띠가 끊겨 종이에 구멍이 뚫린다.
+   내민 양(두께의 절반)도 함께 움직인다: 절반은 판 위에 얹혀 판의 직선 모서리를 덮고, 절반은
+   창 쪽으로 나가 찢긴 윤곽이 된다. 둘 중 하나만 어긋나도 직선이 비쳐 보인다.
+   ⚠️ scale을 바꾸면 이 두께와 내민 양을 같은 비율로 함께 바꾼다. */
+.pl-deckle {
+  position: absolute;
+  height: 46px;
+  left: -3%;
+  right: -3%;
+  background: var(--pl-paper);
+  filter: url(#pl-deckle);
+}
+.pl-sheet-t .pl-deckle {
+  bottom: -23px;
+}
+.pl-sheet-b .pl-deckle {
+  top: -23px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   조판. 굵기가 하나뿐인 서체라 위계를 크기·자간·괘선·여백으로 만든다.
+   11px 라벨과 대형 제목이 같은 화면에 있는 것 — 그 낙차가 이 화면의 인상이다.
+   ══════════════════════════════════════════════════════════════════════ */
+/* ⚠️ 조판에는 opacity 페이드를 걸지 않는다.
+   예전에는 네 판의 내용이 각자 0.4~0.5s 만에 페이드아웃됐는데, 판이 미끄러지는 시간(--pl-sweep)
+   보다 훨씬 짧아서 **글자가 먼저 사라지고 빈 종이가 뒤늦게 나가는** 모양이 됐다("양쪽 요소가
+   그냥 사라져버린다"). 조판은 종이에 인쇄된 것이므로 종이와 같이 나가야 한다 — 부모(.pl-sheet)의
+   transform을 그대로 타고 나가고, 화면 밖은 .pl-stage의 overflow:hidden이 잘라 준다. */
+.pl-type-t {
+  position: absolute;
+  left: clamp(22px, 7%, 92px);
+  right: clamp(22px, 7%, 92px);
+  bottom: clamp(26px, 12%, 58px);
+}
+/* ⚠️ 크기를 폭 단위로만 잡으면 낮고 넓은 창에서 상판 높이를 넘겨 제목이 잘린다.
+   제약이 되는 축은 폭이 아니라 **높이**다 — vh를 함께 물린다. */
+.pl-display {
+  margin: 0.26em 0 0;
+  font-family: 'JejuHallasan', 'JejuGothic', sans-serif;
+  font-weight: 400;
+  font-size: min(9.5vh, 6.4vw, 96px);
+  /* 두 줄 사이를 벌린다(0.98 → 1.28). 시안은 한 덩어리로 붙인 조판이었는데, 문구가
+     "기억이 머무는 자리 / 핀로그"로 바뀌면서 서로 다른 성격의 두 줄(설명 / 이름)이 됐다 —
+     붙여 두면 한 문장으로 읽힌다.
+     ⚠️ 이 값이 커지면 제목 덩어리가 위로 자란다. 상판(--pl-sh-t, 기본 40%)을 넘기면 잘리므로
+     상판 높이를 줄일 때는 함께 확인한다. */
+  line-height: 1.28;
+  letter-spacing: -0.035em;
+  word-break: keep-all;
+}
+/* "핀로그" — 이 화면에서 브랜드 색이 가장 크게 나는 자리다.
+   글자 자체를 민트로 칠하면 종이 위 2.32:1이라 큰 글자 기준(3:1)에도 못 미친다. 그래서 글자는
+   네이비로 두고 **민트를 밑줄 면으로** 깐다 — 브랜드 색을 원본 그대로(#3BB7A2, 흐리지 않게)
+   쓰면서 글자는 15.1:1로 읽힌다. 형광펜으로 그은 자국처럼 보이는 것도 이 화면의 인쇄물 문법에
+   맞는다. */
+.pl-display em {
+  font-style: normal;
+  color: var(--pl-navy);
+  background-image: linear-gradient(var(--pl-mint), var(--pl-mint));
+  background-repeat: no-repeat;
+  background-size: 100% 0.16em;
+  background-position: 0 0.86em;
+}
+
+/* 열린 뒤 상단에 남는 워드마크. 대형 제목과 교차 페이드된다. */
+.pl-topmark {
+  position: absolute;
+  left: clamp(22px, 7%, 92px);
+  top: 26px;
+  z-index: 24;
+  display: flex;
+  align-items: baseline;
+  gap: 13px;
+  opacity: clamp(0, calc((var(--open) - 0.55) * 3), 1);
+  /* 대형 제목이 종이와 함께 빠져나간 뒤에 들어오도록 개방 시간의 뒤쪽에 걸친다. */
+  transition: opacity calc(var(--pl-sweep) * 0.5) ease calc(var(--pl-sweep) * 0.45);
+  pointer-events: none;
+}
+.pl-topmark b {
+  font-family: 'JejuHallasan', 'JejuGothic', sans-serif;
+  font-weight: 400;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+.pl-topmark span {
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  color: var(--pl-ink);
+}
+
+/* ── 좌·우판: 세로쓰기 ──────────────────────────────────────────────── */
+/* 좌측 레일 — 우측(.pl-right-rail)과 대칭. 종이 판이 아니라 포스트잇만 놓이는 자리다.
+   위치·폭·열릴 때의 방향과 지연을 옛 좌판과 똑같이 맞춘다. */
+.pl-left-rail {
+  position: absolute;
+  left: 0;
+  top: var(--pl-sh-t);
+  bottom: var(--pl-sh-b);
+  width: var(--pl-sh-x);
+  z-index: 21;
+  /* 메모지 두 장을 세로로 쌓는다.
+     ⚠️ 가운데 정렬(align-items: center)이 아니라 왼쪽 기준 + 안쪽 여백이다. 메모지는 레일보다
+     넓어서(330px vs 288px) 가운데에 두면 좌우로 21px씩 삐져나가는데, 왼쪽으로 나간 만큼은
+     무대 밖이라 .pl-stage의 overflow:hidden에 잘린다. 오른쪽은 지도 위라 얼마든 나가도 된다.
+     그래서 왼쪽 여백만큼 밀어 넣어 잘림을 없앤다 — 회전(±2deg)으로 생기는 몇 px까지 포함한 값이다. */
+  /* 폭만큼 나가되 --pl-peek만 남긴다. */
+  transform: translateX(calc(var(--open) * (-100% + var(--pl-peek))));
+  transition: transform var(--pl-sweep) var(--pl-ease);
+  transition-delay: 190ms;
+}
+/* 좌측 포스트잇 두 장 — 위는 내가 적어 둔 곳 목록(노랑), 아래는 장소 추가(핑크).
+   색·테이프·접힌 모서리 값은 공용 포스트잇(ContextStickyNote / index.css .context-sticky-note)에서
+   가져온다. 같은 물건이 화면마다 다르게 보이면 "붙여 둔 메모"라는 인상이 깨진다.
+   ⚠️ 그 컴포넌트를 재사용하지는 않는다 — 그쪽은 contextId·body(Context 원문)를 받아 손글씨로
+   그리는 물건이고, 여기 담기는 것은 목록과 동작이다. 조형만 맞춘다. */
+.pl-note {
+  position: relative;
+  /* 레일(--pl-sh-x)보다 넓다. 가로로 긴 직사각형이 목표라 레일에 가두지 않고 넘긴다 —
+     우측 책과 같은 규칙이다. */
+  width: min(330px, 116%);
+  padding: 22px 24px 20px;
+  border: 0;
+  border-radius: 2px;
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 12px 22px rgba(4, 33, 66, 0.16);
+  transition:
+    transform 0.24s var(--pl-ease),
+    box-shadow 0.24s var(--pl-ease);
+}
+/* 위 가장자리에 걸친 마스킹 테이프. 메모지 밖으로 살짝 튀어나오는 게 "붙였다"는 인상의 핵심이다. */
+.pl-note-tape {
+  position: absolute;
+  top: -13px;
+  left: 22px;
+  width: 88px;
+  height: 26px;
+  border-radius: 2px;
+  background: rgba(214, 196, 150, 0.62);
+}
+/* 오른쪽 아래 접힌 모서리. 그림자 삼각형으로만 표현해 종이 색과 무관하게 동작한다. */
+.pl-note-dogear {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, transparent 50%, rgba(4, 33, 66, 0.1) 50%);
+}
+
+/* --- 목록 메모지(노랑) ---------------------------------------------------------------
+   높이를 내용이 정한다. 정사각 비율로 묶으면 줄 수가 바뀔 때 글자가 넘치거나 아래가 빈다. */
+.pl-note-list {
+  background: #fff2a6;
+  /* 기울기·테이프 각도는 ContextStickyNote의 NOTE_ROTATIONS / NOTE_TAPE_ROTATIONS에서 **서로
+     짝인 값**을 쓴다. 종이와 테이프가 같은 방향으로 기울면 "대충 붙인" 인상이 사라진다. */
+  transform: rotate(1.4deg);
+}
+.pl-note-list .pl-note-tape {
+  transform: rotate(6deg);
+}
+/* 마우스를 올리면 똑바로 서면서 살짝 들린다 — 핑크 메모지와 같은 반응이다.
+   :focus-within을 함께 거는 이유: 이 메모지 자체는 <div>지만 안의 줄들이 버튼이라, 키보드로
+   줄에 들어왔을 때도 같은 상태가 보여야 한다. */
+.pl-note-list:hover,
+.pl-note-list:focus-within {
+  transform: rotate(0deg) translateY(-4px);
+  box-shadow: 0 18px 30px rgba(4, 33, 66, 0.22);
+}
+.pl-note-h {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  color: var(--pl-ink);
+}
+.pl-note-h::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(4, 33, 66, 0.16);
+}
+.pl-note-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(4, 33, 66, 0.12);
+  background: none;
+  font: inherit;
+  color: var(--pl-navy);
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+.pl-note-row:last-child {
+  border-bottom: 0;
+}
+.pl-note-row:hover {
+  opacity: 0.6;
+}
+.pl-note-name {
+  font-family: 'JejuHallasan', 'JejuGothic', sans-serif;
+  /* 메모지 폭이 좁아 긴 장소명은 잘라야 점선 리더와 번호가 제자리에 남는다. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-note-dots {
+  flex: 1;
+  min-width: 10px;
+  border-bottom: 1px dotted currentColor;
+  opacity: 0.35;
+  transform: translateY(-3px);
+}
+.pl-note-no {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+.pl-note-empty {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--pl-ink);
+}
+
+/* --- 추가 메모지(핑크) ---------------------------------------------------------------
+   ⚠️ 이 분홍은 공용 포스트잇 팔레트(노랑·하늘·회색)에 없는 값이다. 브랜드 4색도 아니다 —
+   "장소 추가"를 위 메모지와 색으로 구분해 달라는 요청이라 메모지 계열 안에서 새로 골랐다. */
+.pl-note-add {
+  /* 가로로 긴 판이라 기호와 글자를 세로로 쌓지 않고 나란히 놓는다. */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px 24px;
+  background: #ffd7de;
+  /* 위 메모지와 반대로 기울여 두 장이 겹쳐 붙은 것처럼 보이게 한다. */
+  transform: rotate(-2deg);
+  cursor: pointer;
+  text-align: center;
+  /* 안쪽 큰 글자의 cqw 기준을 이 메모지로 잡는다(없으면 무대 폭 기준이 된다). */
+  container-type: inline-size;
+}
+.pl-note-add .pl-note-tape {
+  transform: rotate(-7deg);
+}
+.pl-note-add:hover,
+.pl-note-add:focus-visible {
+  transform: rotate(0deg) translateY(-4px);
+  box-shadow: 0 18px 30px rgba(4, 33, 66, 0.22);
+}
+.pl-note-add b {
+  font-family: 'JejuHallasan', 'JejuGothic', sans-serif;
+  font-weight: 400;
+  font-size: 13cqw;
+  line-height: 1;
+  color: var(--pl-navy);
+}
+.pl-note-add span {
+  font-size: 11.5px;
+  letter-spacing: 0.2em;
+  color: var(--pl-ink);
+}
+
+/* 우측 레일 — **종이 판이 아니다.**
+   예전에는 여기에도 종이 판(결·접힌 자국·찢긴 재단면)이 있었는데 걷어냈다(디자인 피드백).
+   이제 이 열은 지도가 그대로 이어지고, 그 위에 책 두 권만 놓인다.
+
+   위치·폭·열릴 때의 방향과 지연은 옛 우판과 똑같이 맞춘다 — 좌판과 대칭이어야 창이 한
+   덩어리로 열린다.
+   z-index 21 — 검색 도크(20)보다 위다. 일렬로 펼쳐지면 왼쪽 책이 도크 폭 안까지 들어오는데,
+   그때 도크가 위에 있으면 책이 검색창에 가려 잘린 것처럼 보인다. */
+.pl-right-rail {
+  position: absolute;
+  right: 0;
+  top: var(--pl-sh-t);
+  bottom: var(--pl-sh-b);
+  width: var(--pl-sh-x);
+  z-index: 21;
+  /* 폭만큼 나가되 --pl-peek만 남긴다(좌측과 대칭). */
+  transform: translateX(calc(var(--open) * (100% - var(--pl-peek))));
+  transition: transform var(--pl-sweep) var(--pl-ease);
+  transition-delay: 190ms;
+}
+
+/* 레일 안쪽 래퍼 — 호버 복귀 전담.
+   레일이 나간 만큼을 **정확히 상쇄**하는 값이라, 닫힌 상태(--open 0)에서는 저절로 0이 되어
+   아무 일도 일어나지 않는다. 개폐(1.8s)와 달리 즉각 반응해야 해서 훨씬 짧다.
+   :focus-within을 함께 거는 이유 — 키보드로 목록·책에 들어와도 화면 안으로 들어와야 한다. */
+.pl-rail-inner {
+  height: 100%;
+  transition: transform 0.42s var(--pl-ease);
+}
+.pl-left-rail .pl-rail-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding-left: 14px;
+  gap: 26px;
+}
+.pl-left-rail:hover .pl-rail-inner,
+.pl-left-rail:focus-within .pl-rail-inner {
+  transform: translateX(calc(var(--open) * (100% - var(--pl-peek))));
+}
+.pl-right-rail:hover .pl-rail-inner,
+.pl-right-rail:focus-within .pl-rail-inner {
+  transform: translateX(calc(var(--open) * (-100% + var(--pl-peek))));
+}
+
+/* 우판 책 두 권 — 위에서 내려다본 하드커버 두 권(레퍼런스 사진).
+   홈은 앱 셸을 항상 물려 두므로 이동 수단이 화면 안에 있어야 한다.
+
+   더미의 자리(.pl-pile)는 고정 크기이고 각 권은 그 안에서 inset:0으로 겹친다. 펼칠 때
+   transform만 움직이므로 좌판·하판이 밀리지 않는다 — margin으로 벌리면 주변이 출렁인다. */
+.pl-pile {
+  /* 레일 한가운데에 못박는다. grid의 place-items:center로는 안 된다 — 항목이 컨테이너보다
+     크면 브라우저가 넘침을 시작 방향으로만 밀어내(안전 정렬) 왼쪽·위로는 넘치지 않는다.
+     translate로 직접 중앙을 잡아야 네 방향으로 고르게 걸친다. */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* ⚠️ 레일 폭에 맞추지 않는다. **넘치는 것이 의도다.**
+     한동안 레일(--pl-sh-x) 안에 가두려고 % 로 묶어 뒀는데, 그러면 책이 "오른쪽 칸에 들어간
+     위젯"으로 보인다. 이 책은 칸에 담긴 UI가 아니라 종이 옆에 놓인 물건이라, 레일과 창의
+     경계를 넘어 걸쳐야 그렇게 읽힌다. 화면 밖으로 나가는 부분은 .pl-stage의 overflow:hidden이
+     잘라 준다 — 판면 밖으로 걸친 책의 인상이 그대로 남는다.
+     크기 기준도 레일이 아니라 무대 폭(cqw)이다. */
+  width: min(288px, 27cqw);
+  /* 실제 하드커버 판형(레퍼런스 사진)에 가까운 비율. 높이를 따로 주지 않고 폭에서 따라오게 한다. */
+  aspect-ratio: 196 / 282;
+}
+.pl-pile-book {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 제본된 쪽(왼쪽)만 각을 죽인다 — 책배 쪽 모서리와 다르다. */
+  border-radius: 2px 4px 4px 2px;
+  text-decoration: none;
+  /* ⚠️ 표지 안의 cqw가 **이 표지**를 기준으로 잡히게 한다. 선언이 없으면 가장 가까운 컨테이너인
+     .pl-stage(무대 전체)를 기준으로 계산돼 표제가 폭 1600px의 11%로 튄다. */
+  container-type: inline-size;
+  transition:
+    transform 0.36s var(--pl-ease),
+    box-shadow 0.36s var(--pl-ease);
+}
+/* 표지 리넨 결. 종이 판에 쓰는 결 필터를 그대로 재사용한다 — 같은 종이 세계라 질감이 맞는다. */
+.pl-pile-book::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  filter: url(#pl-grain);
+  mix-blend-mode: soft-light;
+  opacity: 0.7;
+  pointer-events: none;
+}
+/* --- 표지 조판. 시안 Book Covers.dc.html 1d 기준 -----------------------------------------
+   시안 비율(456px 판): 좌우 여백 44px(9.6%) · 상단 66px(9.8%) · 괘선 사이 간격 20px ·
+   하단 라벨 34px(5%). 아래 값은 그 비율을 그대로 옮긴 것이고, 글자 크기만 가독 하한을 지킨다. */
+
+/* 가장자리 1px 금박 프레임(시안 1a inset 18px / 1f inset 20px). 단색 면에는 판면을 잡아 주는
+   테두리가 필요해서 1d에는 없는 이 요소만 가져왔다. */
+.pl-cover-frame {
+  position: absolute;
+  inset: 6.5%;
+  border: 1px solid var(--pl-gold-soft);
+  opacity: 0.75;
+  pointer-events: none;
+}
+/* 금선 → 표제 → 금선. 시안 1d의 조판 덩어리 그대로이고, 위치도 판 상단 10%다. */
+.pl-cover-block {
+  position: absolute;
+  left: 9.6%;
+  right: 9.6%;
+  top: 10%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4.4%;
+}
+/* 시안의 금선은 조판 폭을 꽉 채운다(짧은 장식선이 아니다). */
+.pl-cover-rule {
+  width: 100%;
+  height: 1px;
+  background: var(--pl-gold);
+  opacity: 0.85;
+}
+/* 판 아래 자간을 크게 벌린 작은 라벨(시안 1d 하단 "청람", 11px/.28em).
+   시안 비율대로면 7px이라 안 읽힌다 — 가독 하한으로 올리고 자간만 그대로 가져온다. */
+.pl-cover-label {
+  position: absolute;
+  left: 9.6%;
+  right: 9.6%;
+  bottom: 5%;
+  text-align: center;
+  font-size: 9.5px;
+  letter-spacing: 0.28em;
+  color: var(--pl-gold);
+  opacity: 0.9;
+}
+
+.pl-pile-title {
+  /* ::after(결)보다 위에 놓는다. 같은 쌓임 안에서는 의사요소가 자식 뒤에 그려지기 때문이다. */
+  position: relative;
+  z-index: 1;
+  font-family: 'JejuHallasan', 'JejuGothic', sans-serif;
+  /* 시안 표제는 판 폭의 13.6%(62px/456). 잘난체는 시안의 명조·고운바탕보다 획이 굵어 그대로
+     옮기면 표지를 짓눌러서 11%로 낮춘다. */
+  font-size: 11cqw;
+  line-height: 1.06;
+  letter-spacing: 0.02em;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.26s ease;
+}
+
+/* "이동하기" — 호버·포커스에서 표제와 함께 드러나며 깜빡인다.
+   평소 opacity 0이고, 드러날 때는 transition이 아니라 **애니메이션**이 값을 잡는다
+   (애니메이션이 일반 선언보다 우선하므로 둘이 다투지 않는다). */
+.pl-cover-go {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* 표지 폭 기준(.pl-pile-book이 container). 책 크기를 바꿔도 비율이 유지된다. */
+  font-size: 7.5cqw;
+  letter-spacing: 0.18em;
+  /* ⚠️ letter-spacing은 **마지막 글자 뒤에도** 붙는다. 보정하지 않으면 그만큼 시각 중심이
+     왼쪽으로 밀려 가운데로 안 보인다 — 자간 한 칸만큼 들여쓰기로 되돌린다. */
+  text-indent: 0.18em;
+  white-space: nowrap;
+  opacity: 0;
+}
+@keyframes pl-cover-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.12;
+  }
+}
+
+/* 아래 깔린 권 — 네이비. 살짝 틀어 왼쪽·아래로 삐져나온다(레퍼런스 사진의 남색 책). */
+.pl-pile-under {
+  background: var(--pl-navy);
+  transform: rotate(-4.5deg) translate(-12px, 12px);
+  box-shadow: 0 12px 24px rgba(4, 33, 66, 0.28);
+}
+/* 네이비 표지 위 글자는 종이색이어야 읽힌다(15.1:1). */
+.pl-pile-under .pl-pile-title,
+.pl-pile-under .pl-cover-go {
+  color: var(--pl-paper);
+}
+/* 같은 금색이라도 짙은 남색 위에서는 크림 위보다 어둡게 묻힌다 — 불투명도를 올려 맞춘다. */
+.pl-pile-under .pl-cover-frame {
+  opacity: 0.5;
+}
+.pl-pile-under .pl-cover-rule,
+.pl-pile-under .pl-cover-label {
+  opacity: 1;
+}
+
+/* 위에 놓인 권 — 민트. 거의 정면이고 아래 권을 대부분 덮는다.
+   ⚠️ 이 표지의 인쇄는 금박이 아니라 **네이비**다. 금박(#B68235)은 민트 위에서 1.36:1,
+   옅은 금박도 1.50:1이라 사실상 보이지 않는다(실측). 네이비는 6.52:1로 또렷하다.
+   두 권이 서로 다른 잉크를 쓰는 셈인데, 실제 시리즈 장정에서도 지색에 따라 박 색을 바꾼다. */
+.pl-pile-over {
+  background: var(--pl-mint);
+  border: 1px solid rgba(4, 33, 66, 0.14);
+  transform: rotate(1.5deg);
+  box-shadow: 0 14px 28px rgba(4, 33, 66, 0.2);
+}
+.pl-pile-over .pl-pile-title,
+.pl-pile-over .pl-cover-go {
+  color: var(--pl-navy);
+}
+.pl-pile-over .pl-cover-frame {
+  border-color: var(--pl-navy);
+  opacity: 0.32;
+}
+.pl-pile-over .pl-cover-rule {
+  background: var(--pl-navy);
+  opacity: 0.75;
+}
+.pl-pile-over .pl-cover-label {
+  color: var(--pl-navy);
+  opacity: 0.7;
+}
+
+/* 펼침. 두 권이 겹침을 풀고 **나란히 한 줄로** 선다 — 그래야 두 표지가 다 보이고 어디로 갈지
+   고를 수 있다. 기울기도 0으로 펴서 줄이 맞는다.
+
+   오른쪽 책은 제자리에 두고 왼쪽 책만 빼내는 비대칭인 이유: 양쪽으로 반씩 벌리면 오른쪽 책이
+   무대 밖으로 나가 제목이 잘린다(레일이 무대 오른쪽 끝에 붙어 있다). 왼쪽은 창 쪽이라 얼마든
+   나갈 수 있고, 지도 위로 걸치는 것도 의도된 그림이다.
+   -108%는 자기 폭 기준이라 책 크기를 바꿔도 간격 비율이 유지된다(px로 두면 어긋난다).
+
+   :focus-within을 함께 거는 이유 — 키보드로 들어온 사람도 같은 것을 봐야 한다. */
+.pl-pile:hover .pl-pile-under,
+.pl-pile:focus-within .pl-pile-under {
+  transform: rotate(0deg) translateX(-108%);
+  box-shadow: 0 18px 34px rgba(4, 33, 66, 0.34);
+}
+.pl-pile:hover .pl-pile-over,
+.pl-pile:focus-within .pl-pile-over {
+  transform: rotate(0deg);
+  box-shadow: 0 20px 36px rgba(4, 33, 66, 0.26);
+}
+.pl-pile:hover .pl-pile-title,
+.pl-pile:focus-within .pl-pile-title {
+  opacity: 1;
+}
+.pl-pile:hover .pl-cover-go,
+.pl-pile:focus-within .pl-cover-go {
+  animation: pl-cover-blink 1s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   검색 도크. 창이 열리면 위로 올라간다.
+   창의 세로 중심은 50%가 아니라 (상판 + 창/2) = 60%다.
+   ══════════════════════════════════════════════════════════════════════ */
+.pl-dock {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  top: 60%;
+  width: min(690px, 64%);
+  transform: translate(-50%, -50%) translateY(calc(var(--open) * (-60cqh + 92px)));
+  transition: transform var(--pl-sweep) var(--pl-ease);
+}
+.pl-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--pl-paper);
+  border: 1px solid rgba(4, 33, 66, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 12px 34px rgba(4, 33, 66, calc(0.06 + var(--open) * 0.16));
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.5s ease;
+}
+.pl-field:focus-within {
+  border-color: var(--pl-mint);
+}
+.pl-field input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: inherit;
+  font-size: clamp(15px, 1.7vw, 19px);
+  color: var(--pl-navy);
+  padding: 20px 20px 20px 22px;
+  letter-spacing: 0.01em;
+}
+/* placeholder를 속성이 아니라 레이어로 그린다 — 순환 타이핑에 캐럿을 붙여야 해서다. */
+.pl-field input::placeholder {
+  color: transparent;
+}
+.pl-ghost {
+  position: absolute;
+  left: 22px;
+  right: 150px;
+  font-size: clamp(15px, 1.7vw, 19px);
+  color: var(--pl-ink-light);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pl-ghost i {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  vertical-align: -0.14em;
+  margin-left: 1px;
+  background: var(--pl-mint);
+  font-style: normal;
+  animation: pl-caret 1.05s step-end infinite;
+}
+@keyframes pl-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.pl-field button {
+  flex: none;
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  margin-right: 8px;
+  padding: 11px 19px;
+  border-radius: 3px;
+  background: var(--pl-navy);
+  color: var(--pl-paper);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  transition: background 0.2s ease;
+}
+/* 민트를 **면**으로 쓰는 자리. 그 위 글자는 종이색(2.32:1)이 아니라 네이비(6.2:1)로 바꾼다. */
+.pl-field button:hover:enabled {
+  background: var(--pl-mint);
+  color: var(--pl-navy);
+}
+.pl-field button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* 검색바 밑선. 창이 열릴 때 왼쪽에서 오른쪽으로 한 번 그어진다 — 종이가 갈라지는 순간과
+   같은 타이밍에 밑줄이 그어져 "이 입력이 화면을 열었다"가 눈에 남는다.
+   (예전에는 글자 수에 비례하는 진행바였는데, 개방이 0/1로 바뀌면서 진행이 아니라 신호가 됐다.) */
+.pl-field::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: 100%;
+  background: var(--pl-mint);
+  border-radius: 0 0 3px 3px;
+  transform: scaleX(var(--open));
+  transform-origin: left center;
+  /* 개방과 같은 축에 태운다 — 종이가 다 열리기 한참 전에 밑선만 그어져 있으면 신호가 어긋난다. */
+  transition: transform calc(var(--pl-sweep) * 0.6) var(--pl-ease);
+}
+
+/* 열린 뒤에는 밝은 지도 위에 놓인다 — 종이색 글자로는 안 읽힌다. 잉크색 + 흰 글로우. */
+.pl-status {
+  margin-top: 13px;
+  padding-left: 2px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--pl-navy);
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 1px 7px rgba(250, 247, 246, 0.95),
+    0 0 14px rgba(250, 247, 246, 0.85);
+  opacity: clamp(0, calc((var(--open) - 0.5) * 3), 1);
+  transition: opacity 0.4s ease;
+}
+
+/* 검색 결과 카드 — 링에서 뜯어낸 한 장.
+   제본은 왼쪽이고, 링이 걸려 있던 구멍은 **터져서 반원으로 남았다**.
+
+   ⚠️ 이건 덮어서 만들 수 없다. 종이 위에 같은 색을 얹는 방식(상·하판 재단면에서 쓴 방법)은
+   윤곽을 **더하는** 것이라, 구멍처럼 종이를 **덜어내는** 모양은 만들지 못한다. 그래서 mask다.
+   반원의 중심을 카드 왼쪽 변(x=0)에 두면 원의 절반만 종이에 걸려 잘려 나간다.
+
+   타일을 왼쪽으로 --pl-notch만큼 넓혀 두는 이유: mask는 타일 밖을 전부 가리므로, 타일이 카드
+   폭에 딱 맞으면 변 바깥으로 나간 뜯김(::after)이 통째로 사라진다.
+   세로 간격(38px)만 정하면 카드 높이가 얼마든 저절로 반복된다 — 카드 높이는 내용에 따라 다르다. */
+.pl-diary-card {
+  --pl-notch: 11px;
+  --pl-notch-gap: 76px;
+  position: relative;
+  /* 뜯긴 변이라 그쪽 모서리는 둥글리지 않는다. */
+  border-radius: 0 14px 14px 0;
+  padding: 20px 20px 28px 44px;
+  /* 메모지 괘선. 카드 안에는 장소명·주소·키워드·포스트잇이 섞여 있어 줄 높이가 일정하지 않다 —
+     글자를 줄에 맞추는 대신 종이 자체의 괘선으로 깔고 간격만 일정하게(28px) 둔다.
+     ⚠️ 색은 background-color(Tailwind bg-snow-white)가 맡는다. 여기서 `background` 단축을 쓰면
+     그 색이 지워져 카드가 투명해진다. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 27px,
+    rgba(4, 33, 66, 0.09) 27px 28px
+  );
+  /* 마스크 두 겹이다.
+     ① 왼쪽 64px — 찢긴 왼쪽 변과 **터진 반원**을 담은 SVG 타일. 반원의 중심이 x=0 근처라
+        절반만 종이에 걸려 잘려 나간다(링에서 뜯어낸 자국).
+        ⚠️ 윤곽을 feDisplacementMap으로 흐트러뜨리지 않고 **좌표로 직접** 그렸다. 필터를 구운
+        SVG를 CSS mask로 쓰면 래스터화 과정에서 변위가 구멍을 도로 메워 노치가 통째로 사라진다
+        (실측으로 확인). 좌표로 박으면 그런 변수가 없다.
+        타일 높이를 76px로 잡아 반원 두 개를 서로 다른 잔결로 넣었다 — 38px 한 칸으로 반복하면
+        같은 모양이 줄지어 기계로 찍은 것처럼 보인다.
+     ② 그 오른쪽 — 그냥 불투명. 마스크는 **타일 밖을 전부 가리므로** 이 겹이 없으면 카드가
+        왼쪽 64px만 남고 사라진다. 기본 합성이 add라 두 겹이 합쳐진다.
+        ⚠️ 둘째 겹을 60px에서 시작해 첫 겹(0~64px)과 4px 겹친다. 딱 붙여 두면 그 경계에서
+        양쪽 알파가 모두 1이 되지 못해 **카드 한가운데 세로선**이 생긴다(실측). 같은 이유로
+        타일 안의 path도 오른쪽 변을 viewBox 밖(x=80)까지 빼서 경계 안티에일리어싱을 없앴다. */
+  -webkit-mask-image:
+    url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2264%22%20height%3D%2276%22%20viewBox%3D%220%200%2064%2076%22%3E%3Cpath%20fill%3D%22%23000%22%20d%3D%22M5%20-6H80V82H4L7%2075L2%2071L6%2068A11%2011%200%200%200%206%2046L1%2042L6%2038L2%2033L6%2030A11%2011%200%200%200%206%208L1%204L5%200Z%22%2F%3E%3C%2Fsvg%3E'),
+    linear-gradient(#000, #000);
+  mask-image:
+    url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2264%22%20height%3D%2276%22%20viewBox%3D%220%200%2064%2076%22%3E%3Cpath%20fill%3D%22%23000%22%20d%3D%22M5%20-6H80V82H4L7%2075L2%2071L6%2068A11%2011%200%200%200%206%2046L1%2042L6%2038L2%2033L6%2030A11%2011%200%200%200%206%208L1%204L5%200Z%22%2F%3E%3C%2Fsvg%3E'),
+    linear-gradient(#000, #000);
+  -webkit-mask-size:
+    64px var(--pl-notch-gap),
+    calc(100% - 60px) 100%;
+  mask-size:
+    64px var(--pl-notch-gap),
+    calc(100% - 60px) 100%;
+  -webkit-mask-position:
+    0 0,
+    60px 0;
+  mask-position:
+    0 0,
+    60px 0;
+  -webkit-mask-repeat: repeat-y, no-repeat;
+  mask-repeat: repeat-y, no-repeat;
+}
+/* 제본 여백의 옅은 음영. 반원이 늘어선 자리를 한 단계 눌러 "묶여 있던 쪽"으로 읽히게 한다. */
+.pl-diary-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 34px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(4, 33, 66, 0.07) 0 26px, transparent 26px);
+}
+/* ── 검색 결과 ───────────────────────────────────────────────────────
+   결과는 창이 완전히 열린 뒤(--open이 1일 때)에만 존재하므로 종이 판과 겹칠 일이 없다.
+   그래도 z-index는 판(6·7)보다 위, 도크(20)보다 아래에 둔다 — 지우다 만 상태에서
+   판이 아직 돌아오는 중일 때 결과가 종이 밑으로 들어가 보이지 않게 하려는 것이다. */
+.pl-results {
+  position: absolute;
+  z-index: 15;
+  left: 0;
+  right: 0;
+  bottom: clamp(16px, 4%, 40px);
+  padding: 0 clamp(22px, 7%, 92px);
+}
+
+/* ── 반응형: 축소가 아니라 제본 방식이 바뀐다 ─────────────────────────
+   넓으면 4판(세로쓰기 곁텍스트 포함), 중간이면 상하판만, 좁으면 상판 위주.
+   창의 비율 자체가 판형을 따라 바뀐다.
+   ⚠️ 기준은 뷰포트 폭이 아니라 **컨테이너 폭**이다(사이드바를 뺀 본문 폭).
+   그래서 미디어 쿼리가 아니라 컨테이너 쿼리를 쓴다 — 사이드바가 접히고 펼쳐질 때
+   같은 화면 폭에서도 판형이 달라져야 한다. */
+@container pl-stage (max-width: 1080px) {
+  .pl-left-rail,
+  .pl-right-rail {
+    display: none;
+  }
+  .pl-stage {
+    --pl-sh-t: 44%;
+    --pl-sh-b: 26%;
+    --pl-sh-x: 0%;
+  }
+  .pl-dock {
+    top: 57%;
+    width: min(690px, 86%);
+    transform: translate(-50%, -50%) translateY(calc(var(--open) * (-57cqh + 88px)));
+  }
+}
+@container pl-stage (max-width: 680px) {
+  .pl-stage {
+    --pl-sh-t: 50%;
+    --pl-sh-b: 24%;
+  }
+  .pl-display {
+    font-size: min(8vh, 10.5vw, 58px);
+  }
+  .pl-dock {
+    top: 62%;
+    width: 90%;
+    transform: translate(-50%, -50%) translateY(calc(var(--open) * (-62cqh + 76px)));
+  }
+  .pl-ghost {
+    right: 110px;
+  }
+  .pl-field input {
+    padding: 16px 14px 16px 16px;
+  }
+  .pl-field button {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-stage *,
+  .pl-stage *::before,
+  .pl-stage *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

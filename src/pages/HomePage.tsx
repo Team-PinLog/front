@@ -1,371 +1,174 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useCallback, useMemo, useState } from 'react';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
 import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
-import { SmartSearchPanel } from '@/features/home/components/SmartSearchPanel';
+import { useRecordMapMarkersQuery } from '@/features/map/hooks/useRecordMapMarkersQuery';
 import { HomeMapSection } from '@/features/home/components/HomeMapSection';
 import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
-import { RecentRecordCardStack } from '@/features/home/components/RecentRecordCardStack';
-import { useRecentRecordsQuery } from '@/features/records/hooks/useRecentRecordsQuery';
+import { PaperApertureStage } from '@/features/home/components/PaperApertureStage';
+import { HomeSearchDock } from '@/features/home/components/HomeSearchDock';
 import {
-  HERO_MAP_FADE_MASK,
-  HERO_OVERLAY_HEIGHT_CLASS,
-  HERO_OVERLAY_OPAQUE_PX,
-} from '@/features/home/lib/heroMapOverlay';
-import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
-import { getNavCardRightEdgePx } from '@/shared/lib/appChrome';
-import { useShelfWidthTier } from '@/shared/lib/useShelfBreakpoint';
-import { MAP_TONE_RIGHT_FADE_PX } from '@/features/map/lib/mapToneMask';
-// 384 — 롤백 지점 ①: 이 import와 아래 <DeskSurface />·<MapPosterFrame> 두 곳이 전부다
-// (자세한 안내는 features/home/deskPoster/deskPoster.ts 주석).
-import { DeskSurface, HOME_DESK_POSTER_ENABLED, MapPosterFrame } from '@/features/home/deskPoster';
+  HomeLeftType,
+  HomeRightType,
+  HomeTopType,
+  HomeTopmark,
+} from '@/features/home/components/HomeSheetPanels';
+import { computeOpen, MAP_TOP_OBSTRUCTION_PX } from '@/features/home/lib/paperAperture';
+import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
 
 /**
- * 지도 오른쪽 페이드 폭(px). 톤 마스크 쪽 기본값을 그대로 쓴다 — 타일·워시·질감이 모두 같은 값으로
- * 사라져야 경계가 한 겹으로 보인다. 더 부드럽게 하려면 mapToneMask.ts의 상수를 키운다.
- */
-// 384: 포스터 구도에서는 **페이드를 쓰지 않는다.** 포스터는 가장자리가 분명해 배경으로 녹일 이유가
-// 없고, 지도-카드 겹침도 종이 폭 자체로 해결된다. 스위치를 끄면 예전 페이드가 그대로 돌아온다.
-const MAP_RIGHT_FADE_PX = HOME_DESK_POSTER_ENABLED ? 0 : MAP_TONE_RIGHT_FADE_PX;
-
-/**
- * 384 후속: 포스터 구도에서는 **히어로 블러 오버레이를 쓰지 않는다**(사용자 확정). 지도는 종이
- * 안에서 네 변 모두 선명한 사각형으로 끝나야 한다.
+ * 홈 화면 — "종이에 오려낸 창".
  *
- * 그래서 지도에 넘기던 "위쪽이 가려진 높이"도 0이 된다 — 가리는 것이 없어졌기 때문이다. 이 값은
- * fitBounds 여유·센터링 보정·"화면 밖 N개" 배지가 함께 쓰므로, 0으로 두지 않으면 지도가 있지도
- * 않은 가림을 피해 계속 아래로 치우친다.
+ * 종이 네 판이 물러나며 지도를 드러내고, 그 개방률(--open)은 **검색어 길이**에서 나온다.
+ * 스크롤도 타이머도 시간축이 아니라 사람이 치는 속도가 시간축이라, 화려한데도 기다리는
+ * 시간이 없다. 지우면 그대로 되돌아간다. 근거: 디자인 시안 home-paper-aperture.html.
  *
- * 히어로와의 겹침은 **블러가 아니라 배치로** 푼다 — 아래 배경 레이어를 히어로 높이만큼 내린다.
- */
-const MAP_TOP_OBSTRUCTION_PX = HOME_DESK_POSTER_ENABLED ? 0 : HERO_OVERLAY_OPAQUE_PX;
-
-/**
- * 포스터가 시작하는 높이. 히어로(토글 + 제목 + 검색창)가 차지하는 높이에 여유를 더한 값이라,
- * 지도가 그 아래에서 시작해 글자와 겹치지 않는다. **취향 조정 지점** — 히어로가 커지거나 줄면
- * 이 값만 바꾼다.
- */
-const POSTER_TOP_CLASS = HOME_DESK_POSTER_ENABLED ? 'top-[12.5rem] md:top-[13.5rem]' : '';
-
-// 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
-// src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
-// lazy인 이유는 코드 분할이다 — 경계 데이터(약 64KB)와 지역 뷰 코드가 별도 청크로 빠져, 기본값인
-// 기존 지도만 쓰는 사용자는 내려받지 않는다.
-const RegionViewPanel = lazy(() =>
-  import('@/features/home/regionView/RegionViewPanel').then((module) => ({
-    default: module.RegionViewPanel,
-  })),
-);
-
-/**
- * 홈 화면: 스마트 검색(149)과 지도(150)를 한 화면에서 함께 보여준다.
- * 근거: Jira S15P11A705-165. 검색 mutation은 SmartSearchPanel·SearchResultGallery 형제
- * 컴포넌트가 같은 상태를 공유해야 해서 여기서 한 번만 호출해 나눠 내려준다.
- * 지도 마커 클릭 시 /records/$recordId로 이동하는 대신 RecordDetailOverlay를 연다
- * (Jira S15P11A705-166). openRecordId는 SearchResultGallery 카드 클릭과 동일한 상태를 공유한다.
- * 306: 우측 하단 고정 FAB(구 AddPlaceRecordButton)는 제거했다 — 첨부 디자인 이미지 기준으로
- * "+장소추가" 버튼이 SmartSearchPanel 히어로 안으로 옮겨갔고(usePlaceRecordSheet().open 재사용),
- * 같은 진입점을 화면에 중복 노출할 이유가 없다.
- * 307: 지도를 검색 결과 유무로 전환되는 카드가 아니라 페이지 전체의 배경 레이어로 바꿨다(첨부
- * 디자인 이미지 기준 — idle·검색 결과 상태 모두 지도가 배경에 항상 깔려 있다). <main>을
- * 배경(지도+그라데이션)과 컨텐츠(히어로+검색 결과/안내 문구) 두 레이어로 분리한다 — 컨텐츠 레이어만
- * PAGE_CONTAINER_CLASS(306에서 통일한 max-w-6xl 폭)를 쓰고, 배경 지도 레이어는 폭 제한 없이
- * AppLayout <main>(사이드바 제외 영역)을 꽉 채운다. min-h 값은 FeedPage.tsx와 동일하게
- * AppLayout의 sm·mdlg 고정 헤더(3.5rem)·xl 사이드바 오프셋에 맞춘 것이다.
- * SearchResultGallery(검색 결과 카드)는 이번 티켓 범위 밖이라 내부 로직·위치는 그대로 두고, 배경
- * 지도 위에 얹히는 컨텐츠 레이어 안에서 렌더 위치만 유지했다.
+ * 이전 구조(제목+검색바 히어로 + backdrop-blur 마스크 오버레이 + 지도 포스터 + 최근 카드 스택 +
+ * 지역 뷰 토글)는 종이 판·메모지·표지가 대신하므로 이 화면에서 전부 걷어냈다.
+ * ⚠️ 그 자산 파일들(SmartSearchPanel·heroMapOverlay·deskPoster·RecentRecordCardStack·regionView)은
+ * **지우지 않았다.** 참조만 끊긴 상태이고 정리는 후속 티켓이 한다(S15P11A705-410 보고).
+ *
+ * 검색 mutation은 도크와 결과 갤러리가 같은 상태를 공유해야 해서 여기서 한 번만 호출해
+ * 나눠 내려준다(기존과 동일). 지도 마커 클릭·결과 카드 클릭은 라우트 이동이 아니라
+ * RecordDetailOverlay를 여는 같은 로컬 상태로 모인다(Jira S15P11A705-166).
  */
 export function HomePage() {
-  const navigate = useNavigate();
-  /**
-   * 394: 좌상단 플로팅 네비 카드가 화면 왼쪽에서 어디까지를 덮는지(px).
-   *
-   * 왜 홈만 이것을 신경 쓰는가 — 다른 화면은 <main>의 왼쪽 padding 안에 카드가 들어앉아 컨텐츠와
-   * 겹치지 않는다. 홈만 배경 지도를 그 padding까지 **풀블리드로** 밀어 넣기 때문에(아래 배경 레이어
-   * 음수 마진) 지도의 왼쪽 띠가 불투명한 카드 뒤로 들어간다.
-   *
-   * 값이 tier에 따라 달라져 Tailwind 클래스로 표현할 수 없다(지도는 이 숫자를 fitBounds 계산에
-   * 쓴다). 그래서 클래스가 아니라 훅으로 구간을 읽는다.
-   */
-  const widthTier = useShelfWidthTier();
-  const navCardRightEdgePx = getNavCardRightEdgePx(widthTier);
   const searchMutation = useSearchRecordsMutation();
+  const [query, setQuery] = useState('');
   const [openRecordId, setOpenRecordId] = useState<number | null>(null);
   // 방금 저장한 Record. 마커 목록이 갱신되는 대로 지도가 그 좌표로 이동하고 값을 비운다.
   // 근거: Jira S15P11A705-325.
   const [savedRecordId, setSavedRecordId] = useState<number | null>(null);
-  // 지도 쪽 effect의 deps에 들어가므로 참조를 고정한다 — 인라인 화살표로 두면 홈이 리렌더될 때마다
-  // 이동 effect가 다시 돈다.
   const handleSavedRecordFocused = useCallback(() => setSavedRecordId(null), []);
 
-  // 371: "요즘 붙여둔 것" 카드 스택. 쿼리와 앞장 인덱스를 스택 컴포넌트가 아니라 **여기서** 들고
-  // 있는 이유는, 같은 "앞장"이라는 사실을 지도(마커 강조·센터링)도 함께 봐야 하기 때문이다.
-  // 스택이 상태를 들고 콜백으로 올려주는 구조로 하면 자식 → 부모 setState를 effect로 동기화해야
-  // 하는데, 그건 하나의 사실을 두 벌로 만드는 일이고 첫 렌더에 한 박자 늦게 반영된다.
-  const recentRecordsQuery = useRecentRecordsQuery();
-  /**
-   * 앞장을 **인덱스가 아니라 recordId로** 들고 있는 것이 핵심이다. 목록은 저장·삭제로 언제든 다시
-   * 조회되는데, 인덱스로 들면 같은 번호가 갱신 뒤에는 다른 기록을 가리킨다. 특히 저장 직후를
-   * "0번(맨 앞)"으로 고정하면 CONTEXT_ADDED(기존 Record에 맥락만 추가)에서 어긋난다 — 그 경우
-   * Record의 createdAt이 갱신되지 않아 목록 맨 앞이 아니라 원래 자리에 그대로 있고, 그러면
-   * 카드 앞장과 지도가 강조·이동하는 대상이 서로 다른 기록이 된다.
-   *
-   * null이면 "아직 고른 적 없음"이라 가장 최근 기록(0번)이 앞장이다. 목록에서 사라진 id(삭제된
-   * 기록)도 자연히 0번으로 돌아가므로 인덱스를 접는 보정이 따로 필요 없다.
-   */
-  const [frontRecentRecordId, setFrontRecentRecordId] = useState<number | null>(null);
+  // RecordMapView가 쓰는 것과 **같은 쿼리 키**라 요청이 한 번 더 나가지 않는다(캐시 공유).
+  // 좌판의 대형 숫자와 하판 목록이 이 데이터를 쓴다.
+  const { data: mapData } = useRecordMapMarkersQuery();
+  const places = useMemo(() => mapData?.items ?? [], [mapData]);
 
-  // data가 null이면 엔드포인트 미구현이라 영역 자체를 그리지 않는다(useRecentRecordsQuery 주석).
-  // 빈 배열(7일 내 기록 없음)과 구분되는 지점이다 — 그쪽은 스택이 빈 상태 안내를 그린다.
-  const recentPage = recentRecordsQuery.data ?? null;
-  // useMemo인 이유는 성능이 아니라 **참조 안정성**이다. `?? []`는 매 렌더 새 배열을 만들어, 이 값을
-  // deps로 쓰는 아래 useCallback이 렌더마다 새로 만들어진다(react-hooks/exhaustive-deps 경고).
-  const recentItems = useMemo(() => recentPage?.items ?? [], [recentPage]);
-  const frontRecentIndex = recentItems.findIndex((item) => item.recordId === frontRecentRecordId);
-  // 저장 직후에는 목록이 아직 다시 오기 전이라 findIndex가 -1이다. 그때는 최신 카드를 앞장으로
-  // 두고, 재조회가 도착하면 위 id가 있는 자리로 자연스럽게 옮겨간다.
-  const activeRecentIndex = frontRecentIndex >= 0 ? frontRecentIndex : 0;
-  const activeRecentRecordId = recentItems[activeRecentIndex]?.recordId ?? null;
-
-  const handleActiveRecentIndexChange = useCallback(
-    (nextIndex: number) => {
-      setFrontRecentRecordId(recentItems[nextIndex]?.recordId ?? null);
+  // 검색어를 지우면 창만 닫히는 게 아니라 **결과도 함께 되돌린다.**
+  // reset()이 없으면 mutation이 isSuccess인 채로 남아, 창이 닫힌 뒤에도 결과 카드가 계속 떠 있다
+  // (검색어를 비웠는데 그 검색의 결과만 화면에 남는 상태). 창의 개폐와 결과의 수명이 같은 입력에
+  // 묶여 있어야 "지우면 처음으로 돌아간다"가 성립한다.
+  const { reset: resetSearch } = searchMutation;
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      if (!value.trim()) {
+        resetSearch();
+      }
     },
-    [recentItems],
+    [resetSearch],
   );
 
-  // 저장한 기록을 앞장으로 세운다. 새 Record면 목록 맨 앞에, CONTEXT_ADDED면 원래 자리에 있는데
-  // id로 따라가므로 두 경우 모두 같은 코드로 맞는다. 지도 이동은 기존 focusRecordId 경로가 담당한다.
-  // 376: 기본값은 **기존 지도**다. 지역 뷰는 팀원 피드백으로 롤백될 수 있어 대체가 아니라 토글이다.
-  const [isRegionView, setIsRegionView] = useState(false);
-
-  const handleRecordSaved = useCallback((recordId: number) => {
-    setSavedRecordId(recordId);
-    setFrontRecentRecordId(recordId);
-  }, []);
+  const open = computeOpen(query);
 
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
-  // mockup의 homeSearchNoResults(검색은 했지만 0건)에 대응한다 — idle·pending·error와 달리
-  // 지도 위에 "원하는 장소를 찾아보세요" 안내를 함께 보여준다(mockup 1058~1060행).
   const hasNoResults = searchMutation.isSuccess && searchMutation.data.items.length === 0;
+
+  // 창이 열린 뒤 검색바 아래에 뜨는 한 줄. 결과 개수를 여기서 말하고, 결과 자체는 아래
+  // 갤러리가 보여준다. items: []는 오류가 아니라 정상 응답이다(AGENTS.md 절대 금지 4).
+  let status: string | null = null;
+  if (searchMutation.isPending) {
+    status = '찾는 중입니다…';
+  } else if (searchMutation.isError) {
+    status = '검색하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  } else if (hasResults) {
+    status = `${searchMutation.data.items.length}곳을 찾았습니다`;
+  } else if (hasNoResults) {
+    status = '그 문장으로는 아직 찾지 못했습니다. 다르게 적어 보세요.';
+  }
 
   return (
     <PlaceRecordSheetProvider>
-      <main className={`relative ${PAGE_MIN_HEIGHT_CLASS}`}>
-        {/* 384 — 롤백 지점 ②: 책상 면(아주 옅은 종이 결). 스위치가 꺼져 있으면 아무것도 그리지 않는다. */}
-        <DeskSurface />
-        {/* 배경 레이어: 사이드바를 제외한 남은 영역 전체를 풀블리드로 채우는 지도. CSS 페인트 순서상
-            position:absolute 요소(z-index:auto)는 아래 일반 흐름 컨텐츠보다 항상 위에 그려지므로,
-            이 레이어를 배경으로 두려면 컨텐츠 레이어 쪽에 별도로 relative+z-10을 줘 쌓임 순서를
-            뒤집어야 한다(아래 컨텐츠 레이어 참고). */}
-        {/* isolate는 이 배경 레이어가 어떤 z-index도 바깥으로 새게 하지 않는다는 경계다. 실제
-            누출원(카카오 SDK 내부 z-index)은 RecordMapView 컨테이너에서 이미 가두지만, 아래
-            오버레이가 지도 위에 보이는 것은 이 레이어 구조 자체의 전제라 여기서도 명시한다. */}
-        {/* 368: `absolute inset-0`의 containing block은 AppLayout `<main>`의 **content box**라서,
-            330(하단 탭바)·364(셸 사방 여백)가 넣은 padding 영역을 지도가 덮지 못하고 그 자리에
-            셸 배경(bg-paper-white)이 띠처럼 드러났다. 음수 마진으로 그 padding을 **정확히 상쇄**해
-            padding box까지 넓힌다(HERO_MAP_FADE_MASK 오버레이도 같은 값을 쓴다 — 아래 참고).
-            ⚠️ 값은 AppLayout `<main>`의 padding 리터럴과 쌍둥이다. 한쪽만 고치면 띠가 다시 생기거나
-            (모자람) 스크롤이 생긴다(넘침). 아래 두 가지가 이 값 선택의 근거다:
-            ① **padding box까지만** 넓히고 그 밖으로는 절대 나가지 않는다. `<main>`은 앱의 유일한
-               스크롤 영역인데(359), abspos 자손이 padding box를 넘으면 그만큼이 scrollable overflow가
-               되어 sm에서 5rem짜리 헛스크롤이 생긴다. 정확히 상쇄하면 오버플로가 0이다.
-            ② **394에서 뒤집힌 항목이다.** 368 당시에는 왼쪽에서 셸 여백(1rem/1.5rem)만 상쇄하고
-               사이드바 폭은 남겼다 — 지도가 불투명한 레일 뒤로 들어가면 보이지도 않는 영역을 렌더해
-               시각적 중심이 왼쪽으로 밀리기 때문이었다. 394에서 그 레일이 **떠 있는 카드**로 바뀌어
-               예약 구간의 대부분이 그냥 페이지 배경이 됐고, 남겨 두면 화면 왼쪽에 지도가 닿지 않는
-               빈 띠(md 88px / xl 264px)만 남는다. 그래서 이제 왼쪽 padding을 **통째로 상쇄해**
-               지도를 화면 끝까지 민다(md 5.5rem / xl 16.5rem — <main>의 pl 리터럴과 같은 값).
-               그 대가로 지도의 왼쪽 일부가 카드에 가리므로, 가려지는 폭을 지도에 알려 fitBounds
-               여유·센터링·"화면 밖 N개"가 **보이는 영역** 기준으로 계산되게 한다
-               (leftObstructionEdgeXPx). 가림을 계산에서 빼지 않으면 서쪽 끝 마커가 카드 뒤에 숨는다.
-               ⚠️ 왼쪽으로 넘긴 만큼은 스크롤을 만들지 않는다 — LTR에서 scrollable overflow는
-               오른쪽·아래로만 자라고, 여기서는 padding box 왼쪽 끝에 **정확히** 닿을 뿐 넘지 않는다.
-            `fixed inset-0`을 쓰지 않은 이유 — 뷰포트 전체를 덮으므로 위 ②가 성립하지 않고, 스크롤
-            영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
-            "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
-        {/* 377 후속: **지도의 실제 렌더 폭을 줄여** '최근의 장소' 카드와 물리적으로 분리한다.
-            시각적 페이드만으로는 부족했다 — 카드 뒤로 도로가 비치면 그것도 겹침이다.
-            ⚠️ 앞선 시도가 실패한 이유 두 가지를 여기서 함께 고쳤다:
-            ① 조건이 `lg`(≥1024px)뿐이라 그보다 좁은 창에서는 지도가 전폭 그대로였다 → **md부터**
-               걸고 화면이 넓어질수록 예약 폭을 키운다(카드 폭과 짝을 맞춘다).
-            ② 오른쪽 6rem에 걸어 둔 페이드 마스크가 **그 안에 있는 줌·"내 주변" 버튼까지 함께
-               지웠다**(버튼은 right-8 = 32px 자리다). 마스크를 걷어내고, 잘린 단면은 라운드와
-               그림자로 마감해 "잘렸다"가 아니라 "여기까지가 지도"로 읽히게 한다.
-            지도 컨트롤은 이 좁아진 상자를 기준으로 배치되므로 자동으로 카드 왼쪽에 남는다.
-            fitBounds 여유와 "화면 밖" 배지도 컨테이너 실측값을 쓰므로 새 폭에 자동으로 맞는다.
-            오른쪽 단면은 **RecordMapView·RegionMapView 안에서** 그라데이션으로 지운다 — 여기서
-            레이어 전체에 마스크를 걸면 그 안의 줌 버튼까지 함께 사라지기 때문이다(실제로 그랬다). */}
-        {/* 384 후속 — 롤백 지점 ④: 포스터를 히어로 아래에서 시작시킨다. 스위치가 꺼져 있으면 빈
-            문자열이라 예전처럼 inset-0 전체를 덮는다. */}
-        <div
-          className={`isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-[5.5rem] md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-[16.5rem] xl:-mt-6 xl:right-[23rem] xl:mr-0 ${POSTER_TOP_CLASS}`}
-        >
-          {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
-              이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
-          {/* 384 — 롤백 지점 ③: 지도·지역 뷰를 종이 포스터 안에 넣는다. 두 뷰가 같은 "책상 위
-              종이" 문법을 쓰도록 **같은 프레임**을 공유한다. 래퍼를 지우면 원래 화면이 된다. */}
-          {isRegionView ? (
-            <MapPosterFrame variant="svg">
-              <Suspense
-                fallback={
-                  <div className="flex h-full w-full items-center justify-center bg-paper-white text-sm text-ink-gray">
-                    지역 뷰를 불러오는 중입니다…
-                  </div>
-                }
-              >
-                <RegionViewPanel
-                  onSelectRecord={setOpenRecordId}
-                  topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
-                  rightFadePx={MAP_RIGHT_FADE_PX}
-                />
-              </Suspense>
-            </MapPosterFrame>
-          ) : (
-            <MapPosterFrame variant="kakao">
-              <HomeMapSection
-                onMarkerClick={setOpenRecordId}
-                topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
-                focusRecordId={savedRecordId}
-                onFocusRecordHandled={handleSavedRecordFocused}
-                highlightRecordId={activeRecentRecordId}
-                selectedRecordId={openRecordId}
-                rightFadePx={MAP_RIGHT_FADE_PX}
-                leftObstructionEdgeXPx={navCardRightEdgePx}
-              />
-            </MapPosterFrame>
-          )}
-        </div>
+      {/* 다른 화면과 달리 PAGE_MIN_HEIGHT_CLASS를 쓰지 않는다 — 그 상수는 "뷰포트에서 셸 크롬을
+          뺀 최소 높이"를 min-h로 잡는 값이라 내용이 넘치면 그만큼 자라는데, 이 종이는 자라면 안
+          된다(무대가 absolute inset:0이라 늘어난 만큼 창의 비율이 무너진다).
+          h-full로 셸 <main>의 content box 높이를 **그대로** 받는다. 그쪽이 h-[100dvh] flex 열의
+          flex-1 + min-h-0이라 높이가 확정돼 있어 %가 해석된다(AppLayout 359 주석).
 
-        {/* 384 후속 — 롤백 지점 ⑤: 히어로 블러 오버레이는 **포스터 구도에서 쓰지 않는다**(사용자
-            확정: "지도는 포스터 안에서 딱 네모 틀, 어떤 가장자리에도 페이드가 없어야 한다").
-            지도가 포스터 안으로 내려가 히어로와 겹치지 않으므로 가독성을 위해 흐릴 이유도 없어졌다.
-            스위치를 끄면 아래 오버레이가 그대로 돌아온다.
-
-            (아래는 스위치가 꺼졌을 때만 쓰이는 옛 오버레이다.)
-            히어로 쪽으로 갈수록 지도가 흐려지는 레이어이며, 클릭은 지도로 통과시켜야 해서
-            pointer-events-none이다. 경계선(사각형 단차)의 근본 원인은 tint 그라데이션이 아니라
-            요소가 "고정 높이에서 끝난다"는 사실 자체였다 — backdrop-filter는 요소 영역 안에서만
-            균일하게 적용되고 영역 밖에서 즉시 사라지므로, tint가 이미 투명해진 지점에서도 "흐린
-            지도 / 선명한 지도"가 맞닿는 가로줄이 남는다. 그래서 레이어는 하나만 두고 mask-image로
-            이 요소의 "보이는 정도" 자체를 위에서 아래로 0까지 떨어뜨린다. 근거: S15P11A705-307.
-            좌·우·위 음수 마진은 위 지도 레이어와 **같은 값**이어야 한다(368) — 다르면 지도
-            가장자리만 선명하게 남거나 시작점이 어긋난다. */}
-        {!HOME_DESK_POSTER_ENABLED && (
-          <div
-            aria-hidden="true"
-            className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-[5.5rem] md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-[16.5rem] xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
-            style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
-          />
-        )}
-
-        {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다.
-            ⚠️ 377: **pointer-events-none이 반드시 있어야 한다.** 이 div는 max-w-6xl 폭에 컨텐츠
-            전체 높이를 가진 블록이라, 눈에는 아무것도 없는 여백까지 포함해 그 사각형 전체가 클릭을
-            받는다. 그 아래에 배경 레이어(지도·지역 뷰)가 깔려 있어서, 이게 없으면 화면 가운데
-            상당 부분에서 지도가 **클릭도 드래그도 되지 않는다.**
-            지역 뷰에서 "색칠된 서울을 눌러도 아무 일이 없다"고 보고된 증상의 원인이 이것이었다 —
-            서울이 그려지는 자리가 정확히 이 사각형 아래였다.
-            대신 실제로 눌려야 하는 자식에만 pointer-events-auto를 되돌려 준다. 자식 각각에 붙이는
-            것이 번거로워 보여도, "레이어는 통과시키고 위젯만 받는다"가 지도 위 UI의 기본 구조다. */}
-        <div
-          className={`pointer-events-none relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}
-        >
-          {/* 376 — 롤백 지점 ②: 지도 ↔ 지역 뷰 토글. 이 블록과 위 lazy import, 그리고 아래 배경
-              레이어의 삼항만 지우면 기능이 사라진다.
-              세그먼트 두 칸으로 둔 이유는 "지금 무엇을 보고 있는지"와 "무엇으로 갈 수 있는지"가 한
-              번에 보여야 하기 때문이다 — 단일 토글 버튼은 라벨이 현재 상태인지 목적지인지 늘 헷갈린다. */}
-          <div className="pointer-events-auto flex justify-end">
-            <div
-              role="group"
-              aria-label="홈 배경 보기 방식"
-              className="inline-flex items-center gap-1 rounded-full border border-line-card bg-snow-white/90 p-1 shadow-sm backdrop-blur"
-            >
-              {[
-                { label: '지도', active: !isRegionView, next: false },
-                { label: '지역', active: isRegionView, next: true },
-              ].map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  onClick={() => setIsRegionView(option.next)}
-                  aria-pressed={option.active}
-                  className={
-                    option.active
-                      ? 'rounded-full bg-log-mint px-3.5 py-1 text-xs font-bold text-paper-white'
-                      : 'rounded-full px-3.5 py-1 text-xs font-semibold text-ink-gray transition-colors hover:text-log-mint'
-                  }
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="pointer-events-auto">
-            <SmartSearchPanel
-              onSubmit={(query) => searchMutation.mutate(query)}
+          ⚠️ 원본(design-ver2)은 셸 <main>에 여백이 없다는 전제로 "화면 가장자리까지"였지만 dev의
+          <main>은 사방 padding(md 좌 5.5rem/상하우 1rem, xl 좌 16.5rem/상하우 1.5rem)을 갖는다.
+          그 padding은 좌상단 플로팅 네비 카드(394)가 먹는 자리 예약이고 AppLayout은 이 티켓 범위
+          밖이라, 종이 무대는 **그 여백 안쪽에** 앉는다. 카드를 폐기하는 후속 티켓에서 padding이
+          풀리면 그때 저절로 가장자리까지 간다 — 여기서 음수 마진으로 상쇄하면 카드 뒤로 종이가
+          들어가 무대 왼쪽이 통째로 가린다(구 HomePage가 지도에 leftObstructionEdgeXPx 보정을
+          달아야 했던 이유이고, 여기서는 그 보정 자체가 필요 없어졌다). */}
+      <main className="relative h-full">
+        <PaperApertureStage
+          open={open}
+          top={<HomeTopType />}
+          left={<HomeLeftType places={places} onSelectRecord={setOpenRecordId} />}
+          right={<HomeRightType />}
+          topmark={<HomeTopmark />}
+          dock={
+            <HomeSearchDock
+              query={query}
+              onQueryChange={handleQueryChange}
+              onSubmit={(value) => searchMutation.mutate(value)}
               isPending={searchMutation.isPending}
+              status={status}
+            />
+          }
+        >
+          {/* 창 아래로 흐르는 층. isolate는 카카오 SDK 내부 z-index가 종이 위로 새지
+              않게 가둔다 — 이 경계가 없으면 지도 타일이 종이를 덮는다(S15P11A705-307). */}
+          <div className="isolate absolute inset-0">
+            {/* dev의 HomeMapSection은 design-ver2보다 prop이 넓다(371 강조·377 선택 핀·377 우측
+                페이드·394 좌측 가림). 그 화면 요소들이 이 구조에서 사라졌으므로 값도 그에 맞춘다:
+                · highlightRecordId — 최근 기록 카드 스택이 없어져 "앞장"이라는 사실 자체가 없다.
+                · selectedRecordId — 상세 오버레이는 그대로 있으므로 유지한다. 열려 있는 기록의
+                  핀만 또렷해지는 377 동작이 종이 창 안에서도 그대로 맞는다.
+                · rightFadePx — 우측 곁열은 종이 판이 아니라 지도 위에 놓인 책이라, 지도를 그
+                  자리에서 지우면 책이 빈 종이 위에 뜬다. 넘기지 않아 페이드가 없다.
+                · leftObstructionEdgeXPx — 지도가 더 이상 풀블리드가 아니어서 네비 카드 뒤로
+                  들어가지 않는다(위 <main> 주석). 넘기면 있지도 않은 가림을 피해 지도가 오른쪽으로
+                  치우친다. */}
+            <HomeMapSection
+              onMarkerClick={setOpenRecordId}
+              topObstructionPx={MAP_TOP_OBSTRUCTION_PX}
+              focusRecordId={savedRecordId}
+              onFocusRecordHandled={handleSavedRecordFocused}
+              highlightRecordId={null}
+              selectedRecordId={openRecordId}
             />
           </div>
 
           {hasResults && (
-            <div className="pointer-events-auto">
+            <div className="pl-results">
               <SearchResultGallery
                 items={searchMutation.data.items}
                 onSelectRecord={setOpenRecordId}
               />
             </div>
           )}
-          {hasNoResults && (
-            <p className="pointer-events-auto flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
-              원하는 장소를 찾아보세요.
-              <button
-                type="button"
-                onClick={() => void navigate({ to: '/feed' })}
-                className="font-bold text-log-mint underline"
-              >
-                탐색 탭으로 이동 →
-              </button>
-            </p>
-          )}
-        </div>
+        </PaperApertureStage>
 
-        {/* 377 후속: '최근의 장소'를 **컨텐츠 흐름에서 빼내** 예약된 우측 띠에 붙인다.
-            이것이 "지역 뷰에서 페이지 스크롤이 생긴다"의 근본 원인이었다 — 리치 카드 2장이
-            컨텐츠 열의 높이를 뷰포트 예산(PAGE_MIN_HEIGHT_CLASS) 밖으로 밀어냈고, <main>이 늘어나자
-            그 안에서 inset-0으로 붙어 있던 배경 레이어가 함께 늘어났으며, 지역 지도는 h-full이라
-            같이 커져 제주가 화면 밖으로 나갔다. 스크롤은 그 결과였지 지도 자체의 문제가 아니었다.
-            흐름에서 빼면 페이지 높이는 토글+검색만으로 정해져 359의 "본문만 스크롤" 계약이 회복된다.
-            위치 기준을 컨텐츠 열이 아니라 <main>으로 잡는 이유: 컨텐츠 열은 max-w-6xl로 가운데
-            정렬돼 있어 넓은 화면에서 오른쪽 끝이 뷰포트 오른쪽과 어긋난다. 지도가 비워 둔 띠와
-            정확히 겹치려면 <main> 기준이어야 한다.
-            sm에서는 흐름에 그대로 둔다 — 좁은 화면에는 띠로 뺄 가로가 없다.
-            377 후속: **top을 크게 올렸다**(19~21rem → 6.5~7rem). 아래쪽에 두면 카드 2장(약 600px)
-            높이가 뷰포트 예산을 넘겨 그만큼 스크롤이 생겼다 — 절대 배치라도 스크롤 영역의 overflow에는
-            그대로 잡힌다. 폭도 md·lg를 15rem으로 통일했다(lg 19rem이면 사진 4:3이 커져 카드 한 장이
-            340px이 되고, 두 장이면 다시 예산을 넘는다). 히어로는 왼쪽 컬럼이라 카드가 위로 올라와도
-            검색창과 부딪히지 않는다.
-            383: 카드가 화면 오른쪽 끝에 붙어 보인다는 피드백으로 **우측 여백을 확보**했다
-            (right-0 → md 2rem / lg 2.5rem / xl 3rem). 지도 쪽 예약 폭(md 17rem 등)은 그대로 두어
-            카드가 안쪽으로 들어온 만큼 지도와의 사이가 벌어진다 — 그 틈은 지도 우측 페이드 구간과
-            겹쳐 시각적으로 자연스럽게 이어진다. */}
-        {!hasResults && recentPage && (
-          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-[2rem] md:top-[6.5rem] md:w-[15rem] md:px-0 lg:right-[2.5rem] lg:top-[7rem] xl:right-[3rem]">
-            <RecentRecordCardStack
-              items={recentItems}
-              activeIndex={activeRecentIndex}
-              onActiveIndexChange={handleActiveRecentIndexChange}
-              hasNext={recentPage.hasNext}
-              onSelectRecord={setOpenRecordId}
-            />
-          </div>
-        )}
+        {/* 지면 오른쪽 어깨. 이 화면에서 설정(계정·로그아웃·탈퇴)으로 가는 종이 쪽 진입점이고,
+            우측 곁열이 사라지는 좁은 폭에서는 화면 이동도 여기서 맡는다
+            (index.css .paper-corner-nav--rails — 넓은 폭에서는 표지 두 권이 하므로 링크만 접힌다).
+            무대(.pl-stage) 바깥에 두는 이유: 그쪽은 overflow:hidden에 종이 판이 쓸려 나가는
+            자리라, 항상 제자리에 있어야 하는 이 줄이 개폐에 휩쓸리면 안 된다.
+
+            ⚠️ 원본과 달리 지금은 **셸의 네비 카드(394)가 그대로 살아 있다** — 폐기는 책장 화면의
+            이동 수단을 먼저 확보한 뒤라는 사용자 결정이라(Jira S15P11A705-410 코멘트) 이 티켓에서
+            건드리지 않는다. 그래서 이 줄은 "유일한 길"이 아니라 종이 위에 인쇄된 또 하나의 길이다.
+            ⚠️ .paper-corner-nav--rails의 링크 접힘 경계는 index.css에서 **뷰포트** 1081px인데
+            곁열이 사라지는 경계는 무대 **컨테이너** 1080px이다. 셸 <main>의 좌측 예약 폭(88/264px)
+            때문에 둘이 어긋나, 뷰포트 1081~1184px 구간에서는 곁열도 링크도 없다. 지금은 네비
+            카드가 살아 있어 길이 끊기지 않으므로 index.css(내 파일 밖)를 고치지 않고 남긴다 —
+            카드를 폐기하는 후속 티켓이 두 경계를 같은 기준으로 맞춰야 한다. */}
+        <PaperCornerNav
+          className="paper-corner-nav--rails absolute right-6 top-6 z-30"
+          items={[
+            { to: '/feed', label: '탐색' },
+            { to: '/library', label: '책장' },
+          ]}
+        />
       </main>
 
-      <PlaceRecordSheet onRecordSaved={handleRecordSaved} />
+      <PlaceRecordSheet onRecordSaved={setSavedRecordId} />
 
       {openRecordId !== null && (
         <RecordDetailOverlay recordId={openRecordId} onClose={() => setOpenRecordId(null)} />
