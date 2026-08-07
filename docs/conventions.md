@@ -21,6 +21,18 @@
 - **Tailwind 클래스는 리터럴로만 쓴다.** Tailwind는 소스를 원시 텍스트로 스캔해 양방향으로 조용히 틀린다 — 문자열 조작으로 만든 클래스는 스캔되지 않아 **스타일이 없고**, 주석에 클래스처럼 생긴 문자열을 적으면 스캔돼 **없는 규칙이 생긴다**. 조건부는 완성된 리터럴 중 하나를 고르는 형태로 쓰고, 주석에서 클래스를 언급할 때 대괄호 arbitrary value를 그대로 적지 않는다(`docs/troubleshooting/2026-08-06-collection-spread-redesign-lessons.md`·`2026-08-06-silent-css-traps-nav-shell.md`).
 - **새 컴포넌트를 만들기 전에 기존 구현을 먼저 찾는다.** 병렬 작업에서 배정받은 "내 파일 목록"은 쓰기 권한의 경계이지 **탐색 범위의 경계가 아니다**. 배정 밖 파일을 고쳐야 하면 우회해서 새로 만들지 말고 보고한다(S15P11A705-332).
 - **모듈 스코프 플래그·전역 상태의 소비자를 지울 때 생산자도 함께 확인한다.** 타입으로 이어지지 않아 컴파일러가 알려주지 않는다 — 읽는 쪽을 지우면 쓰는 쪽이 아무도 안 보는 값을 계속 쓴다. 당장 지울 수 없으면 후속 정리 대상으로 명시한다(S15P11A705-332 → 350).
+- **`httpClient`로 `FormData`(multipart) 요청을 보낼 때는 `Content-Type` 헤더를 지운다.** `httpClient`가 기본 헤더로 `Content-Type: application/json`을 고정하고 있어서, 그대로 두면 브라우저가 multipart boundary를 붙이지 못해 요청이 깨진다(서버가 `image/jpeg` 등을 JSON으로 파싱하려다 실패).
+
+  ```typescript
+  const formData = new FormData();
+  formData.append('image', image, image.name);
+
+  const { data } = await httpClient.post('/places/suggestions', formData, {
+    headers: { 'Content-Type': undefined },
+  });
+  ```
+
+  `'multipart/form-data'`를 직접 지정하지 않는다 — boundary 값을 브라우저가 요청 생성 시점에 채워야 하므로, 헤더를 아예 비워(`undefined`) 브라우저가 자동으로 채우게 한다. 예시: `suggestPlacesFromImage.ts`(S15P11A705-345).
 
 ## 3. Git
 
