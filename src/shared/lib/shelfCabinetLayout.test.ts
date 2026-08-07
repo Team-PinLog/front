@@ -611,21 +611,34 @@ describe('libraryPinsMyShelf', () => {
 // 확인한다(이 파일의 다른 Tailwind ↔ JS 쌍둥이와 같은 규칙 — CSS가 바뀌면 이 헬퍼도 함께 바꾼다).
 // ══════════════════════════════════════════════════════════════════════
 
-/** paperSpread.css `.pe-stage`의 --pe-pad / --pe-note-w / --pe-cover-w. 무대 폭 = 뷰포트 폭이다. */
+/**
+ * paperSpread.css `.pe-stage`의 --pe-pad / --pe-gap / --pe-note-w / --pe-cover-w / --pl-peek.
+ * 무대 폭 = 뷰포트 폭이다.
+ *
+ * 20번 2차: 물건 폭(note/cover)과 **선반이 내주는 폭**이 갈라졌다 — 선반은 접힘 폭(peek)만
+ * 내주고, 물건은 호버에서 그 위로 겹쳐 나온다. 그래서 둘을 따로 돌려준다.
+ */
 function spreadRailsPx(stageWidthPx: number) {
-  const padPx = Math.min(44, Math.max(20, stageWidthPx * 0.03));
-  const noteWidthPx = Math.min(348, Math.max(196, stageWidthPx * 0.19));
+  const padPx = Math.min(32, Math.max(16, stageWidthPx * 0.022));
+  const gapPx = Math.min(24, Math.max(12, stageWidthPx * 0.014));
+  const noteWidthPx = Math.min(348, Math.max(240, stageWidthPx * 0.26));
   const coverWidthPx = Math.min(240, stageWidthPx * 0.225);
-  return { padPx, noteWidthPx, coverWidthPx };
+  // paperStage.css의 --pl-peek. 홈·탐색·책장이 같은 값을 쓴다.
+  const peekPx = 56;
+  return { padPx, gapPx, noteWidthPx, coverWidthPx, peekPx };
 }
 
-/** `.pe-shelf`의 left/right가 만드는 선반 상자 폭. 1080px 이하에서는 곁열이 통째로 빠진다. */
+/**
+ * `.pe-shelf`의 left/right가 만드는 선반 상자 폭. 1080px 이하에서는 곁열이 통째로 빠진다.
+ *
+ * 20번 2차: 좌·우 모두 --pe-reserve(= peek + pad + gap)만 내준다. 물건 폭이 아니다.
+ */
 function spreadShelfWidthPx(stageWidthPx: number): number {
-  const { padPx, noteWidthPx, coverWidthPx } = spreadRailsPx(stageWidthPx);
+  const { padPx, gapPx, peekPx } = spreadRailsPx(stageWidthPx);
   if (stageWidthPx <= 1080) {
     return stageWidthPx - padPx * 2;
   }
-  return stageWidthPx - noteWidthPx - coverWidthPx - padPx * 4;
+  return stageWidthPx - 2 * (peekPx + padPx + gapPx);
 }
 
 describe('종이 지면 곁열과 선반 폭의 정합', () => {
@@ -638,9 +651,24 @@ describe('종이 지면 곁열과 선반 폭의 정합', () => {
     }
   });
 
-  it('곁열은 지면 폭의 절반을 넘게 가져가지 않는다', () => {
+  // 20번 2차(사용자 결정): **접힘 기준으로 콘텐츠가 지면을 가득 채운다.** 곁열이 쉬는 동안
+  // 가져가는 것은 손잡이(peek) 한 뼘뿐이라, 선반이 지면의 대부분을 쓴다. 이전 판(물건 폭을
+  // 통째로 예약)에서는 1920px에서 선반이 지면의 64%였다.
+  it('쉬는 동안 곁열이 가져가는 폭은 손잡이(peek)뿐이다', () => {
     for (const stageWidthPx of WIDE_STAGE_WIDTHS) {
-      expect(spreadShelfWidthPx(stageWidthPx)).toBeGreaterThan(stageWidthPx * 0.4);
+      expect(spreadShelfWidthPx(stageWidthPx)).toBeGreaterThan(stageWidthPx * 0.8);
+    }
+  });
+
+  // 펼침은 겹침이라 선반 폭을 줄이지 않지만, 덮는 양이 선반을 통째로 가리면 곤란하다 — 두 곁열이
+  // 동시에 펼쳐지는 일은 없으므로(호버는 하나씩) 넓은 쪽 한 장이 선반의 절반을 넘지 않으면 된다.
+  it('펼쳐진 곁열이 선반의 절반 넘게 덮지 않는다', () => {
+    for (const stageWidthPx of WIDE_STAGE_WIDTHS) {
+      const { noteWidthPx, coverWidthPx, peekPx } = spreadRailsPx(stageWidthPx);
+      const shelfWidthPx = spreadShelfWidthPx(stageWidthPx);
+      // 겹치는 양 = 물건 폭에서 이미 내준 손잡이를 뺀 나머지.
+      const widestOverlapPx = Math.max(noteWidthPx, coverWidthPx) - peekPx;
+      expect(widestOverlapPx).toBeLessThan(shelfWidthPx / 2);
     }
   });
 
@@ -650,8 +678,9 @@ describe('종이 지면 곁열과 선반 폭의 정합', () => {
       // FeedList의 toGridWidthPx와 같은 두 항을 뺀다.
       const gridWidthPx = shelfWidthPx - 2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX);
       const tier = getShelfTierForGridWidth(gridWidthPx);
-      // 지면 높이 900px 기준(--pe-head를 뺀 나머지가 선반 몫이다).
-      const shelfHeightPx = 900 - Math.min(196, Math.max(112, 900 * 0.21)) - 44;
+      // 지면 높이 900px 기준(--pe-head와 padding-bottom(--pe-pad)을 뺀 나머지가 선반 몫이다).
+      const shelfHeightPx =
+        900 - Math.min(196, Math.max(112, 900 * 0.21)) - spreadRailsPx(stageWidthPx).padPx;
       const columnsKey = getFeedColumnsKey(tier, shelfWidthPx >= shelfHeightPx);
       const columns = FEED_COLUMNS_BY_KEY[columnsKey];
       const rows = decideFeedRows({
