@@ -58,8 +58,21 @@ const REGION_BURST_CHIP_CLASS =
  * 약 1.26배). 시군구가 커지면 클릭도 그만큼 쉬워진다 — 이 화면의 가장 큰 약점이 도심 자치구가
  * 몇 px이라는 점이었다.
  */
-const JEJU_INSET_WIDTH_RATIO = 0.26;
-const JEJU_INSET_MARGIN = 12;
+/**
+ * 383: 인셋을 **마스크가 걸린 <svg> 밖으로 꺼내** 별도 요소로 그린다.
+ *
+ * 이전에는 본토 <svg> 안 우하단에 두었는데, 그 <svg>에는 오른쪽 페이드 마스크가 걸려 있어 인셋이
+ * 그대로 잘렸다("여전히 그라데이션에 잘린다"). 같은 <svg> 안에 있는 한 위치를 옮겨 봤자 본토
+ * 위로 겹치거나(경남·부산 자리) 다시 페이드에 닿는다 — 마스크 밖으로 꺼내는 것이 유일한 해법이다.
+ *
+ * 크기도 함께 줄였다(사용자 지시). 폭을 본토 비율이 아니라 **px 고정**으로 두는 이유는, 이제 인셋이
+ * <svg> 좌표계가 아니라 컨테이너 위에 놓이기 때문이다 — 화면에서 보이는 크기를 직접 정하는 편이
+ * 조정하기 쉽다.
+ */
+const JEJU_INSET_WIDTH_PX = 108;
+/** 컨테이너 오른쪽에서 떨어뜨릴 거리(px). 페이드 폭보다 커야 인셋이 그 영향권 밖에 놓인다. */
+const JEJU_INSET_RIGHT_PX = 24;
+const JEJU_INSET_BOTTOM_PX = 20;
 const JEJU_INSET_PADDING = 8;
 
 interface RegionMapViewProps {
@@ -117,13 +130,8 @@ export function RegionMapView({
     const mainSize = getProjectionSize(mainBounds, MAP_VIEW_HEIGHT);
 
     const jejuBounds = getGeoBounds(jejuRegions);
-    const jejuSize = getProjectionSizeByWidth(jejuBounds, mainSize.width * JEJU_INSET_WIDTH_RATIO);
-    // 인셋은 우하단에 놓는다. 제주가 원래 남쪽에 있으므로 아래쪽에 두는 편이 방향 감각과 어긋나지
-    // 않는다(관례적으로도 우하단이다).
-    const jejuOffset = {
-      x: mainSize.width - jejuSize.width - JEJU_INSET_MARGIN - JEJU_INSET_PADDING,
-      y: mainSize.height - jejuSize.height - JEJU_INSET_MARGIN - JEJU_INSET_PADDING,
-    };
+    // 인셋은 자기만의 좌표계를 갖는다(별도 <svg>). 폭을 정하면 높이는 제주의 종횡비로 따라온다.
+    const jejuSize = getProjectionSizeByWidth(jejuBounds, JEJU_INSET_WIDTH_PX);
 
     const toShape = (
       regions: typeof REGION_BOUNDARIES,
@@ -142,7 +150,6 @@ export function RegionMapView({
       // 인셋 안의 좌표는 <g transform>이 옮겨 주므로 여기서는 인셋 자체의 좌표계로 둔다.
       jeju: toShape(jejuRegions, jejuBounds, jejuSize),
       jejuSize,
-      jejuOffset,
     };
   }, []);
 
@@ -297,26 +304,34 @@ export function RegionMapView({
       >
         {renderShapes(geometry.mainland)}
         {renderHitTargets(geometry.mainland)}
+      </svg>
 
-        {/* 제주 인셋. 본토와 축척이 다르므로 테두리로 "다른 상자"임을 알린다 — 테두리가 없으면
-            제주가 본토 바로 옆에 붙어 있는 것처럼 읽힌다. */}
-        <g transform={`translate(${geometry.jejuOffset.x}, ${geometry.jejuOffset.y})`}>
-          <rect
-            x={-JEJU_INSET_PADDING}
-            y={-JEJU_INSET_PADDING}
-            width={geometry.jejuSize.width + JEJU_INSET_PADDING * 2}
-            height={geometry.jejuSize.height + JEJU_INSET_PADDING * 2}
-            rx={6}
-            fill="none"
-            className="text-pin-navy"
-            stroke="currentColor"
-            strokeOpacity={0.22}
-            strokeDasharray="4 3"
-            strokeWidth={0.8}
-          />
-          {renderShapes(geometry.jeju)}
-          {renderHitTargets(geometry.jeju)}
-        </g>
+      {/* 383: 제주 인셋 — **본토 <svg> 바깥**의 독립 요소다. 여기엔 페이드 마스크가 걸리지 않아
+          잘리지 않는다. 본토와 축척이 다르므로 점선 테두리로 "다른 상자"임을 알린다. */}
+      <svg
+        width={geometry.jejuSize.width + JEJU_INSET_PADDING * 2}
+        height={geometry.jejuSize.height + JEJU_INSET_PADDING * 2}
+        viewBox={`${-JEJU_INSET_PADDING} ${-JEJU_INSET_PADDING} ${geometry.jejuSize.width + JEJU_INSET_PADDING * 2} ${geometry.jejuSize.height + JEJU_INSET_PADDING * 2}`}
+        className="absolute"
+        style={{ right: JEJU_INSET_RIGHT_PX, bottom: JEJU_INSET_BOTTOM_PX }}
+        role="img"
+        aria-label="제주 지역 기록 지도"
+      >
+        <rect
+          x={-JEJU_INSET_PADDING}
+          y={-JEJU_INSET_PADDING}
+          width={geometry.jejuSize.width + JEJU_INSET_PADDING * 2}
+          height={geometry.jejuSize.height + JEJU_INSET_PADDING * 2}
+          rx={6}
+          fill="none"
+          className="text-pin-navy"
+          stroke="currentColor"
+          strokeOpacity={0.22}
+          strokeDasharray="4 3"
+          strokeWidth={0.8}
+        />
+        {renderShapes(geometry.jeju)}
+        {renderHitTargets(geometry.jeju)}
       </svg>
 
       {/* 범례. 색칠이 "많이 간 곳일수록 진하다"는 뜻임을 알려 준다. */}

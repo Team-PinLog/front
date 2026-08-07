@@ -292,9 +292,13 @@ export function HomePage() {
             높이가 뷰포트 예산을 넘겨 그만큼 스크롤이 생겼다 — 절대 배치라도 스크롤 영역의 overflow에는
             그대로 잡힌다. 폭도 md·lg를 15rem으로 통일했다(lg 19rem이면 사진 4:3이 커져 카드 한 장이
             340px이 되고, 두 장이면 다시 예산을 넘는다). 히어로는 왼쪽 컬럼이라 카드가 위로 올라와도
-            검색창과 부딪히지 않는다. */}
+            검색창과 부딪히지 않는다.
+            383: 카드가 화면 오른쪽 끝에 붙어 보인다는 피드백으로 **우측 여백을 확보**했다
+            (right-0 → md 2rem / lg 2.5rem / xl 3rem). 지도 쪽 예약 폭(md 17rem 등)은 그대로 두어
+            카드가 안쪽으로 들어온 만큼 지도와의 사이가 벌어진다 — 그 틈은 지도 우측 페이드 구간과
+            겹쳐 시각적으로 자연스럽게 이어진다. */}
         {!hasResults && recentPage && (
-          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-0 md:top-[6.5rem] md:w-[15rem] md:px-0 lg:top-[7rem] xl:right-2">
+          <div className="pointer-events-auto relative z-10 flex justify-end px-4 pb-8 md:absolute md:right-[2rem] md:top-[6.5rem] md:w-[15rem] md:px-0 lg:right-[2.5rem] lg:top-[7rem] xl:right-[3rem]">
             <RecentRecordCardStack
               items={recentItems}
               activeIndex={activeRecentIndex}
