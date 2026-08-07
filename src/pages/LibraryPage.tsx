@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { MyShelfColumn } from '@/features/collections/components/MyShelfList';
 import { FollowedShelfCard } from '@/features/follows/components/FollowedShelfCard';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
+import { useMeSummaryQuery } from '@/features/me/hooks/useMeSummaryQuery';
 import {
   getLibraryCabinetHeightPx,
   getLibraryPageCount,
@@ -88,6 +90,16 @@ export function LibraryPage() {
     setPrevTier(tier);
     setVirtualPageIndex(0);
   }
+
+  // 407: "나의 활동 기록"(/me/activity) 진입점의 노출 여부. docs 이슈 #55는 **기록 0건이면 책장에서
+  // 이 진입점을 숨기자**고 제안한다 — 전부 0인 화면을 첫 사용자에게 주는 것은 그 페이지의 목적과
+  // 어긋나기 때문이다.
+  // 판정에 GET /me/activity가 아니라 3.5(마이페이지 요약)의 recordCount를 쓰는 이유: 집계 응답은
+  // 그 화면에 들어가야 받는 것이 맞고(진입 시 1회 호출이 계약이다), 요약 쪽은 설정 패널이 이미 같은
+  // 쿼리 키(['me','summary'])로 쓰고 있어 캐시를 그대로 나눠 쓴다. 책장에 새 요청이 늘지 않는다.
+  // 로딩 중(data === undefined)에는 숨긴다 — 없다가 생기는 편이, 있다가 사라지는 것보다 낫다.
+  const meSummaryQuery = useMeSummaryQuery();
+  const hasAnyRecord = (meSummaryQuery.data?.recordCount ?? 0) > 0;
 
   const followsQuery = useFollowsQuery();
   const pages = followsQuery.data?.pages ?? [];
@@ -198,9 +210,28 @@ export function LibraryPage() {
     <main
       className={`${PAGE_CONTAINER_CLASS} ${PAGE_MIN_HEIGHT_CLASS} flex flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS}`}
     >
+      {/* 407: 활동 기록 진입점을 **PageTitle의 description 안에** 둔다. 제목 블록 바깥(형제)에 한 줄을
+          더 얹으면 그만큼의 높이가 ResizeObserver 측정에서 빠져 titleHeightPx가 실제보다 작게
+          보고되고, getPageContentBudgetPx가 세로 예산을 과대 계상해 sm·mdlg에서 책장 마지막 행이
+          잘린다(PageTitle 313 주석의 그 함정 그대로다). description은 ReactNode라 노드를 그대로
+          넘길 수 있고, 안에 들어가면 링크의 높이·줄바꿈까지 측정에 포함된다.
+          링크 스타일은 LoginPage 약관 링크와 같은 문법이다(밑줄 + 네이비) — 본문 안에 섞이는 보조
+          링크가 이 앱에서 쓰는 유일한 형태다. */}
       <PageTitle
         className="text-[27px] font-bold tracking-tight text-pin-navy"
-        description="저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요."
+        description={
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span>저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요.</span>
+            {hasAnyRecord && (
+              <Link
+                to="/me/activity"
+                className="font-semibold text-pin-navy underline underline-offset-2"
+              >
+                나의 활동 기록 보기
+              </Link>
+            )}
+          </span>
+        }
       >
         나의 책장
       </PageTitle>
