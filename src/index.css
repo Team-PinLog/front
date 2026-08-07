@@ -289,6 +289,84 @@
   }
 }
 
+/* 417 — 지도 핀의 기본 표현과 호버·포커스 반응. 홈 지도·컬렉션 상세 지도가 공유한다
+   (엘리먼트는 src/shared/lib/recordMarkerElement.ts가 한 곳에서 만든다).
+
+   ■ 왜 CSS 클래스인가
+   호버는 상태를 JS로 추적할 이유가 없는 사건이고, prefers-reduced-motion 분기도 미디어 쿼리 하나로
+   끝난다. 무엇보다 화면마다 mouseenter/mouseleave를 따로 붙이면 값이 갈라진다 — 실제로 컬렉션
+   지도에만 불투명도 호버가 있었고 홈 지도에는 아무 반응이 없었다.
+
+   ■ 화면이 넘기는 것과 CSS가 정하는 것
+   화면은 "이 핀의 기본 상태"만 커스텀 프로퍼티로 알려준다(--pin-base-scale / --pin-filter /
+   --pin-opacity / --pin-tip-y). 호버했을 때 그것을 어떻게 합성할지는 여기서만 정한다.
+   ⚠️ 화면 쪽에서 style.transform·style.filter를 직접 쓰면 안 된다 — 인라인이 명시도 최상위라
+   아래 :hover 규칙을 통째로 이겨서, 선택 강조가 걸린 핀에는 호버가 아예 먹지 않는다.
+
+   ■ 효과: "종이 지도에서 핀을 살짝 뽑아 든다"
+   선택 강조(--pin-base-scale 1.35 + 물결 + 주변 dim)와 **다른 동작**이어야 해서 크기를 더 키우는
+   길은 택하지 않았다. 선택은 '커지고 밝아지는' 상태이고, 호버는 '떠오르는' 순간이다 — 4px 뜨고
+   1.08배만 커지며 바닥 그림자가 짙어진다. 배율이 곱셈이라 선택된 핀(1.35) 위에 호버해도 같은
+   비율로 한 번 더 들리기만 하고 어색하게 튀지 않는다(1.35 → 1.458).
+
+   확대 기준점은 --pin-tip-y(핀의 뾰족한 끝)다. asset 아래 여백은 내장 그림자 자리라, 바닥을
+   기준으로 키우면 커진 만큼 핀 끝이 실제 좌표에서 아래로 밀린다(RECORD_MARKER_TIP_Y_RATIO 규약).
+   translateY는 되돌아오는 움직임이라 좌표를 어기지 않는다 — 손을 떼면 제자리에 다시 꽂힌다. */
+.record-map-pin {
+  --pin-hover-scale: 1;
+  --pin-lift: 0px;
+  transform-origin: 50% var(--pin-tip-y, 100%);
+  transform: translateY(var(--pin-lift))
+    scale(calc(var(--pin-base-scale, 1) * var(--pin-hover-scale)));
+  /* ⚠️ 기본값이 `none`이면 안 된다. 아래 호버 규칙이 이 값 **뒤에** 그림자를 이어 붙이는데,
+     `none drop-shadow(...)`는 문법에 맞지 않아 선언 전체가 버려진다 — 그러면 상시 필터가 없는 핀
+     (컬렉션 상세 지도의 모든 핀, 톤 보정이 꺼진 홈 지도)만 호버 그림자가 조용히 사라진다.
+     실제로 실렌더 확인에서 이 상태로 잡혔다. 아무 효과가 없는 항등 함수를 기본값으로 둔다. */
+  filter: var(--pin-filter, brightness(1));
+  opacity: var(--pin-opacity, 1);
+  /* 강조(크기)는 160ms, dim/필터는 250ms — 377에서 정해진 값을 그대로 잇는다. 둘은 다른 사건이다. */
+  transition:
+    transform 160ms cubic-bezier(0.2, 0.7, 0.3, 1),
+    filter 250ms ease-out,
+    opacity 150ms ease-out;
+}
+
+/* 누를 수 있는 핀만 손 모양이 된다. 표시 전용 핀(onSelect 없음)은 [data-pin-static]으로 빠진다 —
+   누를 수 없는 것에 누를 수 있다는 신호를 주지 않는다. */
+.record-map-pin:not([data-pin-static]) {
+  cursor: pointer;
+}
+
+.record-map-pin:not([data-pin-static]):hover,
+.record-map-pin:not([data-pin-static]):focus-visible {
+  --pin-hover-scale: 1.08;
+  --pin-lift: -4px;
+  /* 기본 filter(지도 톤 역보정·dim)를 **이어 붙인다**. 덮어쓰면 호버하는 순간 그 핀만 색이 튄다. */
+  filter: var(--pin-filter, brightness(1)) drop-shadow(0 6px 6px rgba(4, 33, 66, 0.28))
+    brightness(1.05);
+  /* 컬렉션 지도의 비활성 핀은 평소 옅게 깔려 있다. 호버하면 또렷해져야 클릭 대상으로 읽힌다. */
+  opacity: 1;
+  /* 들린 핀이 이웃 핀 뒤로 들어가지 않게 한다. */
+  z-index: 3;
+  position: relative;
+}
+
+/* 움직임을 줄여 달라고 한 사용자에게는 뜨는 것도 커지는 것도 생략하고 색·그림자만 바꾼다.
+   기본 배율(--pin-base-scale)은 그대로 둔다 — 그건 모션이 아니라 "선택됨"을 나타내는 크기다. */
+@media (prefers-reduced-motion: reduce) {
+  .record-map-pin {
+    transition:
+      filter 250ms ease-out,
+      opacity 150ms ease-out;
+  }
+
+  .record-map-pin:not([data-pin-static]):hover,
+  .record-map-pin:not([data-pin-static]):focus-visible {
+    --pin-hover-scale: 1;
+    --pin-lift: 0px;
+  }
+}
+
 /* 장소 기록 팝업(저장 화면.dc.html, S15P11A705-323/366)의 커스텀 스크롤바.
    노트북 카드 안 스크롤 영역 전용이다. */
 .place-scroll::-webkit-scrollbar {

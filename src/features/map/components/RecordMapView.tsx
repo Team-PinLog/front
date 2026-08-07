@@ -13,6 +13,10 @@ import {
   RECORD_MARKER_TIP_Y_RATIO,
 } from '@/shared/lib/getRecordMarkerAsset';
 import {
+  applyRecordMarkerPinState,
+  createRecordMarkerImage,
+} from '@/shared/lib/recordMarkerElement';
+import {
   clampPointToBox,
   countPointsOutsideViewport,
   getFitBoundsBasePaddingPx,
@@ -59,33 +63,26 @@ const MARKER_HEIGHT = RECORD_MARKER_ASSET_HEIGHT / 2;
 /**
  * 카카오 기본 Marker(빨간 핀) 대신 CustomOverlay에 올릴 마커 엘리먼트를 만든다.
  * 색은 getRecordMarkerAsset(latestCollectionId 해시)이 고른 SVG asset으로 결정된다.
- * JS로 SVG 마크업을 만들어 innerHTML로 넣지 않고 <img src>로 불러온다 — asset 20개가 모두 같은
- * `<filter id="shadow">`를 쓰기 때문에, 인라인으로 심으면 문서 전체에서 id가 충돌해 마커 전부가
- * 첫 번째 필터 하나를 공유한다. <img>는 각 SVG가 독립 문서로 렌더돼 그 문제가 없고, 그림자도
- * asset 안에 이미 들어 있어 wrapper에 별도 drop-shadow를 걸 필요가 없다.
+ *
+ * 417: <img> 자체를 만드는 일은 shared/lib/recordMarkerElement로 옮겼다 — 컬렉션 상세 지도가
+ * 같은 핀을 따로 만들고 있어 호버 효과가 두 벌이 될 참이었다. 이 함수에 남은 것은 이 화면에만
+ * 있는 것들, 즉 물결을 얹을 래퍼와 지도 톤 역보정 필터뿐이다.
  */
-function createRecordMarkerElement(assetUrl: string, title: string): MarkerElements {
-  const image = document.createElement('img');
-  image.src = assetUrl;
-  // 마커 자체는 장식이 아니라 클릭 대상이지만 이름은 title로 노출되므로 alt는 비워 중복을 피한다.
-  image.alt = '';
-  image.title = title;
-  image.width = MARKER_WIDTH;
-  image.height = MARKER_HEIGHT;
-  image.draggable = false;
-  image.style.display = 'block';
-  image.style.cursor = 'pointer';
-  // width/height 속성만으로는 부족하다. Tailwind preflight의 `img { max-width: 100%; height: auto }`가
-  // 살아 있는데, CustomOverlay가 content를 감싸는 래퍼 div는 폭이 0이라 max-width:100%가 0으로
-  // 계산돼 마커가 0x0으로 찌그러진다(실측: naturalWidth 64인데 렌더 폭 0). max-width를 풀고 크기를
-  // 인라인 스타일로 못박아야 그려진다. 이전 인라인 <svg> 방식엔 preflight의 이 규칙이 걸리지
-  // 않아서 드러나지 않던 차이다.
-  image.style.maxWidth = 'none';
-  image.style.width = `${MARKER_WIDTH}px`;
-  image.style.height = `${MARKER_HEIGHT}px`;
+function createRecordMarkerElement(
+  assetUrl: string,
+  title: string,
+  onSelect: () => void,
+): MarkerElements {
+  const image = createRecordMarkerImage({
+    assetUrl,
+    title,
+    widthPx: MARKER_WIDTH,
+    heightPx: MARKER_HEIGHT,
+    onSelect,
+  });
   // 374: 지도 톤 마스크가 이 마커도 물들이므로 미리 역보정을 걸어 둔다. 강조·선택 상태에서도 이
   // 값은 유지돼야 해서(applyMarkerVisualState가 뒤에 다른 필터를 이어 붙인다) 여기서 한 번만 세운다.
-  image.style.filter = MARKER_BASE_FILTER;
+  applyRecordMarkerPinState(image, { filter: MARKER_BASE_FILTER });
 
   // 377: <img>를 래퍼 div 안에 넣는다. 이전에는 마커가 <img> 하나였는데, 물결(ripple)은 마커와
   // 같은 자리에 겹쳐 그려지는 **형제 요소**가 필요하고 <img>는 자식을 가질 수 없다. 래퍼는 크기가
@@ -140,40 +137,39 @@ function playPinStand(wrapper: HTMLDivElement): void {
   wrapper.classList.add('animate-pin-stand', 'motion-reduce:animate-none');
 }
 
-/**
- * 371: 강조된 마커를 키운다. 확대 기준점이 엘리먼트 아래쪽(50% 100%)이 아니라 핀의 뾰족한 끝
- * (RECORD_MARKER_TIP_Y_RATIO)이어야 한다 — asset 아래 여백은 내장 그림자 자리라, 바닥을 기준으로
- * 키우면 커진 만큼 핀 끝이 실제 좌표에서 아래로 밀린다.
- */
-const MARKER_HIGHLIGHT_ORIGIN = `50% ${RECORD_MARKER_TIP_Y_RATIO * 100}%`;
+/** 371: 강조된 마커를 키우는 배율. 확대 기준점(핀 끝)은 공유 규칙이 --pin-tip-y로 맡는다. */
 const MARKER_HIGHLIGHT_SCALE = 1.35;
 
 /**
  * 마커 하나의 강조 여부를 반영한다. **엘리먼트를 다시 만들지 않고 스타일만 바꾸는 것이 핵심이다** —
  * CustomOverlay를 새로 만들면 <img>가 다시 로드돼 강조를 옮길 때마다 지도 전체 마커가 깜빡인다
  * (근거: Jira S15P11A705-371).
+ *
+ * 417: transform·transition·transform-origin을 인라인으로 쓰지 않고 커스텀 프로퍼티만 넘긴다 —
+ * 인라인 스타일은 명시도 최상위라 .record-map-pin의 호버 규칙을 통째로 이겨서, 강조된 핀에는
+ * 호버가 아예 먹지 않게 된다(applyRecordMarkerPinState 주석).
  */
 function applyMarkerVisualState(
   { image }: MarkerElements,
   state: { highlighted: boolean; dimmed: boolean },
 ): void {
   const { highlighted, dimmed } = state;
-  image.style.transformOrigin = MARKER_HIGHLIGHT_ORIGIN;
-  // 377: dim 전환은 목업이 지정한 .25s다. 강조(크기)는 기존 .16s를 유지한다 — 둘은 다른 사건이다.
-  image.style.transition = 'transform 160ms ease-out, filter 250ms ease-out';
-  image.style.transform = highlighted ? `scale(${MARKER_HIGHLIGHT_SCALE})` : 'scale(1)';
+  applyRecordMarkerPinState(image, {
+    baseScale: highlighted ? MARKER_HIGHLIGHT_SCALE : 1,
+    // 374: filter를 덮어쓰지 않고 **이어 붙인다.** 그냥 대입하면 지도 톤 역보정(MARKER_BASE_FILTER)이
+    // 지워져, 강조하는 순간 그 마커만 누렇게 뜬다.
+    // 377: 여기에 dim(선택되지 않은 나머지)이 더해진다 — 목업 값 saturate(.32) opacity(.5).
+    filter: [
+      MARKER_BASE_FILTER,
+      dimmed ? 'saturate(.32) opacity(.5)' : '',
+      highlighted ? 'drop-shadow(0 6px 10px rgba(4,33,66,0.45))' : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  });
   // 강조된 핀이 이웃 핀에 가리지 않게 같은 오버레이 층 안에서 위로 올린다. CustomOverlay의 zIndex
   // 옵션은 생성 시점 값이라, 이미 만든 마커의 순서를 바꾸려면 content 엘리먼트 쪽을 쓴다.
-  // 374: filter를 덮어쓰지 않고 **이어 붙인다.** 그냥 대입하면 지도 톤 역보정(MARKER_BASE_FILTER)이
-  // 지워져, 강조하는 순간 그 마커만 누렇게 뜬다.
-  // 377: 여기에 dim(선택되지 않은 나머지)이 더해진다 — 목업 값 saturate(.32) opacity(.5).
-  image.style.filter = [
-    MARKER_BASE_FILTER,
-    dimmed ? 'saturate(.32) opacity(.5)' : '',
-    highlighted ? 'drop-shadow(0 6px 10px rgba(4,33,66,0.45))' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  // (호버 중인 핀은 공유 규칙이 z-index 3으로 더 올리므로 강조 핀 위로도 올라온다.)
   image.style.zIndex = highlighted ? '2' : '';
   image.style.position = 'relative';
 }
@@ -519,14 +515,14 @@ export function RecordMapView({
       const elements = createRecordMarkerElement(
         getRecordMarkerAsset(item.latestCollectionId ?? null),
         item.name,
+        () => {
+          if (onMarkerClick) {
+            onMarkerClick(item.recordId);
+          } else {
+            navigate({ to: '/records/$recordId', params: { recordId: item.recordId } });
+          }
+        },
       );
-      elements.image.addEventListener('click', () => {
-        if (onMarkerClick) {
-          onMarkerClick(item.recordId);
-        } else {
-          navigate({ to: '/records/$recordId', params: { recordId: item.recordId } });
-        }
-      });
       const overlay = new kakao.maps.CustomOverlay({
         map,
         position: new kakao.maps.LatLng(item.lat, item.lng),
