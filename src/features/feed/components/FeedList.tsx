@@ -1,6 +1,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useQueries } from '@tanstack/react-query';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import {
+  getCollectionDetail,
+  type CollectionDetail,
+} from '@/features/collections/api/getCollectionDetail';
 // 319: 선반 판은 Library 캐비닛(ShelfBoard)과 완전히 같은 판이라 shared/ui/Shelf.tsx로 옮겨 공유한다.
 import { ShelfPlank } from '@/shared/ui/Shelf';
 import {
@@ -96,6 +101,33 @@ interface FeedPagePosition {
 }
 
 let lastFeedPagePosition: FeedPagePosition | null = null;
+
+// 임시(프론트엔드 전용) 고정: Feed 1페이지(cursor undefined, pageIndex 0) 맨 앞에 지정 Collection
+// 2권을 항상 노출한다. 서버 추천 알고리즘·Feed Session과 무관한 별도 출처라, 이 항목의 클릭은
+// feedRequestId/feedPosition을 물리지 않고 CLICK 이벤트도 큐잉하지 않는다(ShelfExploreSection.tsx의
+// "Feed 응답에 귀속되지 않은 카드" 패턴과 동일 — 재사용하면 SAVE 이벤트가 엉뚱한 슬롯에 붙는다).
+const PINNED_FEED_COLLECTION_IDS: readonly number[] = [11, 12];
+// useFeedCollectionsQuery.ts의 FEED_SESSION_GC_TIME_MS와 같은 값 — 고정 카드도 세션이 사는 동안(탭
+// 수명) 캐시를 붙들어 페이지를 오가도 다시 로딩 스켈레톤이 뜨지 않게 한다.
+const PINNED_COLLECTION_GC_TIME_MS = 30 * 60 * 1000;
+
+function toPinnedFeedItem(detail: CollectionDetail, index: number): FeedCollectionItem {
+  return {
+    // 실제 Feed 응답 position이 아니라 이 카드 내부 key/식별용 sentinel이다(음수라 실제 position과
+    // 절대 겹치지 않는다). 이벤트로는 절대 전송하지 않는다.
+    position: -1 - index,
+    collectionId: detail.collectionId,
+    title: detail.title,
+    // 7.3 상세 응답엔 총 저장 수가 없다 — recordSize를 최댓값(CursorPage.MAX_SIZE=100)으로 요청해
+    // 받은 records.items 길이로 갈음한다(고정 노출용 컬렉션은 100개를 넘지 않는다고 가정).
+    recordCount: detail.records.items.length,
+    // 7.3 상세 응답엔 Collection 단위 대표 키워드가 없다(Record별 키워드만 있음). keywords: []는
+    // AI 미완료 상태의 정상 응답으로 이미 처리되는 값이라 표지가 깨지지 않는다.
+    keywords: [],
+    coverImageUrl: detail.coverImageUrl ?? null,
+    createdAt: detail.createdAt,
+  };
+}
 
 /**
  * Feed(발행된 Collection 추천 목록) 목록. 근거: Jira S15P11A705-142, docs/reference/08_API_명세.md 10.1.
@@ -216,6 +248,19 @@ export function FeedList() {
   const cursor = cursorHistory[pageIndex];
   const feedQuery = useFeedCollectionsQuery(cursor, pageSize);
 
+  // 1페이지에서만 쓴다(아래 isFirstPage). 다른 페이지에서도 훅 자체는 항상 호출해 훅 순서를
+  // 지키되(React 규칙), enabled로 요청만 막아 불필요한 네트워크를 피한다.
+  const isFirstPage = pageIndex === 0;
+  const pinnedQueries = useQueries({
+    queries: PINNED_FEED_COLLECTION_IDS.map((collectionId) => ({
+      queryKey: ['collections', collectionId, 'detail', 'feedPin'] as const,
+      queryFn: () => getCollectionDetail(collectionId, { recordSize: 100 }),
+      enabled: isFirstPage,
+      staleTime: Infinity,
+      gcTime: PINNED_COLLECTION_GC_TIME_MS,
+    })),
+  });
+
   // 다음 마운트가 이어받을 위치를 기록한다. 렌더 중이 아니라 커밋 후에 쓴다 — 위 pageSize 리셋처럼
   // 렌더 중 state가 바뀌는 경로가 있어서, 렌더 중에 쓰면 버려질 값을 기록할 수 있다.
   useEffect(() => {
@@ -223,8 +268,12 @@ export function FeedList() {
   }, [cursorHistory, pageIndex, pageSize]);
 
   // 381(382에 병합): 목록이 도착하면 그 페이지 표지를 미리 받아 둔다. 훅이라 early return보다
-  // 위에 있어야 하고, 아직 데이터가 없으면 빈 배열이라 아무 일도 하지 않는다.
-  useFeedCoverPreload((feedQuery.data?.items ?? []).map((item) => item.coverImageUrl));
+  // 위에 있어야 하고, 아직 데이터가 없으면 빈 배열이라 아무 일도 하지 않는다. 고정 카드 표지도 같은
+  // 이유로 함께 워밍한다 — 아니면 1페이지 맨 앞 두 칸만 깜빡임이 남는다.
+  useFeedCoverPreload([
+    ...(feedQuery.data?.items ?? []).map((item) => item.coverImageUrl),
+    ...(isFirstPage ? pinnedQueries.map((query) => query.data?.coverImageUrl) : []),
+  ]);
 
   const emptyShelfLayout: EmptyShelfLayout = {
     columns,
@@ -272,7 +321,20 @@ export function FeedList() {
   }
 
   const page = feedQuery.data;
-  const items = page.items;
+  // 1페이지에서만 고정 항목을 맨 앞에 끼워 넣는다 — 실제 알고리즘 항목 중 같은 collectionId가
+  // 있으면 중복 노출을 피해 걸러내고, 슬롯 예산(pageSize)은 그대로 유지한다.
+  const pinnedItems = isFirstPage
+    ? pinnedQueries
+        .filter((query) => query.data !== undefined)
+        .map((query, index) => toPinnedFeedItem(query.data as CollectionDetail, index))
+    : [];
+  const pinnedCollectionIds = new Set(pinnedItems.map((item) => item.collectionId));
+  const items = isFirstPage
+    ? [
+        ...pinnedItems,
+        ...page.items.filter((item) => !pinnedCollectionIds.has(item.collectionId)),
+      ].slice(0, pageSize)
+    : page.items;
   const canGoPrevious = pageIndex > 0;
   const canGoNext = page.hasNext;
 
@@ -297,8 +359,20 @@ export function FeedList() {
   const handleItemClick = (item: FeedCollectionItem) => {
     // 382 보조 카드 2: "최근 열어본 책"의 로컬 기록. 서버로 아무것도 보내지 않고 이 브라우저의
     // localStorage에만 남긴다(recentlyOpenedCollections.ts). 아래 이벤트 큐잉과는 무관하며,
-    // 저장이 실패해도 그쪽 경로에 영향이 없다(그 안에서 try/catch로 삼킨다).
+    // 저장이 실패해도 그쪽 경로에 영향이 없다(그 안에서 try/catch로 삼킨다). 고정 카드 클릭에도
+    // 똑같이 적용한다 — Feed Session과 무관한 로컬 기록이라 배제할 이유가 없다.
     recordRecentlyOpened({ collectionId: item.collectionId, title: item.title });
+
+    // 고정 카드는 실제 Feed 응답에 속하지 않는다 — CLICK 이벤트도, feedRequestId/feedPosition도
+    // 물리지 않는다(ShelfExploreSection.tsx와 동일 패턴, 위 PINNED_FEED_COLLECTION_IDS 주석 참고).
+    if (isFirstPage && pinnedCollectionIds.has(item.collectionId)) {
+      void navigate({
+        to: '/collections/$collectionId',
+        params: { collectionId: item.collectionId },
+        state: { collectionOverlay: true },
+      });
+      return;
+    }
 
     // position·requestId는 응답 값 그대로 사용한다 — 재계산 금지(api-contract.md Feed 이벤트).
     feedEventQueue.enqueue({
