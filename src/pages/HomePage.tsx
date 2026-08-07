@@ -15,6 +15,8 @@ import {
   HERO_OVERLAY_OPAQUE_PX,
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
+import { getNavCardRightEdgePx } from '@/shared/lib/appChrome';
+import { useShelfWidthTier } from '@/shared/lib/useShelfBreakpoint';
 import { MAP_TONE_RIGHT_FADE_PX } from '@/features/map/lib/mapToneMask';
 // 384 — 롤백 지점 ①: 이 import와 아래 <DeskSurface />·<MapPosterFrame> 두 곳이 전부다
 // (자세한 안내는 features/home/deskPoster/deskPoster.ts 주석).
@@ -77,6 +79,18 @@ const RegionViewPanel = lazy(() =>
  */
 export function HomePage() {
   const navigate = useNavigate();
+  /**
+   * 394: 좌상단 플로팅 네비 카드가 화면 왼쪽에서 어디까지를 덮는지(px).
+   *
+   * 왜 홈만 이것을 신경 쓰는가 — 다른 화면은 <main>의 왼쪽 padding 안에 카드가 들어앉아 컨텐츠와
+   * 겹치지 않는다. 홈만 배경 지도를 그 padding까지 **풀블리드로** 밀어 넣기 때문에(아래 배경 레이어
+   * 음수 마진) 지도의 왼쪽 띠가 불투명한 카드 뒤로 들어간다.
+   *
+   * 값이 tier에 따라 달라져 Tailwind 클래스로 표현할 수 없다(지도는 이 숫자를 fitBounds 계산에
+   * 쓴다). 그래서 클래스가 아니라 훅으로 구간을 읽는다.
+   */
+  const widthTier = useShelfWidthTier();
+  const navCardRightEdgePx = getNavCardRightEdgePx(widthTier);
   const searchMutation = useSearchRecordsMutation();
   const [openRecordId, setOpenRecordId] = useState<number | null>(null);
   // 방금 저장한 Record. 마커 목록이 갱신되는 대로 지도가 그 좌표로 이동하고 값을 비운다.
@@ -158,10 +172,17 @@ export function HomePage() {
             ① **padding box까지만** 넓히고 그 밖으로는 절대 나가지 않는다. `<main>`은 앱의 유일한
                스크롤 영역인데(359), abspos 자손이 padding box를 넘으면 그만큼이 scrollable overflow가
                되어 sm에서 5rem짜리 헛스크롤이 생긴다. 정확히 상쇄하면 오버플로가 0이다.
-            ② md 이상 왼쪽은 셸 여백(1rem/1.5rem)만 상쇄하고 **사이드바 폭은 상쇄하지 않는다.**
-               지도가 불투명한 고정 사이드바 뒤로 들어가면 보이지도 않는 영역을 렌더해 지도의 시각적
-               중심이 왼쪽으로 밀린다. 이렇게 두면 지도 왼쪽 끝이 사이드바 오른쪽 끝과 정확히 만나
-               "사이드바를 제외한 영역을 꽉 채운다"(307)는 원래 전제가 그대로 유지된다.
+            ② **394에서 뒤집힌 항목이다.** 368 당시에는 왼쪽에서 셸 여백(1rem/1.5rem)만 상쇄하고
+               사이드바 폭은 남겼다 — 지도가 불투명한 레일 뒤로 들어가면 보이지도 않는 영역을 렌더해
+               시각적 중심이 왼쪽으로 밀리기 때문이었다. 394에서 그 레일이 **떠 있는 카드**로 바뀌어
+               예약 구간의 대부분이 그냥 페이지 배경이 됐고, 남겨 두면 화면 왼쪽에 지도가 닿지 않는
+               빈 띠(md 88px / xl 264px)만 남는다. 그래서 이제 왼쪽 padding을 **통째로 상쇄해**
+               지도를 화면 끝까지 민다(md 5.5rem / xl 16.5rem — <main>의 pl 리터럴과 같은 값).
+               그 대가로 지도의 왼쪽 일부가 카드에 가리므로, 가려지는 폭을 지도에 알려 fitBounds
+               여유·센터링·"화면 밖 N개"가 **보이는 영역** 기준으로 계산되게 한다
+               (leftObstructionEdgeXPx). 가림을 계산에서 빼지 않으면 서쪽 끝 마커가 카드 뒤에 숨는다.
+               ⚠️ 왼쪽으로 넘긴 만큼은 스크롤을 만들지 않는다 — LTR에서 scrollable overflow는
+               오른쪽·아래로만 자라고, 여기서는 padding box 왼쪽 끝에 **정확히** 닿을 뿐 넘지 않는다.
             `fixed inset-0`을 쓰지 않은 이유 — 뷰포트 전체를 덮으므로 위 ②가 성립하지 않고, 스크롤
             영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
             "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
@@ -180,7 +201,7 @@ export function HomePage() {
         {/* 384 후속 — 롤백 지점 ④: 포스터를 히어로 아래에서 시작시킨다. 스위치가 꺼져 있으면 빈
             문자열이라 예전처럼 inset-0 전체를 덮는다. */}
         <div
-          className={`isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${POSTER_TOP_CLASS}`}
+          className={`isolate absolute inset-0 overflow-hidden mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-[5.5rem] md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-mb-6 xl:-ml-[16.5rem] xl:-mt-6 xl:right-[23rem] xl:mr-0 ${POSTER_TOP_CLASS}`}
         >
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
@@ -212,6 +233,7 @@ export function HomePage() {
                 highlightRecordId={activeRecentRecordId}
                 selectedRecordId={openRecordId}
                 rightFadePx={MAP_RIGHT_FADE_PX}
+                leftObstructionEdgeXPx={navCardRightEdgePx}
               />
             </MapPosterFrame>
           )}
@@ -234,7 +256,7 @@ export function HomePage() {
         {!HOME_DESK_POSTER_ENABLED && (
           <div
             aria-hidden="true"
-            className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-6 xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
+            className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-[5.5rem] md:-mt-4 md:right-[17rem] md:mr-0 lg:right-[21rem] xl:-ml-[16.5rem] xl:-mt-6 xl:right-[23rem] xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
             style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
           />
         )}

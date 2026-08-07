@@ -270,15 +270,67 @@ describe('오른쪽 페이드 가림(rightObstructionPx)', () => {
     expect(visible.swLng).toBe(126);
   });
 
-  it('중심 보정이 서쪽(음수)으로 간다 — 목표 지점을 보이는 영역 한가운데로 옮긴다', () => {
+  // 394: 부호를 뒤집었다. 오른쪽이 가려졌으면 목표 지점은 **왼쪽(보이는 쪽)** 으로 밀려야 하고,
+  // 그러려면 지도 중심이 목표 지점보다 동쪽이어야 한다(양수). 이전 값(-0.32)은 목표 지점을 오히려
+  // 페이드 안으로 밀어넣는 방향이었다 — 위도 보정과 대칭이 맞지 않았다.
+  it('중심 보정이 동쪽(양수)으로 간다 — 목표 지점을 보이는 영역 한가운데로 옮긴다', () => {
     const offset = getVisibleCenterLngOffset(VIEWPORT, FADED);
-    expect(offset).toBeCloseTo(-0.32, 5);
+    expect(offset).toBeCloseTo(0.32, 5);
   });
 
   it('위·오른쪽이 함께 가려져도 각각 반영된다', () => {
     const both = { ...FADED, topObstructionPx: 120 };
     const visible = shrinkViewportFromTop(VIEWPORT, both);
     expect(visible.neLat).toBeLessThan(38);
+    expect(visible.neLng).toBeLessThan(130);
+  });
+});
+
+describe('394 — 왼쪽 플로팅 네비 카드 가림(leftObstructionPx)', () => {
+  // 홈의 좌상단 네비 카드가 풀블리드 지도의 왼쪽 띠를 덮는다. 오른쪽 페이드와 성격이 같아
+  // fitBounds 여유·가시 영역·센터링 셋 모두에 들어가야 한다.
+  const COVERED_LEFT: MapViewInsets = {
+    topObstructionPx: 0,
+    containerHeightPx: 600,
+    leftObstructionPx: 232,
+    containerWidthPx: 800,
+  };
+  const VIEWPORT = { swLat: 33, swLng: 126, neLat: 38, neLng: 130 };
+
+  it('fitBounds 왼쪽 여유에 카드 폭이 더해진다 — 서쪽 끝 마커가 카드 뒤로 숨지 않는다', () => {
+    const padding = getFitPadding(48, COVERED_LEFT);
+    expect(padding.left).toBe(48 + 232);
+    expect(padding.right).toBe(48);
+    expect(padding.top).toBe(48);
+    expect(padding.bottom).toBe(48);
+  });
+
+  it('컨테이너 폭을 모르면 보정하지 않는다 — 0으로 나눠 NaN을 만들지 않는다', () => {
+    const padding = getFitPadding(48, {
+      topObstructionPx: 0,
+      containerHeightPx: 600,
+      leftObstructionPx: 232,
+    });
+    expect(padding.left).toBe(48);
+  });
+
+  it('보이는 영역의 서쪽 경계가 그만큼 안으로 들어온다', () => {
+    const visible = shrinkViewportFromTop(VIEWPORT, COVERED_LEFT);
+    // 800px 폭에 4도가 담기므로 232px은 1.16도다.
+    expect(visible.swLng).toBeCloseTo(126 + 1.16, 5);
+    expect(visible.neLng).toBe(130);
+  });
+
+  it('중심 보정이 서쪽(음수)으로 간다 — 목표 지점이 카드 오른쪽으로 밀려난다', () => {
+    expect(getVisibleCenterLngOffset(VIEWPORT, COVERED_LEFT)).toBeCloseTo(-0.58, 5);
+  });
+
+  it('좌우가 같은 폭으로 가려지면 중심 보정은 상쇄돼 0이다', () => {
+    const both = { ...COVERED_LEFT, rightObstructionPx: 232 };
+    expect(getVisibleCenterLngOffset(VIEWPORT, both)).toBe(0);
+    // 가시 영역은 양쪽에서 함께 좁아진다.
+    const visible = shrinkViewportFromTop(VIEWPORT, both);
+    expect(visible.swLng).toBeGreaterThan(126);
     expect(visible.neLng).toBeLessThan(130);
   });
 });
