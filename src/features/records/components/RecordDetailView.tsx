@@ -146,19 +146,14 @@ export function RecordDetailView({ recordId, onClose }: RecordDetailViewProps) {
             // 마스킹 테이프가 노트 위로 12px 튀어나오고 손붙임 오프셋·회전·호버 흔들림까지 겹치므로
             // 상하좌우 여백(pt-6/px-3/pb-4)을 둔다.
             //
-            // 맥락이 적을 때(isSparse)는 옅은 괘선을 깔아 빈 노트 페이지처럼 보이게 하고 포스트잇도
-            // 크게 쓴다 — 373 피드백 1("1장이어도 페이지가 완성돼 보여야 한다").
-            <div
-              className="place-scroll -mx-3 mt-1 flex min-h-0 flex-1 flex-wrap content-start gap-x-7 overflow-y-auto px-3 pb-4 pt-6"
-              style={
-                isSparse
-                  ? {
-                      backgroundImage:
-                        'repeating-linear-gradient(to bottom, transparent 0 31px, rgba(120,110,100,0.09) 31px 32px)',
-                    }
-                  : undefined
-              }
-            >
+            // 맥락이 적을 때(isSparse)는 포스트잇을 크게 쓰고 아래에 "다음 자리" 실루엣을 둬서
+            // 페이지를 채운다 — 373 피드백 1("1장이어도 페이지가 완성돼 보여야 한다").
+            //
+            // 387: 이 자리에 깔던 가로 괘선(32px repeating-linear-gradient)을 제거했다. 컬렉션 펼침의
+            // 괘선을 뺀 것과 같은 판단이다 — 사용자가 원한 종이 표현은 방향이 없는 미세한 결이고,
+            // 괘선은 강한 가로 방향성을 만들어 그 반대로 읽힌다. 노트 페이지의 "종이" 인상은
+            // RecordNotebookPage의 도트 그리드(시안 확정값)가 이미 맡고 있어 여기서는 뺀 채로 둔다.
+            <div className="place-scroll -mx-3 mt-1 flex min-h-0 flex-1 flex-wrap content-start gap-x-7 overflow-y-auto px-3 pb-4 pt-6">
               {contexts.map((context, index) => (
                 <div
                   key={context.contextId}

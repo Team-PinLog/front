@@ -32,7 +32,7 @@ export function CollectionRecordPhoto({ placeName, thumbnailUrl }: CollectionRec
   const showPhoto = Boolean(thumbnailUrl) && !failed;
 
   return (
-    <div className="relative w-[170px] flex-none rotate-[-1.4deg]">
+    <div className="relative w-[230px] max-w-full flex-none rotate-[-1.4deg]">
       {/* 테이프 두 조각(왼쪽 위·오른쪽 아래 모서리). 378 지도 액자와 같은 상수를 쓴다.
           두 조각 모두 같은 각도('left')를 쓰는 건 의도다 — 마주 보는 모서리에 나란한 방향으로
           붙은 모양이 스크랩북에서 사진을 붙이는 실제 방식이고, 서로 반대로 틀면 액자처럼 보인다.

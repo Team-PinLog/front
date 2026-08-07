@@ -20,23 +20,23 @@ import type { CSSProperties } from 'react';
 // ── 1. 페이지 종이 질감 + 괘선 ──────────────────────────────────────────────
 
 // 종이 섬유 노이즈. feTurbulence를 SVG data URI로 깔면 asset 없이 미세한 결이 생긴다.
-// baseFrequency가 높을수록 결이 곱다. opacity 0.035는 "있는 줄 모르지만 빼면 허전한" 정도로,
-// 확대해야 보이는 수준이다(가독성 우선 원칙).
+// 387: 레퍼런스(흰 종이 클로즈업, "만져질 듯 말 듯")에 맞춰 결을 더 곱고 무방향으로 조정했다.
+// baseFrequency를 0.85 → 1.15로 올려 알갱이를 잘게 부수고(높을수록 곱다), numOctaves를 3 → 4로
+// 늘려 큰 얼룩 없이 균질하게 만든다. 대신 눈에 닿는 양이 줄어 opacity는 0.035 → 0.05로 올렸다.
+// 타일도 140 → 180px로 키워 반복 주기가 눈에 잡히지 않게 했다.
 const PAPER_NOISE_IMAGE =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E\")";
-
-// 미세 괘선. 간격·알파는 373 노트 페이지에서 확정한 값을 그대로 쓴다(32px, 0.09) — 두 화면이
-// 같은 "노트" 계열이라 괘선 리듬이 어긋나면 안 된다.
-const PAGE_RULE_LINES =
-  'repeating-linear-gradient(to bottom, transparent 0 31px, rgba(120,110,100,0.09) 31px 32px)';
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E\")";
 
 /**
  * 펼침 페이지 표면. 기존 배경색(bg-snow-white)은 그대로 두고 그 **위에** 질감만 얹는다
  * — backgroundImage만 주므로 배경색 클래스를 지우거나 바꾸지 않는다.
- * 순서상 노이즈가 위, 괘선이 아래다(노이즈가 괘선의 선명한 경계를 살짝 흐려 인쇄된 줄처럼 보인다).
+ *
+ * 387: 가로 괘선(repeating-linear-gradient 32px)을 **뺐다**. 사용자가 원한 것은 줄노트의 줄무늬가
+ * 아니라 방향이 없는 미세한 종이 결이고, 괘선은 그 자체로 강한 가로 방향성을 만들어 레퍼런스와
+ * 정반대로 읽혔다. 이제 질감은 노이즈 한 겹뿐이다.
  */
 export const BINDER_PAGE_SURFACE: CSSProperties = {
-  backgroundImage: `${PAPER_NOISE_IMAGE}, ${PAGE_RULE_LINES}`,
+  backgroundImage: PAPER_NOISE_IMAGE,
 };
 
 // ── 2. 사진·액자의 마스킹 테이프 부착 ───────────────────────────────────────
@@ -67,27 +67,9 @@ export function binderTapeStyle(side: 'left' | 'right'): CSSProperties {
 
 export const BINDER_TAPE_CLASS = 'pointer-events-none absolute z-30 h-5 w-16 rounded-[2px]';
 
-// ── 3. Context가 놓이는 "찢은 종이" 받침 ────────────────────────────────────
-
-/**
- * Context 포스트잇 뒤에 깔리는 찢어낸 종이 조각. 포스트잇 자체(shared/ui/ContextStickyNote)는
- * 건드리지 않는다 — 색·회전·테이프는 332에서 확정된 3색 해시 그대로다. 대신 그 뒤에 종이를 깔아
- * "노트에서 찢어낸 조각 위에 맥락을 붙였다"는 인상을 만든다.
- *
- * **왼쪽** 가장자리를 conic-gradient 마스크로 톱니처럼 잘라 찢긴 단면을 만든다(asset 없이 CSS만).
- * 아래가 아니라 옆구리를 찢는 건 378 레퍼런스(스프링에서 뜯어낸 줄노트 조각) 때문이다 — 노트를
- * 가로로 자른 것이 아니라 링에서 뜯어낸 장이라는 인상이 나와야 한다.
- * 마스크는 이 받침 레이어에만 걸린다 — 포스트잇은 이 레이어의 자식이 아니라 형제라서 잘리지 않는다.
- * (되돌리려면 아래 네 줄을 bottom 기준으로 바꾼다: `from -45deg at bottom` / '14px 100%' / repeat-x.)
- */
-export const BINDER_TORN_PAPER_STYLE: CSSProperties = {
-  backgroundColor: '#FDFAF3',
-  backgroundImage: PAPER_NOISE_IMAGE,
-  boxShadow: '0 1px 2px rgba(60,54,48,0.12)',
-  WebkitMaskImage: 'conic-gradient(from 45deg at left, #0000, #000 1deg 89deg, #0000 90deg)',
-  maskImage: 'conic-gradient(from 45deg at left, #0000, #000 1deg 89deg, #0000 90deg)',
-  WebkitMaskSize: '100% 14px',
-  maskSize: '100% 14px',
-  WebkitMaskRepeat: 'repeat-y',
-  maskRepeat: 'repeat-y',
-};
+// ── 3. (제거됨) Context 뒤 "찢은 종이" 받침 ───────────────────────────────
+//
+// 387: 포스트잇 뒤에 깔던 베이지 종이 받침(BINDER_TORN_PAPER_STYLE)을 삭제했다. 화면에서는
+// "메모에 배경 박스가 붙은 것"으로 읽혀서, 메모지가 페이지에 직접 붙어 있다는 인상을 오히려
+// 방해했다. 되살리려면 이 자리에 받침 상수를 두고 CollectionDetailView의 aria-hidden 레이어를
+// 복원하면 된다(378 롤백 지점 3/3 주석 참고).
