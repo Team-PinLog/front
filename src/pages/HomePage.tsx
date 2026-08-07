@@ -16,6 +16,13 @@ import {
 } from '@/features/home/lib/heroMapOverlay';
 import { PAGE_CONTAINER_CLASS, PAGE_MIN_HEIGHT_CLASS } from '@/shared/lib/shelfCabinetLayout';
 
+/**
+ * 377 정정: 지도 오른쪽 끝을 배경으로 스며들게 하는 마스크. 잘린 단면이 그대로 드러나면 지도가
+ * "잘렸다"로 읽히는데, 여기서 필요한 것은 "지도가 여기까지고 그 너머는 배경"이라는 인상이다.
+ * 값은 취향 조정 지점이다 — 더 부드럽게 하려면 6rem을 키운다.
+ */
+const MAP_RIGHT_FADE_MASK = 'linear-gradient(to right, black calc(100% - 6rem), transparent 100%)';
+
 // 376(지역 뷰) — 롤백 지점 ①/②. 이 lazy import와 아래 토글 블록, 그리고
 // src/features/home/regionView/ 폴더가 이 기능의 전부다(자세한 안내는 RegionViewPanel 주석).
 // lazy인 이유는 코드 분할이다 — 경계 데이터(약 64KB)와 지역 뷰 코드가 별도 청크로 빠져, 기본값인
@@ -132,7 +139,18 @@ export function HomePage() {
             `fixed inset-0`을 쓰지 않은 이유 — 뷰포트 전체를 덮으므로 위 ②가 성립하지 않고, 스크롤
             영역 밖으로 나가 검색 결과가 길어졌을 때의 스크롤 동작도 함께 바뀐다. 지금 필요한 것은
             "padding만큼 더 넓힌다"뿐이라 레이어의 위치 방식까지 바꿀 이유가 없다. */}
-        <div className="isolate absolute inset-0 mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mr-4 md:-mt-4 xl:-mb-6 xl:-ml-6 xl:-mr-6 xl:-mt-6">
+        {/* 377 정정: lg 이상에서 **지도 폭을 줄이고 오른쪽 가장자리를 페이드**한다.
+            이유는 "맵과 레코드가 겹쳐 보여 정신없다"는 피드백이다 — '최근의 장소' 카드는 지도에
+            꽂힌 것이 아니라 **페이지 배경에** 꽂혀 있어야 한다. 카드 밑에 판을 깔아 지도를 가리는
+            대신 지도 자체를 비켜 세운다(판을 깔면 배경이 하나 더 생겨 층이 늘어난다).
+            - `lg:right-[22rem]`이 자리를 비우고, `lg:mr-0`이 368의 음수 오른쪽 마진을 되돌린다
+              (그 마진은 지도를 padding box까지 넓히려던 것이라 여기서는 반대로 작동한다).
+            - 잘린 단면이 그대로 보이면 지도가 "잘렸다"로 읽히므로, 마지막 6rem을 알파로 떨어뜨려
+              배경으로 스며들게 한다. 히어로 오버레이와 같은 mask 기법이다. */}
+        <div
+          className="isolate absolute inset-0 mb-[calc(-5rem-env(safe-area-inset-bottom))] md:-mb-4 md:-ml-4 md:-mr-4 md:-mt-4 lg:right-[22rem] lg:mr-0 xl:-mb-6 xl:-ml-6 xl:-mt-6 xl:mr-0"
+          style={{ maskImage: MAP_RIGHT_FADE_MASK, WebkitMaskImage: MAP_RIGHT_FADE_MASK }}
+        >
           {/* 376 — 롤백 지점 ③: 지역 뷰는 기존 지도를 **대체하지 않고** 같은 자리에서 갈아 끼운다.
               이 삼항 하나만 지우면 HomeMapSection만 남아 원래 화면이 된다. */}
           {isRegionView ? (
@@ -181,7 +199,7 @@ export function HomePage() {
             아래쪽은 이 오버레이가 고정 높이로 끝나는 레이어라 상쇄할 padding이 없다. */}
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mr-4 md:-mt-4 xl:-ml-6 xl:-mr-6 xl:-mt-6 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
+          className={`pointer-events-none absolute inset-x-0 top-0 md:-ml-4 md:-mr-4 md:-mt-4 lg:right-[22rem] lg:mr-0 xl:-ml-6 xl:-mt-6 xl:mr-0 ${HERO_OVERLAY_HEIGHT_CLASS} bg-paper-white backdrop-blur-lg`}
           style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 

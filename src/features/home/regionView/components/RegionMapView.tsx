@@ -137,10 +137,11 @@ export function RegionMapView({ items, onSelectRecord, topObstructionPx = 0 }: R
   return (
     <div
       ref={containerRef}
-      // 377-D: 한반도가 세로로 다 보이도록 지도를 **좌측**에 붙이고, 오른쪽은 "최근의 장소" 카드가
-      // 놓이는 자리로 비워 둔다(그 카드는 HomePage의 컨텐츠 레이어가 그린다 — 지역 탭에서도 같은
-      // 컴포넌트를 쓰기 위해서다). pr이 없으면 큰 화면에서 지도가 카드 밑으로 들어간다.
-      className="relative flex h-full w-full items-center justify-start overflow-hidden p-4 lg:pr-[21rem]"
+      // 377-D: 한반도가 세로로 다 보이도록 지도를 **좌측**에 붙인다.
+      // 오른쪽 자리 비우기는 여기서 하지 않는다 — 377 정정으로 **배경 레이어 자체**가 lg 이상에서
+      // 좁아지고 오른쪽이 페이드된다(HomePage). 여기서 또 pr을 주면 자리를 두 번 빼 지도가 그만큼
+      // 더 작아진다.
+      className="relative flex h-full w-full items-center justify-start overflow-hidden p-4"
       style={{ paddingTop: topObstructionPx + 16 }}
     >
       <svg

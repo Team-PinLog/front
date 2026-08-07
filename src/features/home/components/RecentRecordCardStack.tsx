@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { RecentRecordCardItem } from '@/features/records/api/getRecentRecords';
 import { PinOutline } from '@/shared/ui/PinSymbols';
-import { getRecentBoardGrainImage, RECENT_BOARD } from '../lib/recentBoard';
 import {
   formatRecentRelativeDay,
   getCycledRecentIndex,
@@ -9,31 +8,6 @@ import {
   getVisibleRecentIndexes,
 } from '../lib/recentRecordStack';
 import { RecentRecordCard } from './RecentRecordCard';
-
-/**
- * 카드가 꽂히는 판. 377 추가 지시로 생겼다 — 그 전에는 카드가 지도 위에 그대로 떠 있어 압정이
- * 아무 데도 꽂혀 있지 않았다. 재질값은 lib/recentBoard.ts에 모아 조정할 수 있게 뒀다.
- *
- * 안쪽 그림자를 주는 이유: 판이 배경보다 살짝 눌려 들어가 보여야 그 위의 카드가 떠 보인다.
- * 판 자체가 떠 보이면 카드와 판이 같은 층으로 읽혀 압정의 의미가 사라진다.
- */
-const boardStyle = {
-  backgroundColor: RECENT_BOARD.baseColor,
-  backgroundImage: getRecentBoardGrainImage(),
-  backgroundRepeat: 'repeat',
-  backgroundSize: `${RECENT_BOARD.grainTileSizePx}px ${RECENT_BOARD.grainTileSizePx}px`,
-  borderColor: RECENT_BOARD.edgeColor,
-  boxShadow: `inset 0 1px 0 rgba(255,255,255,.5), inset 0 -2px 6px ${RECENT_BOARD.edgeColor}, 0 12px 28px -18px rgba(4,33,66,.45)`,
-} as const;
-
-/** 결 이미지는 배경색 위에 곱해져야 색을 먹지 않는다. 배경 자체에 알파를 주면 판이 비쳐 버린다. */
-const boardGrainStyle = {
-  backgroundImage: getRecentBoardGrainImage(),
-  backgroundRepeat: 'repeat',
-  backgroundSize: `${RECENT_BOARD.grainTileSizePx}px ${RECENT_BOARD.grainTileSizePx}px`,
-  opacity: RECENT_BOARD.grainAlpha,
-  mixBlendMode: 'multiply',
-} as const;
 
 interface RecentRecordCardStackProps {
   items: RecentRecordCardItem[];
@@ -75,17 +49,12 @@ export function RecentRecordCardStack({
     // 빈 상태에 점선 핀(pin-outline)을 쓰는 것은 목업의 "아직 꽂힌 핀이 없어요" 규칙이다 —
     // 빈 자리를 회색 상자가 아니라 "꽂을 자리"로 보이게 한다.
     return (
-      <section
-        aria-label="최근의 장소"
-        className="relative w-full max-w-[19rem] overflow-hidden rounded-2xl border p-5 text-center"
-        style={boardStyle}
-      >
-        <span aria-hidden="true" className="absolute inset-0" style={boardGrainStyle} />
-        <p className="relative text-sm font-bold text-pin-navy">최근의 장소</p>
-        <span className="relative mt-3 flex justify-center text-pin-navy/25">
+      <section aria-label="최근의 장소" className="w-full max-w-[19rem] text-center">
+        <p className="text-sm font-bold text-pin-navy">최근의 장소</p>
+        <span className="mt-3 flex justify-center text-pin-navy/25">
           <PinOutline height={34} />
         </span>
-        <p className="relative mt-2 text-xs leading-relaxed text-ink-gray">
+        <p className="mt-2 text-xs leading-relaxed text-ink-gray">
           최근 7일 동안 저장한 장소가 없어요.
           <br />
           마음에 든 곳을 기록해 보세요.
@@ -99,25 +68,15 @@ export function RecentRecordCardStack({
   };
 
   return (
-    // 카드가 판 위로 튀어나오는 압정을 가리지 않도록 overflow를 숨기지 않는다. 결 레이어만
-    // 판 크기에 맞춰 따로 깔고, 판 모서리 밖으로 나가지 않게 그 레이어에만 rounded를 준다.
-    <section
-      aria-label="최근의 장소"
-      className="relative w-full max-w-[19rem] rounded-2xl border px-4 pb-4 pt-3"
-      style={boardStyle}
-    >
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-2xl"
-        style={boardGrainStyle}
-      />
-      <p className="relative mb-3 text-xs font-bold tracking-[0.12em] text-pin-navy/70">
-        최근의 장소
-      </p>
+    // 377 정정: 별도 색의 보드 패널을 두지 않는다. 카드는 **페이지 배경(paper-white) 위에 직접**
+    // 압정으로 꽂힌 모양이다. 대신 이 영역이 지도와 겹치지 않도록 배경 레이어(지도) 쪽 폭을 줄이고
+    // 오른쪽 가장자리를 페이드했다(HomePage) — 판을 깔아 가리는 대신 지도를 비켜 세우는 방식이다.
+    <section aria-label="최근의 장소" className="w-full max-w-[19rem]">
+      <p className="mb-3 text-xs font-bold tracking-[0.12em] text-pin-navy/70">최근의 장소</p>
 
       {/* 행 사이 간격이 넉넉해야 위 카드의 압정이 아래 카드에 닿지 않는다(압정이 카드 위로 30px
           가까이 튀어나온다). overflow를 숨기지 않는 것도 같은 이유다. */}
-      <div className="relative flex flex-col gap-6 pt-4">
+      <div className="flex flex-col gap-6 pt-4">
         {visibleIndexes.map((itemIndex, rowIndex) => {
           const item = items[itemIndex]!;
           const layout = getRecentRowLayout(rowIndex);
@@ -141,7 +100,7 @@ export function RecentRecordCardStack({
         })}
       </div>
 
-      <div className="relative mt-4 flex items-center justify-between gap-2">
+      <div className="mt-4 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => handleStep(-1)}
