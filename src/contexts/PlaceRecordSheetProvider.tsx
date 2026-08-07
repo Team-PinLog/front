@@ -12,7 +12,7 @@ export function PlaceRecordSheetProvider({ children }: { children: ReactNode }) 
   const contextValue = useMemo<PlaceRecordSheetValue>(
     () => ({
       ...state,
-      open: () => setState((prev) => ({ ...prev, isOpen: true })),
+      open: () => setState((prev) => (prev.isOpen ? prev : { ...prev, isOpen: true })),
       close: () => setState(initialPlaceRecordSheetState),
       setSearchQuery: (query, options) =>
         // 검색어를 새로 입력하면 이전 검색 결과 기준으로 골랐던 선택은 더 이상 유효하지 않다.
