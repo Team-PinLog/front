@@ -4,6 +4,7 @@ import logoFull from '@/assets/logo-full.png';
 import { WithdrawConfirmProvider } from '@/contexts/WithdrawConfirmProvider';
 import { useWithdrawConfirm } from '@/contexts/useWithdrawConfirm';
 import { LayoutMetricsContext } from '@/shared/lib/LayoutMetricsContext';
+import { FOCUSABLE_SELECTOR } from '@/shared/lib/focusableSelector';
 import { SettingsPanel } from './SettingsPanel';
 import { WithdrawConfirmDialog } from './WithdrawConfirmDialog';
 
@@ -64,9 +65,11 @@ const BOTTOM_NAV_ICON_SIZE = 15;
 // 폭을 아이콘 크기와 분리해 두는 것이 핵심이다 — 아이콘 크기를 바꿔도 정렬 계산을 다시 하지 않는다.
 const SIDEBAR_ICON_SLOT_CLASS = 'flex w-[50px] flex-none items-center justify-center';
 
-// 358 후속(디자인 피드백 — "너무 팍 하고 바뀐다"): 설정 패널 등장·퇴장 모션.
-// keyframe 본체는 src/index.css에 있다. 지속시간은 사이드바 폭 transition(duration-200 ease-out)과
-// 같은 값이어야 한다 — 패널이 열리는 동안 사이드바도 240px로 펼쳐지므로 둘이 어긋나면 바로 보인다.
+// 358 후속(디자인 피드백 — "너무 팍 하고 바뀐다"): 설정 등장·퇴장 모션.
+// keyframe 본체는 src/index.css에 있다.
+// 385: 값(200ms)은 그대로 두고 대상만 바뀌었다 — 서랍 패널이 중앙 모달이 되면서 사이드바 폭
+// transition과 맞출 이유는 사라졌지만(모달은 사이드바를 건드리지 않는다), 배경막과는 여전히 같은
+// 길이여야 카드와 딤이 따로 노는 것처럼 보이지 않는다.
 const SETTINGS_MOTION_MS = 200;
 
 // 조건부 클래스는 문자열을 조립하지 않고 **완성된 리터럴 중 하나를 고른다**(conventions 2장) —
@@ -76,10 +79,14 @@ const SETTINGS_MOTION_MS = 200;
 // 아직 DOM에 있어서, 없으면 이미 사라져 보이는 배경막이 클릭을 계속 삼킨다.
 // motion-reduce 조합: 애니메이션을 끄면 등장은 최종 상태로 즉시 나타나고, 퇴장은 즉시 투명해진다
 // (unmount 지연도 아래에서 0으로 만든다).
-const SETTINGS_PANEL_ENTER_CLASS =
-  'animate-[settings-panel-in_200ms_ease-out] motion-reduce:animate-none';
-const SETTINGS_PANEL_EXIT_CLASS =
-  'pointer-events-none animate-[settings-panel-out_200ms_ease-out_forwards] motion-reduce:animate-none motion-reduce:opacity-0';
+// 385: pointer-events를 **여기 두 리터럴에만** 둔다. 카드 기본 클래스에 pointer-events-auto를 두고
+// 퇴장 클래스에 -none을 얹으면 한 요소에 두 유틸리티가 함께 붙어, 승자가 클래스 나열 순서가 아니라
+// Tailwind가 출력한 CSS 규칙 순서로 정해진다(coverParts.tsx가 text-*로 겪은 것과 같은 함정).
+// 등장/퇴장 둘 중 하나만 붙으므로 이렇게 나누면 충돌 자체가 없다.
+const SETTINGS_MODAL_ENTER_CLASS =
+  'pointer-events-auto animate-[settings-modal-in_200ms_ease-out] motion-reduce:animate-none';
+const SETTINGS_MODAL_EXIT_CLASS =
+  'pointer-events-none animate-[settings-modal-out_200ms_ease-out_forwards] motion-reduce:animate-none motion-reduce:opacity-0';
 const SETTINGS_SCRIM_ENTER_CLASS =
   'animate-[settings-scrim-in_200ms_ease-out] motion-reduce:animate-none';
 const SETTINGS_SCRIM_EXIT_CLASS =
@@ -114,9 +121,9 @@ function NavIcon({ size, children }: { size: number; children: ReactNode }) {
 }
 
 /**
- * 로그인 후 화면 공통 셸. 설정 패널 트리거를 제공한다.
+ * 로그인 후 화면 공통 셸. 설정 모달 트리거를 제공한다.
  *
- * 358에서 AppLayout을 Provider 껍데기와 AppShell로 쪼갰다. 설정 패널의 ESC 처리가 "탈퇴 확인
+ * 358에서 AppLayout을 Provider 껍데기와 AppShell로 쪼갰다. 설정의 ESC 처리가 "탈퇴 확인
  * 다이얼로그가 떠 있으면 ESC를 양보한다"를 알아야 하는데, 그 상태는 WithdrawConfirmContext에 있고
  * 자기 자신이 심은 Provider의 값은 같은 컴포넌트에서 읽을 수 없기 때문이다.
  */
@@ -135,9 +142,15 @@ export function AppLayout() {
  * getSidebarWidthPx와 쌍 — 그 값이 Feed 캐비닛 가로 예산에 그대로 들어간다).
  * 같은 NAV_ITEMS·설정 트리거 로직을 두 배치가 함께 쓰고, Tailwind md:hidden/md:flex로 보이는 쪽만
  * CSS로 전환한다(마운트/언마운트 분기 아님). 색상은 tailwind.config.js 브랜드 토큰을 쓴다.
- * 설정 패널 내용(계정 정보·로그아웃·탈퇴)은 162에서 채웠다.
+ * 설정 내용(계정 정보·로그아웃·탈퇴)은 162에서 채웠다.
  *
- * 358: 설정 패널은 우측이 아니라 **설정 버튼과 같은 좌측**에서 사이드바에 붙어 열린다(방식 A).
+ * 358: 설정은 우측이 아니라 **설정 버튼과 같은 좌측**에서 사이드바에 붙어 열리는 서랍이었다(방식 A).
+ * 385: 그 서랍을 **중앙 모달**로 대체했다(사용자 결정). 358이 서랍을 위해 마련했던 장치 —
+ * 사이드바를 펼친 채 고정하던 data-settings-open, 사이드바 옆에서 시작하는 가로 슬라이드 —
+ * 는 함께 걷어냈다. 중앙 모달은 사이드바와 위치 관계가 없어서 그 고정이 오히려 "딤 위에 사이드바만
+ * 떠 있는" 그림을 만든다. 반면 358이 잡아 둔 **동작**(ESC 닫기, 닫을 때 기어로 포커스 복귀, 탈퇴
+ * 다이얼로그가 떠 있으면 ESC 양보, reduced-motion)은 하나도 바뀌지 않았고, 385에서 포커스 트랩이
+ * 추가됐다.
  */
 function AppShell() {
   // 두 상태가 나뉜 이유: isSettingsOpen은 **사용자의 의도**(열려 있어야 하나)이고,
@@ -149,7 +162,7 @@ function AppShell() {
   const [navChromeHeightPx, setNavChromeHeightPx] = useState<number | null>(null);
   const [titleHeightPx, setTitleHeightPx] = useState<number | null>(null);
   const bottomNavRef = useRef<HTMLDivElement>(null);
-  const settingsPanelRef = useRef<HTMLElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
   // 열기 직전에 포커스를 갖고 있던 트리거(사이드바 기어 or 탭바 기어). 닫을 때 여기로 되돌린다 —
   // 어느 쪽에서 열렸는지 컴포넌트가 미리 알 필요가 없다.
   const settingsTriggerRef = useRef<HTMLElement | null>(null);
@@ -161,7 +174,7 @@ function AppShell() {
   //
   // ⚠️ 여는 쪽을 여기서 처리하지 않는 이유가 두 가지다. ①effect 안에서 동기 setState를 하면 렌더가
   // 연쇄된다(eslint react-hooks). ②그 한 프레임 지연 때문에 같은 커밋에서 도는 아래 포커스 effect가
-  // 아직 없는 패널을 찾아 포커스 이동이 통째로 불발된다. 여는 것은 openSettings가 두 상태를 한 번에
+  // 아직 없는 모달을 찾아 포커스 이동이 통째로 불발된다. 여는 것은 openSettings가 두 상태를 한 번에
   // 올리는 것으로 끝내고, 이 effect는 **닫은 뒤 붙잡아 두는 일만** 한다.
   useEffect(() => {
     if (isSettingsOpen || !isSettingsMounted) {
@@ -177,12 +190,12 @@ function AppShell() {
   };
   const closeSettings = () => setIsSettingsOpen(false);
 
-  // 358 ①: 포커스 이동/복귀. 열릴 때 패널 자신(tabIndex=-1)에 포커스를 주므로 이어지는 Tab이 패널 안
+  // 358 ①: 포커스 이동/복귀. 열릴 때 모달 자신(tabIndex=-1)에 포커스를 주므로 이어지는 Tab이 모달 안
   // 첫 요소로 들어가고, 스크린리더도 dialog 라벨부터 읽는다. 닫으면 열기 직전 요소로 되돌린다.
   //
   // ⚠️ 아래 ESC effect와 **일부러 분리했다.** 하나로 합치면 의존성에 탈퇴 다이얼로그 상태가 들어가고,
   // 그 다이얼로그를 여닫을 때마다 정리→재실행이 돌면서 포커스를 트리거로 되돌렸다가 패널로 다시
-  // 뺏는다. 포커스는 "설정 패널이 열렸나"에만 반응해야 한다.
+  // 뺏는다. 포커스는 "설정이 열렸나"에만 반응해야 한다.
   useEffect(() => {
     if (!isSettingsOpen) {
       return;
@@ -197,8 +210,15 @@ function AppShell() {
   }, [isSettingsOpen]);
 
   // 358 ②: ESC 닫기. 탈퇴 확인 다이얼로그가 떠 있으면 아예 listener를 걸지 않는다 — 그 다이얼로그는
-  // 설정 패널 안의 「탈퇴하기」로 열리는 더 위층이라, ESC로 뒤쪽 패널을 먼저 닫으면 다이얼로그만
+  // 설정 안의 「탈퇴하기」로 열리는 더 위층이라, ESC로 뒤쪽 설정을 먼저 닫으면 다이얼로그만
   // 덩그러니 남는다.
+  //
+  // 385 ③: 여기에 **포커스 트랩**을 함께 건다(ConfirmDialog와 같은 규칙). 서랍이던 시절에도 필요한
+  // 동작이었지만 빠져 있었다 — aria-modal은 보조기술에만 알릴 뿐 실제 Tab 순서를 막아주지 않아,
+  // Tab을 계속 누르면 딤 뒤의 사이드바·본문으로 포커스가 새어 나갔다.
+  // 트랩도 ESC와 같은 조건(탈퇴 다이얼로그가 없을 때)에서만 돈다. 그 다이얼로그가 뜨면 키보드
+  // 주도권은 그쪽이 가져가고(자기 트랩을 갖고 있다), 여기까지 살아 있으면 두 트랩이 같은 Tab을
+  // 두 번 가로채 포커스가 튄다.
   useEffect(() => {
     if (!isSettingsOpen || isWithdrawConfirmOpen) {
       return;
@@ -206,6 +226,32 @@ function AppShell() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsSettingsOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab' || settingsPanelRef.current === null) {
+        return;
+      }
+
+      const focusables = Array.from(
+        settingsPanelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      );
+      if (focusables.length === 0) {
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      const isInside = settingsPanelRef.current.contains(active);
+
+      if (event.shiftKey && (active === first || !isInside)) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!event.shiftKey && (active === last || !isInside)) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -248,7 +294,7 @@ function AppShell() {
 
           overflow-hidden은 안전판이다. 아래 <main>이 flex-1이라 이 높이를 넘을 수 없지만, 나중에
           in-flow 형제가 하나 늘면 조용히 문서가 자라는 것을 막는다.
-          ⚠️ 고정 위치 자식(사이드바·탭바·설정 패널·배경막)은 이 overflow에 잘리지 않는다 — 이 div에
+          ⚠️ 고정 위치 자식(사이드바·탭바·설정 모달·배경막)은 이 overflow에 잘리지 않는다 — 이 div에
           transform·filter가 없어 containing block이 되지 않기 때문이다. 여기에 transform 계열
           속성을 추가하면 그 순간 전부 잘린다. */}
       <div className="flex h-[100dvh] flex-col overflow-hidden bg-paper-white">
@@ -293,7 +339,7 @@ function AppShell() {
             <button
               type="button"
               onClick={openSettings}
-              aria-label="설정 패널 열기"
+              aria-label="설정 열기"
               aria-haspopup="dialog"
               className="flex min-w-[3.5rem] flex-col items-center justify-center gap-0.5 rounded-full px-3.5 py-1.5 text-[10px] font-medium leading-none text-ink-gray transition-colors hover:text-log-mint"
             >
@@ -328,19 +374,15 @@ function AppShell() {
         {/* 배경은 본문(bg-paper-white)보다 한 단계 흰 snow-white를 쓴다 — 확정 디자인 이미지에서
             사이드바가 본문과 미세한 명도 차이로 구분되기 때문이다. 브랜드 토큰으로 추가했다
             (tailwind.config.js, 사용자 승인). 육안으로는 거의 흰색으로 보이는 것이 정상이다. */}
-        {/* 358: 설정 패널이 열려 있는 동안 사이드바를 **펼친 채로 고정**하고(z도 배경막 위로 올려)
-            패널과 나란히 붙인 하나의 면처럼 보이게 한다. data 속성 하나로 폭·라벨·z를 함께 제어하므로
-            열림 상태가 여러 곳에 흩어지지 않는다.
-            - 고정하지 않으면 md~lg에서 호버가 풀릴 때 사이드바가 72px로 접혀 패널(left-60)과의 사이에
-              168px 구멍이 생긴다. 마우스가 패널로 넘어간 순간 그 일이 벌어지므로 반드시 필요하다.
-            - 폭을 240으로 키워도 <main>의 좌측 padding은 그대로다 — 원래부터 펼침은 레이아웃을 밀지
-              않고 덮는 구조라(위 주석) Feed 가로 예산 재계산이 일어나지 않는다.
-            - 아이콘은 고정폭 슬롯(SIDEBAR_ICON_SLOT_CLASS) 안에 있어 1px도 움직이지 않는다. 방금 누른
-              기어가 제자리에 남고 라벨만 드러난다. */}
-        <aside
-          data-settings-open={isSettingsOpen ? '' : undefined}
-          className="group fixed inset-y-0 left-0 z-40 hidden w-[4.5rem] flex-col overflow-hidden border-r border-line-card bg-snow-white pl-[env(safe-area-inset-left)] transition-[width] duration-200 ease-out hover:w-60 has-[:focus-visible]:w-60 data-[settings-open]:z-50 data-[settings-open]:w-60 md:flex xl:w-60"
-        >
+        {/* 385: 358이 여기 걸어 뒀던 `data-settings-open`(설정이 열린 동안 사이드바를 240px로 펼친 채
+            고정하고 z를 배경막 위로 올리던 장치)을 걷어냈다.
+            그건 서랍이 사이드바 **바로 옆**(left-60)에서 열리기 때문에 필요했던 것이다 — 고정하지
+            않으면 호버가 풀리는 순간 사이드바가 72px로 접혀 서랍과의 사이에 168px 구멍이 생겼다.
+            중앙 모달은 사이드바와 위치 관계가 없어서 그 이유가 통째로 사라졌고, 남겨 두면 딤 위에
+            사이드바만 밝게 떠 있어 "무엇이 눌리는 층인지" 오히려 흐려진다.
+            그래서 사이드바는 이제 설정이 열려 있든 아니든 평소 규칙(호버·포커스로 펼침)만 따르고,
+            배경막(z-40) 아래(z-40, DOM상 앞)에 잠긴다. */}
+        <aside className="group fixed inset-y-0 left-0 z-40 hidden w-[4.5rem] flex-col overflow-hidden border-r border-line-card bg-snow-white pl-[env(safe-area-inset-left)] transition-[width] duration-200 ease-out hover:w-60 has-[:focus-visible]:w-60 md:flex xl:w-60">
           <div className="flex flex-col gap-8 px-[11px] py-4 xl:py-6">
             {/* 접힘↔펼침에서 심볼이 제자리에 머물고 워드마크만 드러나야 한다(디자인 피드백 —
                 "번쩍이지 말고 텍스트만 생기는 것처럼"). 그래서 이미지를 갈아끼우지 않고 **같은 이미지의
@@ -357,7 +399,7 @@ function AppShell() {
               title="홈으로 이동"
               aria-label="핀로그 홈으로 이동"
               onClick={closeSettings}
-              className="ml-[13px] block h-6 w-6 flex-none overflow-hidden bg-no-repeat transition-[width] duration-200 ease-out group-hover:w-[81px] group-has-[:focus-visible]:w-[81px] group-data-[settings-open]:w-[81px] xl:w-[81px]"
+              className="ml-[13px] block h-6 w-6 flex-none overflow-hidden bg-no-repeat transition-[width] duration-200 ease-out group-hover:w-[81px] group-has-[:focus-visible]:w-[81px] xl:w-[81px]"
               style={{
                 backgroundImage: `url(${logoFull})`,
                 backgroundSize: '105px 79px',
@@ -372,7 +414,7 @@ function AppShell() {
                   to={item.to}
                   title={item.label}
                   // 358: 사이드바는 패널이 열린 동안에도 배경막 위에 살아 있다(방식 A의 핵심). 그래서
-                  // 여기서 페이지를 옮길 수 있는데, 옮긴 뒤에도 설정 패널이 새 화면 위에 남으면 안 된다.
+                  // 여기서 페이지를 옮길 수 있는데, 옮긴 뒤에도 설정이 새 화면 위에 남으면 안 된다.
                   onClick={closeSettings}
                   activeOptions={{ exact: true }}
                   className="flex items-center gap-1 rounded-xl py-2.5 text-sm font-medium text-pin-navy/60 transition-colors hover:text-log-mint"
@@ -381,7 +423,7 @@ function AppShell() {
                   <span className={SIDEBAR_ICON_SLOT_CLASS}>
                     <NavIcon size={SIDEBAR_ICON_SIZE}>{item.icon}</NavIcon>
                   </span>
-                  <span className="hidden whitespace-nowrap group-hover:inline group-has-[:focus-visible]:inline group-data-[settings-open]:inline xl:inline">
+                  <span className="hidden whitespace-nowrap group-hover:inline group-has-[:focus-visible]:inline xl:inline">
                     {item.label}
                   </span>
                 </Link>
@@ -393,15 +435,15 @@ function AppShell() {
             type="button"
             onClick={openSettings}
             title="설정"
-            aria-label="설정 패널 열기"
+            aria-label="설정 열기"
             aria-haspopup="dialog"
             aria-expanded={isSettingsOpen}
-            className="mt-auto flex items-center gap-1 px-[11px] py-6 text-sm font-medium text-pin-navy/60 transition-colors hover:text-log-mint group-data-[settings-open]:text-pin-navy"
+            className="mt-auto flex items-center gap-1 px-[11px] py-6 text-sm font-medium text-pin-navy/60 transition-colors hover:text-log-mint"
           >
             <span className={SIDEBAR_ICON_SLOT_CLASS}>
               <NavIcon size={SIDEBAR_ICON_SIZE}>{SETTINGS_ICON}</NavIcon>
             </span>
-            <span className="hidden whitespace-nowrap group-hover:inline group-has-[:focus-visible]:inline group-data-[settings-open]:inline xl:inline">
+            <span className="hidden whitespace-nowrap group-hover:inline group-has-[:focus-visible]:inline xl:inline">
               설정
             </span>
           </button>
@@ -461,41 +503,49 @@ function AppShell() {
               onClick={closeSettings}
               aria-hidden="true"
             />
-            {/* 358: 좌측 사이드바 **바로 옆**에 붙는다(방식 A). 사이드바 폭을 패널이 열린 동안
-                240px으로 고정했으므로 md 이상에서는 항상 left-60 한 값이면 되고, 중간 폭에서 호버
-                여부에 따라 시작점이 달라지는 일이 없다.
-                sm에서는 사이드바가 없고(하단 탭바) 탭바가 가로 중앙에 떠 있어 "반대편으로 튄다"는
-                문제 자체가 성립하지 않는다 — 좌우 중 어느 쪽이든 UX 차이가 없으므로 md 이상과 같은
-                left-0으로 통일해 분기를 만들지 않았다.
-                overflow-y-auto: 세로가 짧은 화면(가로 모드 폰)에서 탈퇴 링크까지 닿아야 한다.
+            {/* 385: 사이드바 옆 서랍(358 방식 A)을 **중앙 모달**로 대체한다. 오버레이가 화면을 덮고
+                그 가운데 카드가 뜬다 — 348의 ConfirmDialog·탈퇴 다이얼로그와 같은 문법이라, 이 앱에서
+                "위에 덮이는 층"은 전부 같은 모양으로 나타난다. sm(탭바)에서도 같은 모달을 쓴다:
+                358에서도 이 자리는 분기가 없었고, 중앙 정렬은 사이드바 유무와 무관하게 성립한다.
 
-                z를 배경막(40)과 사이드바(열렸을 때 50) **사이**에 둔다. 패널은 자기 폭만큼 왼쪽에서
-                밀려 들어오는데, 그 출발 위치가 정확히 사이드바가 덮고 있는 자리다 — 사이드바보다
-                낮아야 그 뒤에서 서랍처럼 빠져나오고, 높으면 사이드바를 덮으며 지나가 어색하다.
-                탈퇴 확인 다이얼로그(50, DOM상 뒤)는 여전히 이 패널 위에 뜬다. */}
-            <aside
-              ref={settingsPanelRef}
-              tabIndex={-1}
-              role="dialog"
-              aria-modal="true"
-              aria-label="설정"
-              className={`fixed inset-y-0 left-0 z-[45] flex w-80 max-w-full flex-col gap-4 overflow-y-auto bg-paper-white p-6 shadow-xl outline-none md:left-60 ${
-                isSettingsOpen ? SETTINGS_PANEL_ENTER_CLASS : SETTINGS_PANEL_EXIT_CLASS
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-pin-navy">설정</h2>
-                <button
-                  type="button"
-                  onClick={closeSettings}
-                  aria-label="설정 패널 닫기"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-pin-navy/[0.08] text-pin-navy"
-                >
-                  ✕
-                </button>
+                레이어 순서는 그대로 지킨다 — 배경막 z-40 < 이 카드 z-[45] < 탈퇴 확인 다이얼로그
+                z-50. 설정 안의 「탈퇴하기」로 열리는 그 다이얼로그가 반드시 이 카드 위에 떠야 한다.
+
+                바깥 div가 위치만 잡고(fixed inset-0 grid place-items-center) 카드가 애니메이션을
+                갖는다. 둘을 한 요소에 합치면 keyframe의 transform(translateY/scale)이 중앙 정렬용
+                레이아웃과 싸운다.
+                ⚠️ 바깥 div는 pointer-events-none이다. 안 그러면 이 투명한 층이 화면 전체를 덮어
+                배경막의 클릭(=닫기)을 가로챈다. 카드만 auto로 되돌린다. */}
+            <div className="pointer-events-none fixed inset-0 z-[45] grid place-items-center p-4">
+              {/* max-h/overflow-y-auto: 세로가 짧은 화면(가로 모드 폰)에서도 탈퇴 링크까지 닿아야
+                  한다. 서랍일 때는 inset-y-0라 자연히 화면 높이였지만, 중앙 카드는 내용 높이만큼만
+                  차지하므로 상한을 직접 준다.
+                  카드 폭(max-w-md)은 ConfirmDialog(max-w-sm)보다 한 단계 넓다 — 그쪽은 문장 한두
+                  줄이지만 여기는 계정 정보·로그아웃·탈퇴가 들어가는 목록이다. */}
+              <div
+                ref={settingsPanelRef}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal="true"
+                aria-label="설정"
+                className={`flex max-h-full w-full max-w-md flex-col gap-4 overflow-y-auto rounded-lg bg-paper-white p-6 shadow-[0_18px_40px_rgba(4,33,66,.22)] outline-none ${
+                  isSettingsOpen ? SETTINGS_MODAL_ENTER_CLASS : SETTINGS_MODAL_EXIT_CLASS
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-pin-navy">설정</h2>
+                  <button
+                    type="button"
+                    onClick={closeSettings}
+                    aria-label="설정 닫기"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-pin-navy/[0.08] text-pin-navy"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <SettingsPanel />
               </div>
-              <SettingsPanel />
-            </aside>
+            </div>
           </>
         )}
 

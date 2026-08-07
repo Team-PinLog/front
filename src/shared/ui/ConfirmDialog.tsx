@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+// 385: 선택자는 shared/lib으로 옮겼다 — 설정 모달(AppLayout)이 같은 트랩을 쓴다.
+import { FOCUSABLE_SELECTOR } from '@/shared/lib/focusableSelector';
 
 /**
  * 348: 확인 다이얼로그 공용 셸.
@@ -20,17 +22,6 @@ import { createPortal } from 'react-dom';
  * - 진행 중(isPending)에는 확인·취소·ESC가 모두 막힌다 — 요청이 한 번만 나가게 하고, 응답을
  *   기다리는 도중 화면이 사라져 결과를 놓치는 것도 막는다.
  */
-
-// 포커스 트랩이 순회할 대상. 다이얼로그 안에는 버튼 둘뿐이지만, 나중에 링크·입력이 들어와도
-// 트랩이 저절로 따라오도록 일반적인 선택자를 쓴다.
-const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(', ');
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
