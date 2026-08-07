@@ -10,6 +10,8 @@ interface HomeMapSectionProps {
   onFocusRecordHandled: () => void;
   /** 371: 최근 기록 카드 스택의 앞장. 해당 마커를 강조하고, 앞장이 바뀌면 그 좌표로 이동한다. */
   highlightRecordId: number | null;
+  /** 377: 상세가 열려 있는 Record. 그 핀만 재꽂힘·물결, 나머지는 흐려진다. */
+  selectedRecordId: number | null;
 }
 
 /**
@@ -25,6 +27,7 @@ export function HomeMapSection({
   focusRecordId,
   onFocusRecordHandled,
   highlightRecordId,
+  selectedRecordId,
 }: HomeMapSectionProps) {
   return (
     <div className="h-full w-full">
@@ -34,6 +37,7 @@ export function HomeMapSection({
         focusRecordId={focusRecordId}
         onFocusRecordHandled={onFocusRecordHandled}
         highlightRecordId={highlightRecordId}
+        selectedRecordId={selectedRecordId}
       />
     </div>
   );

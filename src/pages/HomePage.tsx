@@ -155,6 +155,7 @@ export function HomePage() {
               focusRecordId={savedRecordId}
               onFocusRecordHandled={handleSavedRecordFocused}
               highlightRecordId={activeRecentRecordId}
+              selectedRecordId={openRecordId}
             />
           )}
         </div>
@@ -184,13 +185,23 @@ export function HomePage() {
           style={{ maskImage: HERO_MAP_FADE_MASK, WebkitMaskImage: HERO_MAP_FADE_MASK }}
         />
 
-        {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다. */}
-        <div className={`relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}>
+        {/* 컨텐츠 레이어: 기존 PAGE_CONTAINER_CLASS 폭을 그대로 유지한다.
+            ⚠️ 377: **pointer-events-none이 반드시 있어야 한다.** 이 div는 max-w-6xl 폭에 컨텐츠
+            전체 높이를 가진 블록이라, 눈에는 아무것도 없는 여백까지 포함해 그 사각형 전체가 클릭을
+            받는다. 그 아래에 배경 레이어(지도·지역 뷰)가 깔려 있어서, 이게 없으면 화면 가운데
+            상당 부분에서 지도가 **클릭도 드래그도 되지 않는다.**
+            지역 뷰에서 "색칠된 서울을 눌러도 아무 일이 없다"고 보고된 증상의 원인이 이것이었다 —
+            서울이 그려지는 자리가 정확히 이 사각형 아래였다.
+            대신 실제로 눌려야 하는 자식에만 pointer-events-auto를 되돌려 준다. 자식 각각에 붙이는
+            것이 번거로워 보여도, "레이어는 통과시키고 위젯만 받는다"가 지도 위 UI의 기본 구조다. */}
+        <div
+          className={`pointer-events-none relative z-10 ${PAGE_CONTAINER_CLASS} flex flex-col gap-6 py-8`}
+        >
           {/* 376 — 롤백 지점 ②: 지도 ↔ 지역 뷰 토글. 이 블록과 위 lazy import, 그리고 아래 배경
               레이어의 삼항만 지우면 기능이 사라진다.
               세그먼트 두 칸으로 둔 이유는 "지금 무엇을 보고 있는지"와 "무엇으로 갈 수 있는지"가 한
               번에 보여야 하기 때문이다 — 단일 토글 버튼은 라벨이 현재 상태인지 목적지인지 늘 헷갈린다. */}
-          <div className="flex justify-end">
+          <div className="pointer-events-auto flex justify-end">
             <div
               role="group"
               aria-label="홈 배경 보기 방식"
@@ -217,10 +228,12 @@ export function HomePage() {
             </div>
           </div>
 
-          <SmartSearchPanel
-            onSubmit={(query) => searchMutation.mutate(query)}
-            isPending={searchMutation.isPending}
-          />
+          <div className="pointer-events-auto">
+            <SmartSearchPanel
+              onSubmit={(query) => searchMutation.mutate(query)}
+              isPending={searchMutation.isPending}
+            />
+          </div>
 
           {/* 371: 지도 위 우측의 "요즘 붙여둔 것".
               - 검색 결과가 떠 있는 동안에는 감춘다. 결과 갤러리와 최근 카드가 같은 폭을 두고 세로로
@@ -229,7 +242,7 @@ export function HomePage() {
               - 로딩 중과 미구현(recentPage === null)에는 자리표시자도 두지 않는다. 부가 영역이라
                 스켈레톤이 지도 위에 떠 있으면 그 자체가 노이즈다. */}
           {!hasResults && recentPage && (
-            <div className="flex justify-end">
+            <div className="pointer-events-auto flex justify-end">
               <RecentRecordCardStack
                 items={recentItems}
                 activeIndex={activeRecentIndex}
@@ -241,13 +254,15 @@ export function HomePage() {
           )}
 
           {hasResults && (
-            <SearchResultGallery
-              items={searchMutation.data.items}
-              onSelectRecord={setOpenRecordId}
-            />
+            <div className="pointer-events-auto">
+              <SearchResultGallery
+                items={searchMutation.data.items}
+                onSelectRecord={setOpenRecordId}
+              />
+            </div>
           )}
           {hasNoResults && (
-            <p className="flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
+            <p className="pointer-events-auto flex items-center justify-center gap-2.5 text-center text-[13px] text-ink-gray">
               원하는 장소를 찾아보세요.
               <button
                 type="button"
