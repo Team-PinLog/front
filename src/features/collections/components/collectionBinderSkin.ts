@@ -74,17 +74,20 @@ export const BINDER_TAPE_CLASS = 'pointer-events-none absolute z-30 h-5 w-16 rou
  * 건드리지 않는다 — 색·회전·테이프는 332에서 확정된 3색 해시 그대로다. 대신 그 뒤에 종이를 깔아
  * "노트에서 찢어낸 조각 위에 맥락을 붙였다"는 인상을 만든다.
  *
- * 아래쪽 가장자리를 conic-gradient 마스크로 톱니처럼 잘라 찢긴 단면을 만든다(asset 없이 CSS만).
+ * **왼쪽** 가장자리를 conic-gradient 마스크로 톱니처럼 잘라 찢긴 단면을 만든다(asset 없이 CSS만).
+ * 아래가 아니라 옆구리를 찢는 건 378 레퍼런스(스프링에서 뜯어낸 줄노트 조각) 때문이다 — 노트를
+ * 가로로 자른 것이 아니라 링에서 뜯어낸 장이라는 인상이 나와야 한다.
  * 마스크는 이 받침 레이어에만 걸린다 — 포스트잇은 이 레이어의 자식이 아니라 형제라서 잘리지 않는다.
+ * (되돌리려면 아래 네 줄을 bottom 기준으로 바꾼다: `from -45deg at bottom` / '14px 100%' / repeat-x.)
  */
 export const BINDER_TORN_PAPER_STYLE: CSSProperties = {
   backgroundColor: '#FDFAF3',
   backgroundImage: PAPER_NOISE_IMAGE,
   boxShadow: '0 1px 2px rgba(60,54,48,0.12)',
-  WebkitMaskImage: 'conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg)',
-  maskImage: 'conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg)',
-  WebkitMaskSize: '14px 100%',
-  maskSize: '14px 100%',
-  WebkitMaskRepeat: 'repeat-x',
-  maskRepeat: 'repeat-x',
+  WebkitMaskImage: 'conic-gradient(from 45deg at left, #0000, #000 1deg 89deg, #0000 90deg)',
+  maskImage: 'conic-gradient(from 45deg at left, #0000, #000 1deg 89deg, #0000 90deg)',
+  WebkitMaskSize: '100% 14px',
+  maskSize: '100% 14px',
+  WebkitMaskRepeat: 'repeat-y',
+  maskRepeat: 'repeat-y',
 };

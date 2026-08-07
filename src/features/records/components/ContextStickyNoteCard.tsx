@@ -127,6 +127,7 @@ export function ContextStickyNoteCard({
         onEdit={handleStartEdit}
         onDelete={() => deleteContextMutation.mutate(context.contextId)}
         busy={deleteContextMutation.isPending}
+        createdAt={context.createdAt}
         stackIndex={stackIndex}
         attachment={attachment}
       />
