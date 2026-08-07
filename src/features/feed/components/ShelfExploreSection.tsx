@@ -18,6 +18,7 @@ import {
   ShelfLabel,
   ShelfTier,
 } from '@/shared/ui/Shelf';
+import { PendingLabel } from '@/shared/ui/PendingLabel';
 import { useShelfExploreQuery } from '../hooks/useShelfExploreQuery';
 import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
 import { useUnfollowMutation } from '@/features/follows/hooks/useUnfollowMutation';
@@ -138,13 +139,17 @@ export function ShelfExploreSection({
             type="button"
             onClick={handleFollowToggle}
             disabled={isFollowPending}
+            aria-busy={isFollowPending}
             className={
               follow.followed
                 ? 'h-10 flex-none rounded-xl border border-line-card bg-snow-white px-4 text-sm font-bold text-pin-navy shadow-sm disabled:opacity-40'
                 : 'h-10 flex-none rounded-xl bg-log-mint px-4 text-sm font-bold text-pin-navy shadow-sm disabled:opacity-40'
             }
           >
-            {isFollowPending ? '처리 중…' : follow.followed ? '팔로우 해제' : '팔로우'}
+            {/* 396: 라벨을 "처리 중…"으로 교체하면 버튼 폭이 튄다. 라벨은 그대로 두고 스피너만 겹친다. */}
+            <PendingLabel pending={isFollowPending}>
+              {follow.followed ? '팔로우 해제' : '팔로우'}
+            </PendingLabel>
           </button>
         ) : (
           // 비로그인은 API 호출 없이 로그인 화면으로 보낸다 — 401을 받은 뒤 처리하는 게 아니라 애초에 호출하지 않는다.
