@@ -139,6 +139,58 @@
   }
 }
 
+/* S15P11A705-420 — 로그인 표지가 열리는 진입 시퀀스.
+   압정은 tailwind.config.js의 pin-stand(+ motion-reduce:animate-none)를 그대로 쓴다. 표지 블록은
+   압정이 꽂히는 동안 가만히 있다가(animation-delay) 뒤이어 떠오르고, 소셜 버튼·안내문은 순서대로
+   스태거 등장한다(LoginPage.tsx가 index마다 animationDelay를 인라인으로 준다).
+
+   ⚠️ 이 둘은 Tailwind 유틸이 아니라 평범한 클래스라 `motion-reduce:animate-none`을 같이 붙여도
+   소용없다 — 그 유틸은 `@tailwind utilities` 출력 안(이 파일의 더 앞자리)에 있고, 아래 두 클래스는
+   무조건 적용(미디어 쿼리 없음)이라 소스 순서상 더 뒤에 온다. 같은 명시도에서는 더 뒤에 오는
+   무조건 규칙이 이겨 reduced-motion에서도 애니메이션이 살아남는다(context-sticky-note--flat·
+   record-map-pin과 같은 함정). 그래서 여기서도 그 둘처럼 **전용 media 쿼리를 클래스 바로 뒤에**
+   따로 둔다. */
+@keyframes login-cover-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.login-cover-in {
+  animation: login-cover-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  /* pin-stand(.62s)가 다 꽂힌 뒤 표지가 뜬다. */
+  animation-delay: 0.32s;
+}
+
+@keyframes login-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-item-in {
+  animation: login-item-in 0.5s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-cover-in,
+  .login-item-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @layer base {
   /* 359 — 전역 높이 계약 ①: 문서 루트까지 높이를 이어 준다.
      `height: %`는 부모의 높이가 **확정**일 때만 해석된다. 이 세 줄이 없으면 앱 안에서 h-full을
