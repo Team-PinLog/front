@@ -1,4 +1,5 @@
 import type { SearchResultItem } from '@/features/search/api/searchRecords';
+import { ContextStickyNote } from '@/shared/ui/ContextStickyNote';
 
 interface SearchResultGalleryProps {
   items: SearchResultItem[];
@@ -14,6 +15,15 @@ interface SearchResultGalleryProps {
  * 포스트잇은 항상 1개만 그린다(목업의 "최대 3개" 가정과 달리 API가 여러 개를 주지 않는다).
  * 카드 클릭은 라우트 이동(SearchResultItem.tsx의 149 패턴)이 아니라 RecordDetailOverlay를
  * 여는 로컬 상태 콜백으로 연결한다 — 홈에서는 페이지 이동 없이 모달로 상세를 본다.
+ *
+ * S15P11A705-425: 맥락 표시는 새로 그리지 않고 기존 `ContextStickyNote`(shared/ui)를 그대로
+ * 재사용한다 — Record 상세·Collection 상세와 같은 포스트잇 문법을 검색 결과에도 유지한다.
+ * `POST /search/records`는 "내 기록의 맥락"만 검색하므로(api-contract.md "Place · 지도 · 검색"
+ * 표) matchedContext.body는 항상 본인 Context 원문이라 공개 범위 규칙(타인 Context 원문 비공개)
+ * 위반이 아니다. attachment='flat'을 쓴 이유는 lifted보다 회전·그림자가 절제돼 있어 좁은
+ * 카드(w-72) 안에서 다른 항목(이름·위치·키워드)과 부딪히지 않기 때문 — 디자인 시안이 도착하면
+ * 이 선택은 다시 확인한다.
+ * editable을 넘기지 않는다(기본 false) — 검색 결과 카드는 Context를 고치는 자리가 아니다.
  */
 export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalleryProps) {
   const total = items.length;
@@ -55,11 +65,12 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
             <p className="text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
           )}
 
-          <div className="rounded-lg border border-pin-navy/10 bg-paper-white p-3">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-gray">
-              {item.matchedContext.body}
-            </p>
-          </div>
+          <ContextStickyNote
+            contextId={item.matchedContext.contextId}
+            body={item.matchedContext.body}
+            createdAt={item.matchedContext.createdAt}
+            attachment="flat"
+          />
         </button>
       ))}
     </div>
