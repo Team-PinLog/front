@@ -288,21 +288,21 @@
    이 규칙이 기본형을 덮는다.
    - 퍼짐이 큰 그림자(0 12px 22px) 대신 바로 밑에 깔리는 얇은 접촉 그림자
    - 호버는 들어올림(translateY+scale) 없이 미세한 회전 흔들림(±0.5~1도)만, 지속시간도 짧게 */
+/* 415-24: **그림자를 완전히 걷어냈다**(사용자 명시 — 포스트잇·사진·지도 모두). 얕은 그림자라도
+   종이마다 들려 있는 것처럼 보였고, 여러 장이 겹치면 그 그림자들이 서로 겹쳐 화면이 탁해졌다.
+   종이의 물성은 이제 기울임·손으로 뜯은 테이프·제각각인 모서리 반경·1px 잉크 테두리가 낸다.
+   호버도 미세한 흔들림만 남는다(들어올림·그림자 변화 없음). */
 .context-sticky-note--flat {
-  box-shadow:
-    0 1px 1px rgba(4, 33, 66, 0.1),
-    0 2px 4px -2px rgba(4, 33, 66, 0.14);
-  transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease;
+  box-shadow: none;
+  filter: none;
+  transition: transform 0.12s ease;
 }
 .context-sticky-note--flat:hover,
 .context-sticky-note--flat:focus-within {
   z-index: 20;
   transform: rotate(calc(var(--note-rotate, 0deg) + var(--note-hover-nudge, 0.8deg)));
-  box-shadow:
-    0 1px 1px rgba(4, 33, 66, 0.1),
-    0 3px 7px -3px rgba(4, 33, 66, 0.18);
+  box-shadow: none;
+  filter: none;
 }
 /* 움직임을 줄여 달라고 한 사용자에게는 흔들림을 생략한다(그림자 변화만 남는다). */
 @media (prefers-reduced-motion: reduce) {
@@ -310,7 +310,7 @@
   .context-sticky-note--flat:hover,
   .context-sticky-note--flat:focus-within {
     transform: rotate(var(--note-rotate, 0deg));
-    transition: box-shadow 0.12s ease;
+    transition: none;
   }
 }
 

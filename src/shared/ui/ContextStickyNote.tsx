@@ -1,6 +1,25 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { formatDate } from '@/shared/lib/formatDate';
 
+/**
+ * 415-27: 종이 한 장의 **치수**. Record 상세는 맥락이 몇 장이든 스크롤 없이 한 화면에 담아야 해서
+ * (사용자 제약), 장수가 늘면 글자와 여백을 단계적으로 조인다. 그 단계값을 바깥(배치기)이 정하고
+ * 여기로 넘긴다 — 종이는 "얼마나 조일지"를 모르고 "받은 치수대로 그릴" 뿐이다.
+ *
+ * attachment='flat'에만 적용된다. 넘기지 않으면 Tailwind 클래스에 박힌 기본 치수(px-5/pt-8/pb-6,
+ * text-xl/leading-6, 메타 11px)가 그대로 쓰이고, Collection 상세(lifted)는 늘 그 기본값이다.
+ */
+export interface StickyNoteMetrics {
+  bodyFontPx: number;
+  bodyLineHeightPx: number;
+  metaFontPx: number;
+  padXPx: number;
+  padTopPx: number;
+  padBottomPx: number;
+  /** 본문과 점선, 점선과 `created:` 줄 사이 간격의 기준값. */
+  dividerGapPx: number;
+}
+
 interface ContextStickyNoteProps {
   contextId: number;
   body: string;
@@ -25,6 +44,8 @@ interface ContextStickyNoteProps {
    * 기본값이 'lifted'라 기존 사용처(Collection 상세)의 모양은 그대로다.
    */
   attachment?: 'lifted' | 'flat';
+  /** flat 전용 치수(415 — 맥락이 많을수록 조인다). 없으면 기본 치수. */
+  metrics?: StickyNoteMetrics;
 }
 
 // 378 사용자 레퍼런스(인덱스 카드 4장): 형광 포스트잇 톤을 버리고 **채도 낮은 종이색**으로 간다.
@@ -42,9 +63,33 @@ const NOTE_PAPERS = [
 // 각도는 여전히 contextId 해시로 고르는 순수 함수라 같은 Context는 항상 같은 각도를 유지한다.
 // ⚠️ 아래 배열들은 모두 NOTE_PAPERS와 길이가 같아야 한다(같은 인덱스로 찾는다).
 const NOTE_ROTATIONS = ['-1.6deg', '1.4deg', '-0.8deg', '1.1deg'] as const;
-// 373 피드백: attachment='flat'에서는 같은 각도의 절반 이하만 준다 — 각도가 클수록 종이에서
-// 들린 것처럼 보인다. 선택 방식(contextId 해시)은 같아서 같은 Context는 여전히 같은 각도다.
-const NOTE_FLAT_ROTATIONS = ['-0.7deg', '0.6deg', '-0.35deg', '0.5deg'] as const;
+// 373 피드백으로 절반 이하(±0.35~0.7deg)까지 줄였던 값을 415-18("너무 네모네모하다")로 되돌린다.
+// 다만 373의 근거("각도가 크면 종이에서 들려 보인다")는 살아 있어 lifted만큼 주지는 않는다 —
+// 여기에 콜라주 래퍼의 회전(±0.6~2.8deg)이 더해져 화면에서는 최대 ±3.7deg가 된다.
+// 선택 방식(contextId 해시)은 그대로라 같은 Context는 여전히 같은 각도다.
+const NOTE_FLAT_ROTATIONS = ['-1.1deg', '0.9deg', '-0.5deg', '0.8deg'] as const;
+
+/* -------------------------------------------------------------------------- *
+ * 415-18: "포스트잇이 너무 네모네모하다"
+ *
+ * 직사각형이라는 인상은 각도가 아니라 **실루엣**에서 온다. 아래 셋으로 실루엣을 깬다.
+ * 모두 attachment='flat'(Record 상세) 전용이다 — Collection 상세(lifted)의 모양은 건드리지 않는다.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * 손으로 자른 종이처럼 네 모서리의 반경이 제각각이다. 값이 크면 스티커가 되어 버리므로 2~9px에
+ * 묶는다 — 눈이 "둥글다"로 읽지 못하고 "반듯하지 않다"로만 읽는 폭이다.
+ */
+const NOTE_FLAT_RADII = [
+  '9px 3px 7px 4px / 4px 8px 3px 9px',
+  '3px 8px 4px 9px / 8px 3px 9px 4px',
+  '7px 4px 9px 3px / 3px 9px 4px 8px',
+  '4px 9px 3px 8px / 9px 4px 8px 3px',
+] as const;
+
+// 415-24: 오른쪽 아래 접힌 귀퉁이(dog-ear)를 **뺐다**. 실물에서는 "이 표시가 뭐냐"는 물음부터
+// 나왔다 — 종이의 물성으로 읽히지 않고 정체 모를 배지로 읽혔다는 뜻이다. 실루엣을 깨는 일은
+// 손으로 뜯은 테이프와 제각각인 모서리 반경(NOTE_FLAT_RADII)이 이미 맡고 있다.
 // 호버 시 더해지는 미세 흔들림(±0.5~1도). 노트마다 방향이 갈려야 "흔들"로 읽힌다.
 const NOTE_HOVER_NUDGES = ['0.8deg', '-0.9deg', '0.7deg', '-0.6deg'] as const;
 // 332 시안: 위쪽 가장자리를 덮던 "접힌 종이 띠"를 폭이 좁고 비스듬한 마스킹 테이프로 바꿨다.
@@ -53,6 +98,22 @@ const NOTE_HOVER_NUDGES = ['0.8deg', '-0.9deg', '0.7deg', '-0.6deg'] as const;
 const NOTE_TAPE_COLOR = 'rgba(214,196,150,0.62)';
 // 테이프 기울기도 노트 각도처럼 contextId로 고정한다(리렌더돼도 같은 Context는 같은 모양).
 const NOTE_TAPE_ROTATIONS = ['-8deg', '6deg', '-4deg', '7deg'] as const;
+
+/**
+ * 415-18: **손으로 뜯은 테이프**. flat 전용이고, 이 화면의 시그니처다.
+ *
+ * 이전 테이프는 모서리가 칼같은 반투명 사각형이라 "붙였다"가 아니라 "얹었다"로 읽혔다. 좌우 끝을
+ * 톱니로 뜯고(clip-path) 위쪽에 얇은 광택 줄을 얹으면 같은 색·같은 자리에서 물성만 바뀐다.
+ *
+ * 톱니는 노트마다 달라야 한다 — 네 장이 똑같이 뜯겨 있으면 뜯은 게 아니라 찍어낸 것이다.
+ * 좌표는 %이고, 위/아래 변은 직선으로 두었다(테이프는 폭 방향으로 뜯기지 길이 방향으로 뜯기지 않는다).
+ */
+const NOTE_TAPE_TEARS = [
+  'polygon(3% 0, 97% 0, 100% 22%, 96% 48%, 100% 74%, 97% 100%, 3% 100%, 0 76%, 4% 50%, 0 24%)',
+  'polygon(4% 0, 96% 0, 100% 27%, 95% 52%, 100% 78%, 96% 100%, 4% 100%, 0 73%, 5% 47%, 0 21%)',
+  'polygon(2% 0, 98% 0, 100% 18%, 96% 44%, 100% 71%, 98% 100%, 2% 100%, 0 80%, 4% 55%, 0 28%)',
+  'polygon(5% 0, 95% 0, 100% 25%, 96% 56%, 100% 80%, 95% 100%, 5% 100%, 0 70%, 5% 44%, 0 19%)',
+] as const;
 
 // 겹침을 "카드 높이의 N%"로 계산한다(고정 -22px는 짧은 카드에서 과도해 보이는 문제가 있었다).
 // 목업 .book-context-postit:nth-child(n+4){margin-top:-22px}는 고정 height:166px 기준 약 13.25%였다
@@ -123,54 +184,134 @@ export function ContextStickyNote({
   createdAt,
   stackIndex = 0,
   attachment = 'lifted',
+  metrics,
 }: ContextStickyNoteProps) {
   const noteIndex = pickNoteIndex(contextId);
   const isFlat = attachment === 'flat';
+  // 치수는 flat에만 먹인다. 인라인이라 Tailwind 클래스보다 우선하므로 클래스는 그대로 두고 덮어쓴다.
+  const size = isFlat ? metrics : undefined;
+  // ✎/× 칩도 같은 단계를 따른다(아래 주석 참고).
+  const chipPx = size && size.bodyFontPx <= 16 ? 18 : 24;
+  const chipSizeStyle =
+    chipPx < 24 ? { width: chipPx, height: chipPx, fontSize: 11, lineHeight: 1 } : undefined;
   const { paper, ink } = NOTE_PAPERS[noteIndex];
   const rotate = (isFlat ? NOTE_FLAT_ROTATIONS : NOTE_ROTATIONS)[noteIndex];
   const tapeRotate = NOTE_TAPE_ROTATIONS[noteIndex];
 
   const { ref, overlapPx } = useStackOverlapPx(stackIndex > 0);
 
+  // 접힌 귀퉁이를 빼면서 clip-path가 사라졌고(415-24), 그와 함께 안쪽 종이 레이어도 필요 없어졌다.
+  // 두 변형 모두 바깥이 곧 종이다.
   const style: StickyNoteStyle = {
     '--note-rotate': rotate,
     '--note-hover-nudge': NOTE_HOVER_NUDGES[noteIndex],
     backgroundColor: paper,
     // 378 레퍼런스: 종이보다 한 단계 진한 동일 계열 1px 잉크 테두리(인덱스 카드 문법).
     border: `1px solid ${ink}`,
+    borderRadius: isFlat ? NOTE_FLAT_RADII[noteIndex] : undefined,
     marginTop: stackIndex > 0 ? -overlapPx : 0,
+    paddingTop: size?.padTopPx,
+    paddingBottom: size?.padBottomPx,
+    paddingLeft: size?.padXPx,
+    paddingRight: size?.padXPx,
   };
+
+  const noteBody = (
+    <>
+      {/* font-hand(Nanum Pen Script)는 같은 px에서 Pretendard보다 훨씬 작게 보여 text-xl로 올린다.
+          폰트가 도착하기 전에는 Pretendard로 그려지므로 그때만 평소보다 크게 보인다(FOUT 허용). */}
+      {/* 415-24: flat만 `break-keep`이다. 한글은 기본 줄바꿈이 글자 단위라 "부드/러워졌다"처럼
+          단어 한복판에서 끊긴다 — 어절 단위로 끊으면 같은 폭에서도 훨씬 자연스럽게 읽힌다.
+          긴 URL 같은 끊을 곳 없는 토큰이 상자를 넘지 않도록 break-words를 함께 둔다.
+          Collection 상세(lifted)는 폭 규칙이 달라 이번 변경 범위 밖이다. */}
+      <p
+        className={`whitespace-pre-wrap font-hand text-xl leading-6 text-pin-navy${
+          isFlat ? ' break-keep break-words' : ''
+        }`}
+        style={{ fontSize: size?.bodyFontPx, lineHeight: size && `${size.bodyLineHeightPx}px` }}
+      >
+        {body}
+      </p>
+
+      {createdAt && (
+        <>
+          <div
+            aria-hidden="true"
+            className="mt-3 h-0 border-t border-dashed"
+            style={{ borderColor: ink, marginTop: size?.dividerGapPx }}
+          />
+          {/* 메타는 본문(손글씨)과 대비되도록 작은 고딕이다. 색도 잉크색을 그대로 써서 저채도로 물린다. */}
+          <p
+            className="mt-2 font-sans text-[11px] tracking-wide"
+            style={{
+              color: ink,
+              fontSize: size?.metaFontPx,
+              marginTop: size && Math.round(size.dividerGapPx * 0.7),
+            }}
+          >
+            created: {formatDate(createdAt)}
+          </p>
+        </>
+      )}
+    </>
+  );
 
   return (
     <div
       ref={ref}
-      className={`context-sticky-note relative rounded-sm px-5 pb-6 pt-9${
-        isFlat ? ' context-sticky-note--flat' : ''
+      className={`context-sticky-note relative${
+        isFlat ? ' context-sticky-note--flat px-5 pb-6 pt-8' : ' rounded-sm px-5 pb-6 pt-9'
       }`}
       style={style}
     >
+      {/* 378 레퍼런스: 대시(- - -) 점선으로 머리말 칸과 본문을 가른다. 본문 위아래에 한 줄씩 있는
+          것이 이 카드의 판형이다(415-28 확정 스크린샷 — flat에서 뺐던 윗줄을 되돌렸다). */}
+      <div
+        aria-hidden="true"
+        className="mb-3 h-0 border-t border-dashed"
+        style={{ borderColor: ink, marginBottom: size?.dividerGapPx }}
+      />
+      {noteBody}
+
       {/* 위쪽 가장자리에 걸친 마스킹 테이프. 노트 바깥으로 살짝 튀어나오게 두는 게 "붙였다"는
           인상의 핵심이라 -top-3으로 넘긴다(부모에 overflow-hidden이 없어 잘리지 않는다). */}
       <div
-        className="absolute -top-3 left-5 h-6 w-20 rounded-[2px]"
+        className={`absolute -top-3 left-5 h-6 w-20${isFlat ? ' z-10' : ' rounded-[2px]'}`}
         style={{
           backgroundColor: NOTE_TAPE_COLOR,
           transform: `rotate(${tapeRotate})`,
-          // flat에서는 테이프 아래에 얇은 접촉 그림자를 깔아 "테이프가 종이를 누르고 있다"는
-          // 인상을 만든다(373 피드백). lifted는 기존 그대로 그림자 없음.
-          boxShadow: isFlat ? '0 1px 2px rgba(90,80,30,0.22)' : undefined,
+          // 415-18: flat 테이프는 좌우 끝을 톱니로 뜯는다. 그림자는 root의 drop-shadow가
+          // 이 실루엣을 따라 자동으로 내주므로 여기서 따로 걸지 않는다.
+          clipPath: isFlat ? NOTE_TAPE_TEARS[noteIndex] : undefined,
+          boxShadow: isFlat ? undefined : '0 1px 2px rgba(90,80,30,0.22)',
         }}
         aria-hidden="true"
-      />
+      >
+        {/* 광택 줄: 테이프 위쪽에 얇게 서는 반사. 폭이 아니라 이 한 줄이 테이프를 필름으로 만든다. */}
+        {isFlat && (
+          <span aria-hidden="true" className="absolute inset-x-0 top-[3px] h-[3px] bg-white/35" />
+        )}
+      </div>
 
       {editable && (
-        <div className="absolute right-2 top-2 flex gap-1">
+        // 415-28: 한때 flat에서만 호버·포커스일 때 꺼내 보이게 했다가 되돌렸다(확정 스크린샷).
+        // 카드 우상단에 늘 떠 있는 흰 원형 칩 두 개가 이 카드의 판형이고, 늘 보이는 편이
+        // "여기서 고치고 지운다"를 훨씬 분명하게 알린다.
+        // ⚠️ 이 칩들은 종이 위에 떠 있으므로 **머리말 칸 안에 들어와야** 한다. 밀도가 조여진
+        //    카드에서 칩이 그대로 24px이면 첫 줄 글자를 덮는다(실렌더에서 확인) — 그래서 조인
+        //    단계에서는 칩도 함께 작아지고 모서리에 더 붙는다. 위쪽 여백(padTopPx)은 이 칩 높이를
+        //    담도록 잡혀 있다(contextNoteScatter의 COLLAGE_DENSITIES).
+        <div
+          className="absolute right-2 top-2 z-10 flex gap-0.5"
+          style={chipPx < 24 ? { top: 4, right: 4 } : undefined}
+        >
           <button
             type="button"
             onClick={onEdit}
             disabled={busy}
             aria-label="맥락 수정"
             className="grid h-6 w-6 place-items-center rounded-full bg-white/80 text-xs font-bold text-ink-gray shadow-sm hover:bg-white hover:text-pin-navy disabled:opacity-40"
+            style={chipSizeStyle}
           >
             ✎
           </button>
@@ -180,37 +321,11 @@ export function ContextStickyNote({
             disabled={busy}
             aria-label="맥락 삭제"
             className="grid h-6 w-6 place-items-center rounded-full bg-white/80 text-sm font-bold text-ink-gray shadow-sm hover:bg-white hover:text-red-600 disabled:opacity-40"
+            style={chipSizeStyle}
           >
             ×
           </button>
         </div>
-      )}
-
-      {/* 378 레퍼런스: 대시(- - -) 점선으로 구획을 나눈다. 위 선은 버튼이 놓인 머리말과 본문을,
-          아래 선은 본문과 메타 줄을 가른다(레퍼런스의 제목/본문/메타 3단 구성에서 제목 칸에 넣을
-          실데이터가 없어 머리말은 비워 둔다 — 알약형 카테고리 칩도 같은 이유로 생략했다). */}
-      <div
-        aria-hidden="true"
-        className="mb-3 h-0 border-t border-dashed"
-        style={{ borderColor: ink }}
-      />
-
-      {/* font-hand(Nanum Pen Script)는 같은 px에서 Pretendard보다 훨씬 작게 보여 text-xl로 올린다.
-          폰트가 도착하기 전에는 Pretendard로 그려지므로 그때만 평소보다 크게 보인다(FOUT 허용). */}
-      <p className="whitespace-pre-wrap font-hand text-xl leading-6 text-pin-navy">{body}</p>
-
-      {createdAt && (
-        <>
-          <div
-            aria-hidden="true"
-            className="mt-3 h-0 border-t border-dashed"
-            style={{ borderColor: ink }}
-          />
-          {/* 메타는 본문(손글씨)과 대비되도록 작은 고딕이다. 색도 잉크색을 그대로 써서 저채도로 물린다. */}
-          <p className="mt-2 font-sans text-[11px] tracking-wide" style={{ color: ink }}>
-            created: {formatDate(createdAt)}
-          </p>
-        </>
       )}
     </div>
   );
