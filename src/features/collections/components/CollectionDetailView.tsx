@@ -293,7 +293,10 @@ export function CollectionDetailView({
           fitAllBounds={isTocOpen}
           onSelectPlace={handleSelectFromMap}
         />
-        {ownedByMe && currentRecord && (
+        {/* 418-48: 목차 장에서는 사진을 띄우지 않는다 — 목차의 왼쪽 면은 컬렉션 전체 지도이고,
+            거기 한 record의 사진이 걸쳐 있으면 그 장소가 목차를 대표하는 것처럼 읽힌다.
+            record 장에서는 그대로 유지한다. */}
+        {ownedByMe && !isTocOpen && currentRecord && (
           <CollectionRecordPhoto
             key={currentRecord.recordId}
             placeName={currentRecord.place.name}

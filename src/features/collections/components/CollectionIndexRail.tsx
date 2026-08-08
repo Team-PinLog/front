@@ -34,8 +34,12 @@ const TAB_ACTIVE_CLASS =
 // 418-45: 기본 상태를 브랜드 네이비(pin-navy #042142)로 바꾼다. 글자는 paper-white라 대비가
 // 충분하고(#042142 위 #FAF7F6 ≈ 16:1, WCAG AAA), 호버는 현행 문법 그대로 "한 단계 밝게"로 남긴다
 // (알파 85%). 활성 상태는 지금처럼 색상 자체가 다른 민트라 세 상태가 서로 구분된다.
-const TAB_IDLE_CLASS =
+// 418-47: 네이비는 **'목차' 탭 하나에만** 남는다. 장(record) 탭은 45 이전의 크라프트 라벨로
+// 되돌린다 — 레일 전체가 네이비가 되니 종이 옆구리에 붙은 라벨이 아니라 색 띠로 보였다.
+const TAB_TOC_IDLE_CLASS =
   'border-pin-navy bg-pin-navy text-paper-white hover:bg-pin-navy/85 focus-visible:outline-paper-white';
+const TAB_IDLE_CLASS =
+  'border-[#e4ded3] bg-[#f7f3ec] text-[#8a857e] hover:bg-[#efe9df] hover:text-[#5c574f] focus-visible:outline-[#4f9b78]';
 
 export function CollectionIndexRail({
   records,
@@ -60,7 +64,7 @@ export function CollectionIndexRail({
         disabled={disabled}
         aria-current={isTocActive}
         title="목차"
-        className={`${TAB_BASE_CLASS} ${isTocActive ? TAB_ACTIVE_CLASS : TAB_IDLE_CLASS}`}
+        className={`${TAB_BASE_CLASS} ${isTocActive ? TAB_ACTIVE_CLASS : TAB_TOC_IDLE_CLASS}`}
       >
         <span className="min-w-0 flex-1 truncate text-[11px] font-bold">목차</span>
       </button>

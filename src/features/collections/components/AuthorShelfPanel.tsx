@@ -2,20 +2,26 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { getIsLoggedIn } from '@/features/auth/lib/getIsLoggedIn';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
-import { getSpineColor } from '@/shared/lib/shelfSpine';
+import { SHELF_SCROLL_TOP_PADDING_PX } from '@/shared/lib/shelfSpine';
+import { ShelfBookSpine, ShelfCabinet, ShelfColumn, ShelfTier } from '@/shared/ui/Shelf';
 import { PendingLabel } from '@/shared/ui/PendingLabel';
 import { useShelfExploreQuery } from '@/features/feed/hooks/useShelfExploreQuery';
 import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
 import { useUnfollowMutation } from '@/features/follows/hooks/useUnfollowMutation';
 
 /**
- * 한 화면(=한 쪽)에 세우는 책 수. **2열 고정 × 선반 2행**이다(418-34; 원래 3행이었다).
+ * 한 화면(=한 쪽)에 세우는 책 수. **선반 1열 × 2행**이고, 한 행에 책등 3권이 꽂힌다(418-46).
  * 이보다 많으면 선반이 세로로 자라 펼침면 밖으로 나간다 — 그것이 이 컴포넌트가 만들어진 이유다.
  * 넘치는 권수는 세로로 늘리지 않고 쪽 넘김으로 받는다.
+ *
+ * 행당 3권인 근거(폭 예산, 스케일 1 기준): 패널 300px - p-5×2(40) = 260 → 캐비닛 테두리 20 →
+ * 본문 p-2.5×2(20) → 칸 p-2.5×2(20) = 200px. 책등 폭은 40/46/52 3주기(getSpineWidth)라 3권이
+ * 138px이고, 기울어진 책의 좌우 여백(getSpineNeighborClearancePx, 권당 최악 6.6px)을 다 더해도
+ * 158px이라 예산 안이다. 4권이면 최악 204px으로 넘친다.
  */
-const SHELF_COLUMNS = 2;
 const SHELF_ROWS = 2;
-const ITEMS_PER_PAGE = SHELF_COLUMNS * SHELF_ROWS;
+const SPINES_PER_ROW = 3;
+const ITEMS_PER_PAGE = SHELF_ROWS * SPINES_PER_ROW;
 
 interface AuthorShelfPanelProps {
   collectionId: number;
@@ -32,13 +38,15 @@ interface AuthorShelfPanelProps {
  * 경로(`/collections/$collectionId` + `shelfContext` state, Feed 이벤트 파라미터 **비전달**)는
  * 143/332가 확정한 것을 **그대로 재사용**한다. 다시 만든 것은 배치뿐이다:
  *
- * - `ShelfExploreSection`(features/feed 소유)은 1열 나무 캐비닛 + `overflow-y-auto`라 항목이 늘면
- *   세로로 자라며 스크롤된다. 418이 결함으로 지목한 지점이 정확히 그것이다.
- * - 고쳐야 할 방향(2열 고정·스크롤 없음)이 그 컴포넌트의 다른 사용처(피드 쪽)에도 그대로 강요되면
- *   안 되고, 그 파일은 이 worktree의 담당 범위 밖이다.
+ * - `ShelfExploreSection`(features/feed 소유)은 `overflow-y-auto`라 항목이 늘면 세로로 자라며
+ *   스크롤된다. 418이 결함으로 지목한 지점이 정확히 그것이다.
+ * - 고쳐야 할 방향(선반 2행 고정·스크롤 없음)이 그 컴포넌트의 다른 사용처(피드 쪽)에도 그대로
+ *   강요되면 안 되고, 그 파일은 이 worktree의 담당 범위 밖이다.
  *
- * 그래서 배치만 이 화면 소유로 새로 두되, **책등 색·글자 색은 공용 규약(shelfSpine)을 그대로 쓴다**
- * — 같은 컬렉션이 화면마다 다른 색이면 "그 책"이라는 인식이 깨진다.
+ * 그래서 **쪽을 나누는 규칙만** 이 화면 소유로 두고, 보이는 것은 공용 책장 프리미티브를 그대로
+ * 쓴다(`shared/ui/Shelf`의 ShelfCabinet/ShelfColumn/ShelfTier/ShelfBookSpine + shelfSpine의 색·
+ * 치수 규약) — 418-46: 이전엔 흰 카드 2×2 목록이라 "책장"으로 읽히지 않았다. 같은 컬렉션이
+ * 화면마다 다른 색·다른 모양이면 "그 책"이라는 인식도 깨진다.
  *
  * ## 스크롤 대신 쪽 넘김
  *
@@ -162,52 +170,54 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
         <p className="flex-none text-[13px] text-[#a29d95]">아직 다른 컬렉션이 없어요.</p>
       ) : (
         <>
-          {/* 2열 고정. 줄 수도 고정이라 항목이 몇이든 이 상자의 높이는 변하지 않는다. */}
-          <div className="grid flex-none grid-cols-2 gap-x-3 gap-y-3">
-            {visible.map((collection, indexInPage) => {
-              const spineColor = getSpineColor(collection.collectionId);
-              return (
-                <button
-                  key={collection.collectionId}
-                  type="button"
-                  onClick={() => {
-                    onSelectCollection?.();
-                    void navigate({
-                      to: '/collections/$collectionId',
-                      params: { collectionId: collection.collectionId },
-                      // shelfContext: 책장에서 책장으로 넘어가는 동안 이 패널이 유지되게 하는 마커
-                      // (router.tsx HistoryState). Feed 이벤트 값(feedRequestId/feedPosition)은 절대
-                      // 물려주지 않는다 — 그 값은 Feed 응답에 귀속돼 있어 재사용하면 SAVE 이벤트가
-                      // 엉뚱한 슬롯에 붙는다(143/332의 판단 그대로).
-                      state: { collectionOverlay: true, shelfContext: true },
-                      // replace: 책을 갈아 끼우는 동작이지 새 화면으로 들어가는 게 아니다. push하면
-                      // 닫기(history.back)가 직전에 보던 책으로 되돌아가 안 닫힌 것처럼 보인다(332).
-                      replace: true,
-                    });
-                  }}
-                  title={`${collection.title} · 기록 ${collection.recordCount}개`}
-                  className="group flex min-w-0 items-stretch gap-2 rounded-[3px] border border-[#e4ded3] bg-white/70 py-2 pl-1.5 pr-2 text-left transition-colors hover:border-[#c7bda9] hover:bg-white focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white"
-                  // 종이 위에 놓인 책이므로 한 권씩 조금씩 다르게 눕는다. 순서로 고르는 순수 값이라
-                  // 리렌더돼도 흔들리지 않는다.
-                  style={{ transform: `rotate(${indexInPage % 2 === 0 ? -0.5 : 0.6}deg)` }}
+          {/* 선반 1열 × 2행. 행 수가 고정이라 항목이 몇이든 이 상자의 높이는 변하지 않는다 —
+              책이 3권뿐이어도 두 번째 선반은 빈 채로 깔린다(한 줄짜리는 책장으로 보이지 않는다). */}
+          <div className="flex-none">
+            <ShelfCabinet>
+              <ShelfColumn>
+                {/* 호버 리프트(translateY(-10px), ShelfBookSpine)가 캐비닛의 overflow-hidden에
+                    잘리지 않게 하는 여유. 책장 화면들이 쓰는 값 그대로다. */}
+                <div
+                  style={{ paddingTop: SHELF_SCROLL_TOP_PADDING_PX }}
+                  className="flex flex-col gap-1.5"
                 >
-                  {/* 책등. 색은 공용 규약(shelfSpine)이라 다른 화면의 같은 책과 색이 일치한다. */}
-                  <span
-                    aria-hidden="true"
-                    className="w-[7px] flex-none rounded-[2px]"
-                    style={{ backgroundColor: spineColor }}
-                  />
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-[13px] font-bold text-[#2c2a28]">
-                      {collection.title}
-                    </span>
-                    <span className="text-[11px] text-[#a29d95]">
-                      기록 {collection.recordCount}개
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
+                  {Array.from({ length: SHELF_ROWS }, (_, rowIndex) => (
+                    <ShelfTier key={rowIndex}>
+                      {visible
+                        .slice(rowIndex * SPINES_PER_ROW, (rowIndex + 1) * SPINES_PER_ROW)
+                        .map((collection, indexInRow) => (
+                          <ShelfBookSpine
+                            key={collection.collectionId}
+                            // index는 "선반 위 위치"(폭 순환)에만 쓴다 — 색·높이·기울기는
+                            // collectionId로 정해져 화면이 바뀌어도 같은 책이 같은 모습이다.
+                            index={rowIndex * SPINES_PER_ROW + indexInRow}
+                            collectionId={collection.collectionId}
+                            title={collection.title}
+                            recordCount={collection.recordCount}
+                            onClick={() => {
+                              onSelectCollection?.();
+                              void navigate({
+                                to: '/collections/$collectionId',
+                                params: { collectionId: collection.collectionId },
+                                // shelfContext: 책장에서 책장으로 넘어가는 동안 이 패널이 유지되게
+                                // 하는 마커(router.tsx HistoryState). Feed 이벤트 값(feedRequestId/
+                                // feedPosition)은 절대 물려주지 않는다 — 그 값은 Feed 응답에 귀속돼
+                                // 있어 재사용하면 SAVE 이벤트가 엉뚱한 슬롯에 붙는다(143/332의 판단
+                                // 그대로).
+                                state: { collectionOverlay: true, shelfContext: true },
+                                // replace: 책을 갈아 끼우는 동작이지 새 화면으로 들어가는 게 아니다.
+                                // push하면 닫기(history.back)가 직전에 보던 책으로 되돌아가 안 닫힌
+                                // 것처럼 보인다(332).
+                                replace: true,
+                              });
+                            }}
+                          />
+                        ))}
+                    </ShelfTier>
+                  ))}
+                </div>
+              </ShelfColumn>
+            </ShelfCabinet>
           </div>
 
           {/* 쪽 넘김. 세로로 자라는 대신 여기서 받는다 — 선반이 화면 밖으로 자라지 않게 하는 장치다. */}
