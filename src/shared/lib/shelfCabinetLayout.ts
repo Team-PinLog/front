@@ -62,8 +62,11 @@ export const PAGE_VERTICAL_PADDING_CLASS = 'py-3 xl:py-6';
 // 364: md 이상에서 <main>이 사방에 두는 여백(SHELL_INSET_PX_BY_TIER)만큼 뷰포트에서 더 덜어낸다.
 // 이 값이 <main>의 content box 높이와 정확히 같아야 한다 — 크면 모든 페이지에 상시 스크롤바가
 // 생기고(359가 없앤 바로 그 현상), 작으면 페이지 아래가 비어 보인다.
+// 20번(가로/세로 확장): md·xl에서 빼던 2rem/3rem은 위 SHELL_INSET_PX_BY_TIER와 짝이던 값이라
+// 함께 0이 됐다 — 셸 <main>의 content box 높이가 md 이상에서 정확히 100dvh다. sm만 떠 있는
+// 탭바 자리(<main>의 pb-[calc(5rem+safe-area)])를 그대로 덜어낸다.
 export const PAGE_MIN_HEIGHT_CLASS =
-  'min-h-[calc(100dvh-5rem-env(safe-area-inset-bottom))] md:min-h-[calc(100dvh-2rem)] xl:min-h-[calc(100dvh-3rem)]';
+  'min-h-[calc(100dvh-5rem-env(safe-area-inset-bottom))] md:min-h-[100dvh]';
 
 /**
  * 364: 앱 셸(AppLayout `<main>`)이 컨텐츠 사방에 두는 여백.
@@ -81,10 +84,16 @@ export const PAGE_MIN_HEIGHT_CLASS =
  * sm이 0인 이유 — 모바일은 가로가 이미 좁아 여백을 더 주면 카드가 읽히는 크기 아래로 떨어진다.
  * 피드백도 데스크탑·태블릿 한정이었다.
  */
+// ⚠️ 416/20번(가로 확장): **414부터 셸 `<main>`에는 여백이 없다.** 좌측 네비 예약 폭과 함께
+// 사방 여백(md:p-4 / xl:p-6)을 그때 통째로 걷어냈는데(AppLayout 주석 141~145), 이 표만 옛 값을
+// 들고 남아 있었다 — 그래서 모든 페이지가 실제로는 있지도 않은 여백 몫으로 가로 32/48px,
+// 세로도 같은 만큼을 예산에서 빼고 있었다. 414 보고가 후속으로 넘긴 그 값이 이것이다.
+// 표를 지우지 않고 0으로 두는 이유는 getSidebarWidthPx와 같다 — "셸이 사방에 얼마를 두는가"는
+// 여전히 유효한 물음이고 지금 답이 0일 뿐이다. 셸이 다시 여백을 가지면 이 표 한 곳만 바뀐다.
 export const SHELL_INSET_PX_BY_TIER: Record<ShelfWidthTier, { x: number; y: number }> = {
   sm: { x: 0, y: 0 },
-  mdlg: { x: 16, y: 16 }, // AppLayout <main>의 md:pt-4/pr-4/pb-4 + pl에 더해진 1rem
-  xl: { x: 24, y: 24 }, // 같은 자리의 xl:pt-6/pr-6/pb-6 + pl에 더해진 1.5rem
+  mdlg: { x: 0, y: 0 },
+  xl: { x: 0, y: 0 },
 };
 
 /**
@@ -198,12 +207,25 @@ export const LIBRARY_MAX_ROW_COUNT = 4;
  * floor((h + gap) / (tier + gap))이다.
  */
 export function getLibraryVisibleRowCount(cabinetHeightPx: number, shelfScale: number): number {
-  const rowsAreaPx =
+  return getShelfRowsFit(
     cabinetHeightPx -
-    LIBRARY_CABINET_CHROME_PX -
-    LIBRARY_COLUMN_CHROME_PX -
-    SHELF_SCROLL_TOP_PADDING_PX -
-    SHELF_SCROLL_BOTTOM_PADDING_PX;
+      LIBRARY_CABINET_CHROME_PX -
+      LIBRARY_COLUMN_CHROME_PX -
+      SHELF_SCROLL_TOP_PADDING_PX -
+      SHELF_SCROLL_BOTTOM_PADDING_PX,
+    shelfScale,
+  );
+}
+
+/**
+ * 411(design-ver2 이식): **행이 실제로 놓이는 상자 높이**에서 곧장 행 수를 구한다.
+ *
+ * 위 getLibraryVisibleRowCount는 인자가 "캐비닛 바깥 높이"라 캐비닛 테두리·칸 padding·스크롤
+ * 박스 여백을 스스로 빼야 한다. 종이 지면 위에서는 그 상자를 ResizeObserver로 직접 재므로,
+ * 이미 빠져 있는 항을 다시 빼면 없는 가구의 두께만큼 행이 하나 덜 들어간다 — 그때는 이 함수를
+ * 부른다. 두 함수가 같은 식(하한·상한 포함)을 공유하는 것이 요점이다.
+ */
+export function getShelfRowsFit(rowsAreaPx: number, shelfScale: number): number {
   const tierPx = getLibraryTierHeightPx(shelfScale);
   const fitted = Math.floor((rowsAreaPx + SHELF_TIER_GAP_PX) / (tierPx + SHELF_TIER_GAP_PX));
   return Math.min(LIBRARY_MAX_ROW_COUNT, Math.max(LIBRARY_MIN_ROW_COUNT, fitted));
@@ -217,6 +239,25 @@ export const LIBRARY_COLUMNS_BY_TIER: Record<ShelfWidthTier, number> = {
   sm: 1,
   mdlg: 2,
   xl: 3,
+};
+
+/**
+ * 416/21번: **한 칸에 놓는 선반(행) 수.** 열 수(LIBRARY_COLUMNS_BY_TIER)와 짝이다.
+ *
+ * 그전에는 행 수를 캐비닛 높이에서 역산했다(getLibraryVisibleRowCount, 319). 그 방식은 화면을
+ * 꽉 채우는 데는 좋았지만 "선반이 몇 칸인지"가 창 높이·측정 도착 순서에 따라 2~4로 흔들려,
+ * 같은 화면인데 새로고침마다 다르게 보였다(416 증상 2). 데스크톱 책장의 조형은 **3열 × 2행**으로
+ * 정해져 있으므로, 그 조형을 구간표로 못박고 남는 높이는 행이 나눠 갖게 한다(ShelfTier).
+ *
+ * 전 구간이 2인 것을 분기(`return 2`)가 아니라 표로 두는 이유는 LIBRARY_COLUMNS_BY_TIER와 같다 —
+ * 구간마다 답이 있다는 구조가 남아 있어야, 좁은 폭에서 행을 늘리기로 하면 이 표 한 곳만 바뀐다.
+ * ⚠️ getLibraryVisibleRowCount는 남는다(높이에서 몇 행이 들어가는지를 묻는 순수 함수이고
+ * 테스트가 그 성질을 지킨다). 다만 책장 화면은 더 이상 그 값으로 행 수를 정하지 않는다.
+ */
+export const LIBRARY_ROW_COUNT_BY_TIER: Record<ShelfWidthTier, number> = {
+  sm: 2,
+  mdlg: 2,
+  xl: 2,
 };
 
 /**
@@ -608,6 +649,11 @@ export const FEED_PLANK_SHADOW_BLEED_PX = 8;
  * 328: 여기에 그림자 번짐 폭이 더해진다 — 이 값은 스크롤 박스의 좌우 padding으로 들어가므로
  * 선반 판 자체는 여전히 "책 줄 + gutter"만큼만 넓다(판이 더 넓어지는 게 아니라, 판 바깥에 그림자가
  * 살 자리가 생긴다). 좌우 페이지 버튼은 이 바깥 박스의 left-0/right-0이라 판 끝에 반쯤 걸친다.
+ *
+ * ⚠️ 31번(사용자 지시): **더 이상 선반 컨테이너의 폭이 아니다.** 판은 지면이 내준 상자를 그대로
+ * 채워 책장 캐비닛과 폭을 맞춘다(FeedList의 return 주석). 이 함수가 남아 있는 이유는 값이
+ * 여전히 참이기 때문이다 — "책 줄이 실제로 차지하는 가로"라서, 그 줄이 상자를 넘지 않는지
+ * (= 가로 스크롤이 생기지 않는지) 검증하는 데 쓴다(shelfCabinetLayout.test.ts).
  */
 export function getFeedShelfWidthPx(
   columns: number,
@@ -640,6 +686,35 @@ export function getFeedGridAreaWidthPx(viewportWidthPx: number, reservedLeftPx =
     getPageContainerWidthPx(viewportWidthPx, reservedLeftPx) -
     2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX)
   );
+}
+
+/**
+ * 411(design-ver2 이식): 그리드 가용 폭(px) → tier.
+ *
+ * 탐색은 책장이 뷰포트가 아니라 **지면 안의 한 상자**에 놓인다(FeedList의 area). 그 상자는
+ * 조판·곁열에 자리를 내주느라 뷰포트보다 한참 좁으므로, 배치를 뷰포트 폭으로 정하면 넓은
+ * 화면에서 좁은 상자에 xl 배치(5열)를 밀어 넣게 된다 — "몇 칸을 놓을지"가 묻는 것은 언제나
+ * "그 자리가 얼마나 넓은가"다.
+ *
+ * ⚠️ 경계값을 768/1280(뷰포트 기준, useShelfBreakpoint)으로 그대로 쓰면 안 된다. 그 숫자는
+ * **뷰포트** 폭이고, 같은 화면에서 그리드가 실제로 쓰는 폭은 페이지 여백·padding·선반 gutter를
+ * 뺀 값이라 훨씬 작다 — 그대로 비교하면 모든 구간이 한 칸씩 아래로 밀린다. 그래서 그 두 경계
+ * 뷰포트에서 **기존 계산이 실제로 만들던 그리드 폭**을 경계값으로 삼는다. getFeedGridAreaWidthPx를
+ * 다시 부르므로, 페이지 여백이나 gutter가 바뀌면 이 경계도 함께 움직인다.
+ */
+const TIER_MIN_GRID_WIDTH_PX = {
+  mdlg: getFeedGridAreaWidthPx(768),
+  xl: getFeedGridAreaWidthPx(1280),
+};
+
+export function getShelfTierForGridWidth(gridAreaWidthPx: number): ShelfWidthTier {
+  if (gridAreaWidthPx >= TIER_MIN_GRID_WIDTH_PX.xl) {
+    return 'xl';
+  }
+  if (gridAreaWidthPx >= TIER_MIN_GRID_WIDTH_PX.mdlg) {
+    return 'mdlg';
+  }
+  return 'sm';
 }
 
 // --- Feed: 책장 세로 예산(동적, 전 구간) -------------------------------------------------------------

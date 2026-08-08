@@ -23,7 +23,9 @@ import {
   getLibraryPagingFirstColumn,
   getLibraryTierHeightPx,
   getLibraryVisibleRowCount,
+  getShelfRowsFit,
   getShelfScale,
+  getShelfTierForGridWidth,
   libraryPinsMyShelf,
   LIBRARY_CABINET_CHROME_PX,
   LIBRARY_CABINET_SIDE_CHROME_PX,
@@ -386,10 +388,11 @@ describe('768 경계에서의 가로 예산', () => {
     // media query라, 컨테이너가 664px로 좁아져도 window가 768이면 실제로 24px가 적용된다.
     // 364: 768 - 72(레일) - 2*16(셸 여백) = 664, 664 - 2*24(padding) = 616.
     // 414: 레일이 0이 되어 768 - 0 - 2*16 = 736, 736 - 2*24 = 688.
-    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(688);
+    // 20번: 셸 여백도 0이 되어(SHELL_INSET_PX_BY_TIER 주석) 768 - 0 - 0 = 768, 768 - 2*24 = 720.
+    expect(getPageContainerWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(720);
     // 328: 그 컨테이너에서 좌우 gutter(28)와 선반 판 그림자 자리(8)를 더 뺀 값이 카드 예산이다.
-    // 414: 688 - 2*28 - 2*8 = 616.
-    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(616);
+    // 20번: 720 - 2*28 - 2*8 = 648.
+    expect(getFeedGridAreaWidthPx(768, SIDEBAR_RAIL_WIDTH_PX)).toBe(648);
   });
 
   it('768에서도 3열 카드가 가독성 하한을 넘는다', () => {
@@ -595,5 +598,148 @@ describe('libraryPinsMyShelf', () => {
     expect(libraryPinsMyShelf(LIBRARY_COLUMNS_BY_TIER.sm)).toBe(false);
     expect(libraryPinsMyShelf(LIBRARY_COLUMNS_BY_TIER.mdlg)).toBe(false);
     expect(libraryPinsMyShelf(LIBRARY_COLUMNS_BY_TIER.xl)).toBe(true);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// 411: 종이 지면 곁열이 선반·캐비닛에서 가져가는 폭
+//
+// 탐색·책장이 종이 지면 위로 올라가면서, 책이 놓이는 상자는 더 이상 "뷰포트에서 페이지 여백을 뺀
+// 값"이 아니다 — 좌측 포스트잇과 우측 이동 표지가 먼저 자리를 가져간다. 그 몫은 CSS
+// (features/paper/paperSpread.css)의 clamp()/cqw에서 나오므로 JS가 알 수 없고, 실제 값은
+// ResizeObserver가 잰다. 여기서는 **그 CSS 식을 그대로 옮겨** 곁열이 선 뒤에도 배치 계산이 성립하는지
+// 확인한다(이 파일의 다른 Tailwind ↔ JS 쌍둥이와 같은 규칙 — CSS가 바뀌면 이 헬퍼도 함께 바꾼다).
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * paperSpread.css `.pe-stage`의 --pe-pad / --pe-gap / --pe-note-w / --pe-cover-w / --pl-peek.
+ * 무대 폭 = 뷰포트 폭이다.
+ *
+ * 20번 2차: 물건 폭(note/cover)과 **선반이 내주는 폭**이 갈라졌다 — 선반은 접힘 폭(peek)만
+ * 내주고, 물건은 호버에서 그 위로 겹쳐 나온다. 그래서 둘을 따로 돌려준다.
+ */
+function spreadRailsPx(stageWidthPx: number) {
+  const padPx = Math.min(32, Math.max(16, stageWidthPx * 0.022));
+  const gapPx = Math.min(24, Math.max(12, stageWidthPx * 0.014));
+  const noteWidthPx = Math.min(348, Math.max(240, stageWidthPx * 0.26));
+  const coverWidthPx = Math.min(240, stageWidthPx * 0.225);
+  // paperStage.css의 --pl-peek. 홈·탐색·책장이 같은 값을 쓴다.
+  const peekPx = 56;
+  return { padPx, gapPx, noteWidthPx, coverWidthPx, peekPx };
+}
+
+/**
+ * `.pe-shelf`의 left/right가 만드는 선반 상자 폭. 1080px 이하에서는 곁열이 통째로 빠진다.
+ *
+ * 20번 2차: 좌·우 모두 --pe-reserve(= peek + pad + gap)만 내준다. 물건 폭이 아니다.
+ */
+function spreadShelfWidthPx(stageWidthPx: number): number {
+  const { padPx, gapPx, peekPx } = spreadRailsPx(stageWidthPx);
+  if (stageWidthPx <= 1080) {
+    return stageWidthPx - padPx * 2;
+  }
+  return stageWidthPx - 2 * (peekPx + padPx + gapPx);
+}
+
+describe('종이 지면 곁열과 선반 폭의 정합', () => {
+  // 곁열이 살아 있는 구간(>1080px)의 대표 폭들.
+  const WIDE_STAGE_WIDTHS = [1081, 1280, 1440, 1600, 1920, 2560];
+
+  it('곁열이 선 뒤에도 선반 상자가 남는다(음수·0이 되지 않는다)', () => {
+    for (const stageWidthPx of [...WIDE_STAGE_WIDTHS, 1080, 768, 375]) {
+      expect(spreadShelfWidthPx(stageWidthPx)).toBeGreaterThan(240);
+    }
+  });
+
+  // 20번 2차(사용자 결정): **접힘 기준으로 콘텐츠가 지면을 가득 채운다.** 곁열이 쉬는 동안
+  // 가져가는 것은 손잡이(peek) 한 뼘뿐이라, 선반이 지면의 대부분을 쓴다. 이전 판(물건 폭을
+  // 통째로 예약)에서는 1920px에서 선반이 지면의 64%였다.
+  it('쉬는 동안 곁열이 가져가는 폭은 손잡이(peek)뿐이다', () => {
+    for (const stageWidthPx of WIDE_STAGE_WIDTHS) {
+      expect(spreadShelfWidthPx(stageWidthPx)).toBeGreaterThan(stageWidthPx * 0.8);
+    }
+  });
+
+  // 펼침은 겹침이라 선반 폭을 줄이지 않지만, 덮는 양이 선반을 통째로 가리면 곤란하다 — 두 곁열이
+  // 동시에 펼쳐지는 일은 없으므로(호버는 하나씩) 넓은 쪽 한 장이 선반의 절반을 넘지 않으면 된다.
+  it('펼쳐진 곁열이 선반의 절반 넘게 덮지 않는다', () => {
+    for (const stageWidthPx of WIDE_STAGE_WIDTHS) {
+      const { noteWidthPx, coverWidthPx, peekPx } = spreadRailsPx(stageWidthPx);
+      const shelfWidthPx = spreadShelfWidthPx(stageWidthPx);
+      // 겹치는 양 = 물건 폭에서 이미 내준 손잡이를 뺀 나머지.
+      const widestOverlapPx = Math.max(noteWidthPx, coverWidthPx) - peekPx;
+      expect(widestOverlapPx).toBeLessThan(shelfWidthPx / 2);
+    }
+  });
+
+  it('Feed: 곁열로 줄어든 상자에서도 카드가 가독 하한을 넘는다', () => {
+    for (const stageWidthPx of WIDE_STAGE_WIDTHS) {
+      const shelfWidthPx = spreadShelfWidthPx(stageWidthPx);
+      // FeedList의 toGridWidthPx와 같은 두 항을 뺀다.
+      const gridWidthPx = shelfWidthPx - 2 * (FEED_SIDE_GUTTER_PX + FEED_PLANK_SHADOW_BLEED_PX);
+      const tier = getShelfTierForGridWidth(gridWidthPx);
+      // 지면 높이 900px 기준(--pe-head와 padding-bottom(--pe-pad)을 뺀 나머지가 선반 몫이다).
+      const shelfHeightPx =
+        900 - Math.min(196, Math.max(112, 900 * 0.21)) - spreadRailsPx(stageWidthPx).padPx;
+      const columnsKey = getFeedColumnsKey(tier, shelfWidthPx >= shelfHeightPx);
+      const columns = FEED_COLUMNS_BY_KEY[columnsKey];
+      const rows = decideFeedRows({
+        columns,
+        maxRows: FEED_MAX_ROWS_BY_KEY[columnsKey],
+        budgetPx: getFeedRowsContentBudgetPx(shelfHeightPx),
+        availableGridWidthPx: gridWidthPx,
+      });
+      const scale = solveFeedScale({
+        columns,
+        rows,
+        budgetPx: getFeedRowsContentBudgetPx(shelfHeightPx),
+        availableGridWidthPx: gridWidthPx,
+      });
+      const dims = getFeedCardDimensions(scale);
+
+      expect(dims.cardWidth).toBeGreaterThanOrEqual(FEED_ROWS_MIN_CARD_WIDTH_PX);
+      // 선반 덩어리가 실측 상자를 넘지 않는다 = 가로 스크롤바가 생기지 않는다.
+      expect(getFeedShelfWidthPx(columns, dims.cardWidth, dims.gridGap)).toBeLessThanOrEqual(
+        shelfWidthPx,
+      );
+    }
+  });
+});
+
+describe('getShelfTierForGridWidth', () => {
+  it('기존 뷰포트 경계가 만들던 그리드 폭과 같은 지점에서 구간이 바뀐다', () => {
+    // 경계 뷰포트에서 기존 계산이 만들던 폭을 그대로 넣으면 그 구간이 나와야 한다 — 두 계산이
+    // 같은 화면에서 다른 배치를 고르면 안 된다.
+    expect(getShelfTierForGridWidth(getFeedGridAreaWidthPx(1280))).toBe('xl');
+    expect(getShelfTierForGridWidth(getFeedGridAreaWidthPx(1280) - 1)).toBe('mdlg');
+    expect(getShelfTierForGridWidth(getFeedGridAreaWidthPx(768))).toBe('mdlg');
+    expect(getShelfTierForGridWidth(getFeedGridAreaWidthPx(768) - 1)).toBe('sm');
+  });
+
+  it('폭이 넓어질수록 구간이 내려가지 않는다(단조성)', () => {
+    const order: Record<ShelfWidthTier, number> = { sm: 0, mdlg: 1, xl: 2 };
+    let previous = order[getShelfTierForGridWidth(0)];
+    for (let widthPx = 0; widthPx <= 2000; widthPx += 25) {
+      const current = order[getShelfTierForGridWidth(widthPx)];
+      expect(current).toBeGreaterThanOrEqual(previous);
+      previous = current;
+    }
+  });
+});
+
+describe('getShelfRowsFit', () => {
+  it('하한·상한이 getLibraryVisibleRowCount와 같다', () => {
+    expect(getShelfRowsFit(0, 1)).toBe(LIBRARY_MIN_ROW_COUNT);
+    expect(getShelfRowsFit(10000, 1)).toBe(LIBRARY_MAX_ROW_COUNT);
+  });
+
+  it('가구 두께를 빼고 나면 캐비닛 기준 계산과 같은 식이 된다', () => {
+    // 같은 높이를 넣으면 이쪽이 항상 같거나 더 많이 담는다 — getLibraryVisibleRowCount는 캐비닛
+    // 테두리·칸 padding·스크롤 여백을 먼저 빼고 이 함수를 부르기 때문이다.
+    for (let heightPx = 360; heightPx <= 1200; heightPx += 40) {
+      expect(getShelfRowsFit(heightPx, 1)).toBeGreaterThanOrEqual(
+        getLibraryVisibleRowCount(heightPx, 1),
+      );
+    }
   });
 });

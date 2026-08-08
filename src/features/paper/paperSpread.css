@@ -1,0 +1,474 @@
+/* ══════════════════════════════════════════════════════════════════════
+   펼쳐 놓은 지면 — 탐색(Feed)과 책장(Library)이 함께 쓰는 무대.
+
+   홈(paperAperture.css)이 **덮인 종이를 오려 창을 내는** 화면이라면, 이 두 화면은 그
+   종이를 **펼쳐 놓고 그 위에 선반을 얹는다.** 같은 종이 세계의 다른 상태다.
+
+   ⚠️ 이 파일은 홈의 CSS를 **덮어쓰지 않고 얹기만 한다.** 무대 루트에 `.pl-stage`가 함께
+   붙으므로(PaperStage) 브랜드 토큰·종이 질감은 paperStage.css에서, 포스트잇(.pl-note*)·
+   표지(.pl-pile*)·대형 조판(.pl-display)은 paperAperture.css에서 그대로 상속받는다.
+   값을 복제하지 않는 것이 요점이다 — 414에서 확정한 메모지·표지 값을 한 곳에서 고치면
+   세 화면이 함께 따라온다.
+
+   그래서 `--open`은 0으로 남는다(홈의 기본값). 이 화면들에는 여닫을 창이 없으므로
+   .pl-* 쪽의 개폐 transform은 전부 항등식이 되어 아무 일도 하지 않는다.
+
+   ⚠️ 홈의 컨테이너 쿼리(@container pl-stage)가 이 무대에도 걸린다 — 컨테이너 이름을
+   물려받기 때문이다. 그쪽이 건드리는 것은 `.pl-left-rail`/`.pl-right-rail`/`.pl-dock`/
+   `--pl-sh-*`인데 이 화면들에는 그중 아무것도 없다(곁열은 아래 .pe-rail-*이 따로 있다).
+   유일하게 겹치는 것이 ≤680px의 `.pl-display` 축소인데, 아래 `.pe-stage .pe-title`이
+   선택자 두 개라 특이성으로 이긴다 — import 순서에 기대지 않는다.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.pe-stage {
+  /* 지면 사방 여백. 조판·곁열·선반이 모두 이 값에서 출발한다. */
+  /* 20번(가로 확장): 44 → 32px. 지면 가장자리와 조판·선반 사이의 숨 쉬는 자리는 남기되,
+     그 이상은 선반이 가져간다. */
+  --pe-pad: clamp(16px, 2.2cqw, 32px);
+  /* 곁열과 선반 사이의 틈. 지면 여백(--pe-pad)과 뜻이 다른 값이라 따로 둔다 — 여기는
+     "두 물건 사이"이고 저기는 "종이 끝과 물건 사이"다. 둘을 같은 값으로 묶어 두면 한쪽을
+     넓히려다 다른 쪽까지 넓어진다. */
+  --pe-gap: clamp(12px, 1.4cqw, 24px);
+  /* 상단 조판 덩어리가 차지하는 높이. 아래 곁열·선반의 top이 전부 이 값이라, 제목 조판을
+     키우거나 줄일 때 여기 하나만 만지면 선반 예산이 따라온다.
+     ⚠️ 선반은 남는 높이를 실측(ResizeObserver)해서 카드 크기를 역산하므로, 이 값을 늘리면
+     책이 그만큼 작아진다 — 계산이 어긋나는 게 아니라 예산이 옮겨간다. */
+  --pe-head: clamp(112px, 21cqh, 196px);
+
+  /* ── 곁열 폭 = 그 안에 놓이는 물건의 폭 ────────────────────────────
+     원본(design-ver2)은 좌·우를 한 값(--pe-rail)으로 묶고 메모지·표지를 그 폭에 맞춰
+     줄였다(표지 180px). 411에서는 그렇게 하지 않는다 — 414가 메모지 348px·표지 240px로
+     못박은 값을 화면마다 다시 줄이면 세 화면이 "같은 물건"으로 읽히지 않기 때문이다.
+     대신 **물건 폭을 먼저 정하고 곁열이 거기에 맞춘다.**
+
+     · 표지는 홈과 **완전히 같은 식**이다(paperAperture.css .pl-pile의 min(240px, 22.5cqw)).
+       곁열이 살아 있는 폭(>1080px)에서는 사실상 항상 240px이다.
+     · 메모지는 홈이 `min(348px, 132%)`로 잡는데 그 %는 홈 곁열 폭 기준이라 여기서는 뜻이
+       없다. 상한 348px은 그대로 두고, 하한만 이 화면의 사정으로 정한다.
+
+     20번 2차(사용자 결정 — 아래 --pe-reserve 주석): 하한이 한때 19cqw였다. 그 값의 근거는
+     "곁열이 선반에서 가져가는 폭이 곧 책이 작아지는 양"이었는데, **이제 곁열은 선반에서
+     peek(56px)밖에 가져가지 않는다.** 메모지를 키워도 책은 1px도 작아지지 않으므로 그 하한을
+     붙들 이유가 사라졌다 — 홈과 같은 348px에 붙인다. 세 화면의 메모지가 같은 크기여야 한다는
+     414의 결론이 이제 공짜로 지켜진다.
+     하한 240px과 26cqw는 곁열이 살아 있는 가장 좁은 폭(1081px)을 위한 것이다. 거기서 348px은
+     지면의 32%라 펼쳤을 때 선반을 너무 많이 덮는다 — 26cqw면 281px로 내려앉고, 1338px 위로는
+     상한 348px이 잡아 홈과 완전히 같아진다.
+     ⚠️ 표지 폭(--pe-cover-w)은 여전히 곁열 상자의 실제 폭이자 표지 펼침 계산의 기준이다
+     (.pe-rail-r의 size 컨테이너) — 여기를 만지면 아래 .pl-pile 높이 역산이 함께 움직인다. */
+  --pe-note-w: min(348px, max(240px, 26cqw));
+  --pe-cover-w: min(240px, 22.5cqw);
+
+  /* ── 곁열이 선반에서 예약하는 폭 ──────────────────────────────────
+     20번 2차(사용자 결정): **접힘(peek) 기준으로 콘텐츠가 지면을 가득 채우고, 호버로 곁열이
+     펼쳐지면 그때는 콘텐츠 위에 겹쳐 보인다.** 앞서 "곁열과 선반이 겹치면 안 된다"고 두었던
+     제약은 이 결정으로 폐기됐다 — 홈이 원래 쓰던 문법과 같아진다.
+
+     그래서 선반이 내주는 몫은 물건의 폭(348/240px)이 아니라 **쉬는 동안 실제로 보이는
+     만큼**, 즉 --pl-peek(56px)이다. 1920px에서 선반이 1220 → 1696px으로 넓어진다.
+     겹침은 z-index가 정리한다 — 곁열이 2, 선반이 1이라 불려 나온 메모지·표지가 선반 카드
+     **위에** 얹힌다(각각의 규칙 참고).
+
+     ⚠️ 이 값은 **정지 상태의 폭이라 절대 흔들리지 않는다.** 호버로 곁열이 펼쳐져도 바깥
+     상자는 제자리고 안쪽 래퍼만 움직이므로 선반 상자는 1px도 변하지 않는다 — 움직이면
+     ResizeObserver가 새 상자를 물어 pageSize가 다시 정해지고 목록을 새로 요청한다.
+     ⚠️ 좌·우가 같은 값이라 선반이 지면 가운데에 놓인다. 물건 폭이 좌우로 달랐던 이전에는
+     선반 중심이 오른쪽으로 54px 밀려 있었다(348 vs 240) — 그 치우침도 함께 사라진다. */
+  --pe-reserve: calc(var(--pl-peek) + var(--pe-pad) + var(--pe-gap));
+}
+
+/* 지면 자체(질감·모눈·접힌 자국·가장자리 그늘)는 features/paper/paperStage.css의 .paper-sheet가
+   갖는다 — 홈·탐색·책장이 같은 종이 위에 있어야 해서 한 곳에만 둔다. 여기서는 그 위에 놓이는
+   것들만 다룬다. */
+
+/* ── 상단 조판 ─────────────────────────────────────────────────────── */
+.pe-head {
+  position: absolute;
+  z-index: 3;
+  left: var(--pe-pad);
+  right: var(--pe-pad);
+  top: 0;
+  height: var(--pe-head);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+}
+/* 자간을 크게 벌린 작은 라벨. 홈의 표지 라벨(.pl-cover-label)과 같은 성격이고,
+   대형 제목과의 낙차가 이 화면의 인상을 만든다(홈 조판 머리말과 같은 근거). */
+.pe-eyebrow {
+  margin: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.34em;
+  color: var(--pl-ink);
+}
+/* .pl-display를 그대로 쓰되 크기만 낮춘다 — 홈은 제목이 화면의 주인공이지만 여기서는 선반이
+   주인공이라, 제목이 세로 예산을 그만큼만 가져가야 한다. 기준을 vh가 아니라 cq*로 두는 이유도
+   홈과 같다. 선택자를 둘로 쓰는 이유는 이 파일 머리말 참고(≤680px의 .pl-display를 이긴다). */
+.pe-stage .pe-title {
+  margin: 0;
+  font-size: min(6.6cqh, 3.6cqw, 44px);
+  line-height: 1.16;
+}
+/* 제목 아래 괘선 + 한 줄. 굵기가 하나뿐인 서체라 위계를 괘선으로 만든다. */
+.pe-headrule {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--pl-ink);
+}
+.pe-headrule::before {
+  content: '';
+  width: clamp(28px, 5cqw, 74px);
+  height: 1px;
+  flex: none;
+  background: var(--pl-mint);
+}
+.pe-headrule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(4, 33, 66, 0.12);
+}
+/* 괘선 줄에 얹히는 링크(책장의 「나의 활동 기록」, 407). 이 판면은 프레임·괘선·라벨이 전부
+   선으로만 이루어져 있어서 버튼이나 알약 배지를 두면 혼자 덩어리로 튄다 — 414가 표지의 띠지를
+   버리고 밑줄 손짓만 남긴 것과 같은 판단이라, 여기서도 **면을 만들지 않고 밑줄만 긋는다**.
+   평소에도 밑줄이 그어져 있다(호버에서야 나타나면 링크인 줄 모른다). 호버·포커스에서는 선이
+   민트로 바뀌며 또렷해질 뿐 위치는 움직이지 않는다 — 괘선 줄의 높이가 곧 조판 머리 높이라,
+   여기서 1px이라도 자라면 선반 행 계산이 흔들린다(LibraryHeadType 주석).
+   text-underline-offset을 주는 이유: 기본 위치면 밑줄이 ::after 괘선과 같은 높이에 붙어 두 선이
+   한 줄로 이어져 보인다. 3px 내리면 글자에 딸린 밑줄로 읽힌다. */
+.pe-headlink {
+  flex: none;
+  white-space: nowrap;
+  color: var(--pl-ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(4, 33, 66, 0.35);
+  transition: text-decoration-color 0.2s ease;
+}
+.pe-headlink:hover,
+.pe-headlink:focus-visible {
+  text-decoration-color: var(--pl-mint);
+}
+
+/* ── 좌·우 곁열 ────────────────────────────────────────────────────── */
+.pe-rail-l,
+.pe-rail-r {
+  position: absolute;
+  z-index: 2;
+  top: var(--pe-head);
+  bottom: 0;
+  padding-bottom: var(--pe-pad);
+}
+.pe-rail-l {
+  left: var(--pe-pad);
+  width: var(--pe-note-w);
+}
+.pe-rail-r {
+  right: var(--pe-pad);
+  width: var(--pe-cover-w);
+  /* 아래 표지 펼침이 남는 세로를 재는 기준(cqh). 상자 크기가 top/bottom으로 확정돼 있어
+     size containment를 걸어도 레이아웃이 무너지지 않는다(.pl-stage와 같은 사정). */
+  container-type: size;
+  container-name: pe-rail;
+}
+
+/* ── 곁열의 물러남과 복귀 ─────────────────────────────────────────────
+   홈(.pl-left-rail/.pl-right-rail)과 **같은 문법**이다. 다른 점은 홈에서 이 자리를 구동하던
+   `--open`(검색어 길이)이 여기엔 없다는 것뿐이라, 물러난 상태가 곧 쉬는 상태다.
+
+   ⚠️ 물러나는 것은 **바깥 상자**, 돌아오는 것은 **안쪽 래퍼**다. 한 요소로 합치면 안 된다 —
+   홈이 두 겹으로 나눈 이유가 개폐(1.8s)와 복귀(0.42s)의 시간이 다르기 때문이고, 여기서는
+   그 두 겹이 **겹침을 만드는 장치** 그 자체다. 바깥 상자는 지면 가장자리에 붙박여 폭이
+   --pe-note-w/--pe-cover-w 그대로고, 그중 --pl-peek만 화면 안에 있다. 안쪽 래퍼가 돌아올 때
+   그 상자를 넘어 오른쪽(우측 곁열은 왼쪽)으로 흘러나오고, 흘러나온 부분이 그대로 선반 위에
+   얹힌다 — 곁열 z-index가 2, 선반이 1이라 위에 그려진다(--pe-reserve 주석).
+   바깥 상자가 제자리를 지키므로 **선반 상자는 호버 전후로 1px도 움직이지 않는다** — 움직이면
+   ResizeObserver가 새 상자를 물어 pageSize가 다시 정해지고 목록을 새로 요청한다.
+   ⚠️ 흘러나온 부분이 잘리지 않으려면 이 두 상자에 overflow를 걸면 안 된다. 무대(.paper-sheet)
+   의 `overflow: clip`만 걸려 있는데, 그건 지면 **바깥**을 자르는 것이라 가로 스크롤을 막아 줄
+   뿐 지면 안쪽의 겹침은 건드리지 않는다.
+   ⚠️ 포인터가 peek를 벗어나 펼쳐진 메모지 위로 올라가도 :hover는 풀리지 않는다 — 그 메모지가
+   곁열의 자손이라, 바깥 상자 밖에 그려져 있어도 호버는 조상까지 올라간다(홈과 같은 동작).
+
+   ⚠️ 남기는 양(--pl-peek, 56px)도 홈과 같은 값이다. 완전히 내보내면 포스트잇·표지에 다시 닿을
+   방법이 사라진다 — 이만큼이 손잡이다.
+   ⚠️ prefers-reduced-motion에서는 paperAperture.css의 전역 규칙이 이 transition까지 0으로
+   만든다(.pl-stage * 대상). 물러남 자체는 남는다 — 홈도 같은 동작이고, 이건 모션이 아니라
+   배치이기 때문이다. 손잡이(56px)와 키보드 포커스 복귀가 있어 닿는 길은 끊기지 않는다. */
+.pe-rail-l {
+  transform: translateX(calc(-100% + var(--pl-peek)));
+}
+.pe-rail-r {
+  transform: translateX(calc(100% - var(--pl-peek)));
+}
+.pe-rail-l .pl-rail-inner,
+.pe-rail-r .pl-rail-inner {
+  /* 홈의 .pl-rail-inner가 이미 height:100%와 0.42s transition을 갖는다 — 여기서는 이 화면의
+     내용 배치(메모지 두 장 / 표지 더미)만 더한다. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.pe-rail-l .pl-rail-inner {
+  gap: 26px;
+}
+.pe-rail-l:hover .pl-rail-inner,
+.pe-rail-l:focus-within .pl-rail-inner {
+  transform: translateX(calc(100% - var(--pl-peek)));
+}
+.pe-rail-r:hover .pl-rail-inner,
+.pe-rail-r:focus-within .pl-rail-inner {
+  transform: translateX(calc(-100% + var(--pl-peek)));
+}
+/* 메모지는 곁열 폭을 꽉 채운다 — 곁열 폭 자체를 물건 폭으로 잡아 뒀으므로(위 --pe-note-w)
+   이 한 줄이 곧 "홈과 같은 크기의 메모지"라는 뜻이다.
+   ⚠️ 이 값을 100%보다 키워 곁열 밖으로 삐져나오게 하지 않는다. 겹침은 이제 허용되지만, 그
+   겹침은 **호버로 불려 나왔을 때만** 일어나야 한다 — 상자보다 넓으면 쉬는 동안에도 peek 옆으로
+   삐져나와, 아무것도 건드리지 않았는데 선반 위에 종이가 걸쳐 있는 그림이 된다. */
+.pe-rail-l .pl-note {
+  width: 100%;
+}
+/* ⚠️ 표지 폭은 곁열 폭(= min(240px, 22.5cqw), 414가 확정한 값)을 그대로 쓰되, **곁열에 남은
+   세로가 두 권을 나란히 세우기에 모자라면 그만큼 줄인다.**
+
+   두 권은 호버에서 완전히 갈라져야 한다(아래 펼침 주석) — 조금이라도 겹치면 겹치는 쪽이 아래
+   책의 **머리**이고, 표제(.pl-cover-block)가 바로 거기 있어서 "어디로 가는 책인지"가 사라진다.
+   그러려면 표지 높이 두 장 + 사이 간격이 곁열 높이 안에 들어와야 하므로, 한 권의 최대 높이는
+   (곁열 높이 − 위아래 여유 20 − 두 권 사이 16) / 2 다. 폭은 종횡비(196:282)로 역산한다.
+
+   ⚠️ 240px이 먼저 걸리는 구간에서는 이 항이 아무 일도 하지 않는다 — 1920×1080에서 곁열이
+   840px이라 이 식이 279px을 허용하고, min()이 240px을 고른다. 즉 **414의 값은 그대로 살아 있고,
+   낮은 창에서만 표제를 지키려고 양보한다.** 크기보다 읽히는 것이 먼저다.
+   ⚠️ 100cqh의 기준은 위에서 곁열에 선언한 size 컨테이너(pe-rail)다. cqw를 쓰지 않는 이유도
+   같다 — 곁열이 컨테이너가 된 뒤로 cqw는 무대 폭이 아니라 곁열 폭을 가리킨다. */
+.pe-rail-r .pl-pile {
+  width: min(100%, calc((100cqh - 36px) / 2 * 196 / 282));
+}
+
+/* 쪽 번호 메모지. 홈의 핑크 메모지(.pl-note-add)와 같은 종이지만 **누르는 물건이 아니라
+   읽는 물건**이라 커서·호버 반응을 빼고 조판만 남긴다. 지금 몇 번째 쪽을 펼쳤는지는 이
+   화면이 실제로 들고 있는 유일한 상태다 — 없는 정보를 지어내지 않고 그것만 적는다. */
+.pe-note-folio {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  background: #ffd7de;
+  transform: rotate(-2deg);
+  container-type: inline-size;
+}
+.pe-note-folio .pl-note-tape {
+  transform: rotate(-7deg);
+}
+.pe-note-folio b {
+  font-family: 'Jalnan2', 'JalnanGothic', sans-serif;
+  font-weight: 400;
+  /* 메모지 폭 기준(container-type: inline-size). 곁열이 좁아져도 비율이 유지된다.
+     30번(사용자 피드백 — "숫자가 너무 크다"): 15cqw → 9cqw. 메모지가 348px이라 15cqw면 52px이
+     되어 쪽 번호가 아니라 대형 조판으로 읽혔다 — 이 자리는 "지금 펼친 쪽"이라는 작은 사실이지
+     화면의 주인공이 아니다. 9cqw면 31px로, 라벨(10.5px)과 위계는 유지하면서 메모지 안에
+     들어앉는다.
+     32번: 9 → 10.5cqw(348px 기준 31→37px). 30번이 15cqw(52px)를 "너무 크다"고 되돌린 이력이
+     있으므로 그 절반 지점까지만 올린다 — 쪽 번호는 이 화면의 주인공이 아니라 작은 사실이다. */
+  font-size: 10.5cqw;
+  line-height: 1;
+  color: var(--pl-navy);
+  font-variant-numeric: tabular-nums;
+}
+/* 32번: 10.5 → 12px. 위 라벨(.pl-note-h 13px)보다 한 급 작게 두어 두 메모지의 위계를 지킨다. */
+.pe-note-folio span {
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: var(--pl-ink);
+}
+
+/* ── 메모지 안의 글씨 ─────────────────────────────────────────────────
+   32번(사용자 지시 — "좌측 포스트잇의 내부 글씨를 키워라"). 종이 폭(348px)은 그대로 두고
+   글자만 올린다.
+
+   올릴 목표치를 임의로 정하지 않고 **홈 메모지의 조판을 그대로 가져온다.** 재어 보니 세 화면이
+   같은 348px 종이를 쓰면서 글씨만 탐색·책장 쪽이 작았다 — 본문 11.5 vs 홈 13.5, 장부 줄 11.5 vs
+   홈 14.5. 아래 .pe-note-body 주석이 "홈의 .pl-note-empty와 같은 크기"라고 적어 둔 것이 실제와
+   달랐던 셈이다. 홈 값에 맞추면 "키운다"와 "세 화면이 한 벌로 읽힌다"가 한 번에 해결되고,
+   **홈을 건드리지 않고** 된다(홈은 이번 지시의 범위 밖이다).
+
+   ⚠️ 여기서 키우는 것은 전부 곁열 안(.pe-*)이거나 .pe-rail-l 아래로 한정한다. .pl-note-h /
+   .pl-note-no는 홈과 공유하는 클래스라, 범위를 걸지 않으면 홈 메모지까지 함께 커진다. */
+
+/* 안내 메모지 본문. 홈의 .pl-note-empty(13.5px / 1.7)와 같은 값이다 — 그쪽은 "비어 있음"이라는
+   상태 문구 전용이라 이름만 나눠 둔다. */
+.pe-note-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--pl-ink);
+}
+
+/* 메모지 머리말(「이 책장은」). 홈은 12px인데 여기서는 한 단계 올린다 — 본문이 13.5px로 커진
+   만큼 머리말이 본문보다 작아 보이면 위계가 뒤집힌다. 자간(0.22em)은 홈 그대로다. */
+.pe-rail-l .pl-note-h {
+  font-size: 13px;
+}
+/* 장부 줄의 값(「12+권」). 홈은 11.5px이고 라벨과의 비율(11.5/14.5)이 조판의 성격인데, 32번이
+   "숫자도 키우라"고 했으므로 라벨(14.5px)을 넘지 않는 선에서 한 단계만 올린다. */
+.pe-rail-l .pl-note-no {
+  font-size: 12.5px;
+}
+
+/* 메모지 아래 한 줄짜리 장부 — 「펼쳐본 책 …… 3권」.
+   본문과 사이에 괘선을 하나 두어 "적어 둔 설명"과 "세어 둔 값"을 나눈다. 점선 리더와 숫자
+   조판(.pl-note-dots / .pl-note-no)은 홈 메모지의 목록 줄에서 그대로 온다. */
+.pe-note-tally {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(4, 33, 66, 0.12);
+  /* 32번: 11.5 → 14.5px. 홈 메모지의 목록 줄(.pl-note-row)과 같은 값이다 — 두 줄이 같은 조판
+     에서 왔으므로(위 주석) 크기도 같아야 한다. */
+  font-size: 14.5px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--pl-navy);
+}
+
+/* 표지 더미의 펼침 방향을 **세로로 바꾼다.**
+   홈에서는 두 권이 가로로 나란히 선다. 여기서 그러면 한 권이 지면 바깥으로 나간다 — 이 곁열은
+   지면 오른쪽 **가장자리에** 붙어 있어서 벌릴 가로 여유가 한쪽밖에 없기 때문이다(홈의 곁열은
+   지도 위였다). 곁열이 좁고 길다는 자리의 생김새에도 세로가 맞는다.
+   ⚠️ "선반 위 책을 덮으니까"가 이유였던 적이 있는데, 그건 20번 2차 결정으로 더 이상 이유가
+   아니다(--pe-reserve 주석) — 펼쳐진 곁열은 덮는 것이 정상이다. 방향의 근거는 위 한 줄이다.
+   ⚠️ 선택자 3개 + 의사클래스라 홈의 원본 규칙(2개 + 의사클래스)보다 특이성이 높다 —
+   파일 순서와 무관하게 이긴다. 원본을 고치지 않는 이유가 이것이다.
+   ⚠️ 「이동하기」 띠지와 그 밑줄 손짓(0.1s 뒤 출발)은 원본 규칙 그대로 걸린다 — 여기서는
+   두 권이 **어디로 벌어지는지**만 바꾼다.
+
+   ⚠️ 방향은 **쌓임 순서 그대로**다 — 위에 얹힌 권(.pl-pile-over)이 위로, 아래 깔린 권
+   (.pl-pile-under)이 아래로 간다. design-ver2 원본은 반대였는데(under가 위로), 그러면 위에
+   있던 책이 아래로 내려오면서 두 권이 서로를 통과하는 그림이 된다. 물건이 겹쳐 놓여 있을 때
+   위엣것은 위로 들어내는 것이 실제 손짓이다.
+
+   ⚠️ 벌어지는 거리는 **정확히 반 장 + 8px**이다. 그보다 적으면 두 권이 겹치는데, 겹치는 자리가
+   하필 아래 책의 **머리**이고 표제(.pl-cover-block)가 거기 있어서 "어디로 가는 책인지"가 사라진다
+   (원본 ±56%도, 그 앞의 ±34%도 이 문제가 있었다 — 실렌더에서 네이비 표지의 표제가 민트 표지에
+   통째로 덮였다). 반 장씩 벌리면 두 권이 정확히 맞닿고 8px이 그 사이의 틈이다.
+   이 거리가 곁열을 넘지 않는 것은 위 표지 폭 규칙이 보장한다 — 표지 높이를 (곁열 − 36) / 2
+   이하로 잡아 뒀으므로, 두 장 + 16px은 언제나 곁열 안에 들어온다.
+   위·아래가 대칭이라 한쪽만 잘리는 일도 없다. */
+.pe-rail-r .pl-pile {
+  --pe-pile-spread: calc(50% + 8px);
+}
+.pe-rail-r .pl-pile:hover .pl-pile-over,
+.pe-rail-r .pl-pile:focus-within .pl-pile-over {
+  transform: rotate(0deg) translateY(calc(-1 * var(--pe-pile-spread)));
+}
+.pe-rail-r .pl-pile:hover .pl-pile-under,
+.pe-rail-r .pl-pile:focus-within .pl-pile-under {
+  transform: rotate(0deg) translateY(var(--pe-pile-spread));
+}
+
+/* 지면 오른쪽 어깨의 조판 링크(shared/ui/PaperCornerNav). 조판·색은 그 공용 규칙
+   (.paper-corner-nav, index.css)이 갖고, 여기서는 **자리만** 잡는다 — 다른 화면과 같은
+   물건으로 보여야 한다. 넓은 폭에서 이동 링크를 접는 규칙은 홈과 같은 부품
+   (.paper-corner-nav--rails)이 맡으므로 여기서 따로 만들지 않는다. */
+.pe-cornernav {
+  position: absolute;
+  z-index: 4;
+  top: var(--pe-pad);
+  right: var(--pe-pad);
+}
+
+/* ── 선반 ─────────────────────────────────────────────────────────────
+   실제 카드 크기는 이 상자를 실측한 값에서 역산한다(FeedList의 area prop) — 뷰포트에서
+   페이지 크롬을 빼는 기존 계산은 종이 지면 위에서는 값이 맞지 않는다. */
+.pe-shelf {
+  position: absolute;
+  /* z-index 1 — 곁열(2)보다 낮다. 펼쳐진 메모지·표지가 선반 카드 위에 얹히는 근거가 이
+     한 줄이다(--pe-reserve 주석). 선반 안쪽에서 z-index를 올리는 것이 있어도 이 상자가
+     쌓임 맥락을 만들어 가두므로 곁열을 넘어서지 못한다. */
+  z-index: 1;
+  top: var(--pe-head);
+  bottom: 0;
+  /* 좌·우 모두 접힘 폭만 내준다 — 물건 폭이 아니다(--pe-reserve 주석). */
+  left: var(--pe-reserve);
+  right: var(--pe-reserve);
+  padding-bottom: var(--pe-pad);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 반응형 ───────────────────────────────────────────────────────────
+   홈 CSS 머리말과 같은 원칙이다 — 축소가 아니라 **제본 방식이 바뀐다.** 좁아지면 곁열
+   두 줄이 통째로 빠지고 지면 폭을 선반이 전부 쓴다.
+
+   ⚠️ 네비게이션 바가 없으므로 곁열과 함께 이동 수단까지 사라지면 나갈 길이 끊긴다. 곁열의
+   표지 두 권을 끄는 바로 그 자리에서 어깨의 조판 링크가 켜져야 하는데, 그쪽은 index.css의
+   `.paper-corner-nav--rails`(@media min-width: 1081px)가 이미 맡고 있다 — 홈이 쓰는 것과
+   같은 규칙이라 **두 줄이 반드시 함께 움직인다.** 경계값을 옮기려면 그 파일과 이 블록을
+   같이 옮긴다.
+
+   ⚠️ 컨테이너 쿼리가 아니라 **미디어 쿼리**다. 지면이 뷰포트를 그대로 채우므로 두 기준의
+   값이 같고, 뷰포트 쪽이 페이지 안에서 무슨 일이 일어나든 흔들리지 않는다 — 지면 폭을
+   기준으로 두면 레이아웃이 자리를 잡는 도중에 임계값을 가로질러 곁열이 뒤늦게 튀어나오고
+   선반이 옆으로 밀린다. */
+@media (max-width: 1080px) {
+  .pe-rail-l,
+  .pe-rail-r {
+    display: none;
+  }
+  .pe-shelf {
+    left: var(--pe-pad);
+    right: var(--pe-pad);
+  }
+  .pe-stage {
+    --pe-head: clamp(96px, 18cqh, 150px);
+  }
+  /* 어깨의 링크와 제목이 같은 줄에서 부딪히지 않도록 조판 폭을 그만큼 줄인다. */
+  .pe-head {
+    right: calc(var(--pe-pad) + 116px);
+  }
+}
+
+/* 위 블록과 같은 이유로 미디어 쿼리다(전환 중 임계값을 가로지르지 않게). */
+@media (max-width: 680px) {
+  /* 조판 한 줄을 통째로 접는다. 폭이 이만큼 좁아지면 이 문장이 두 줄로 흘러 조판 덩어리가
+     머리 띠(--pe-head)를 넘고, 넘친 만큼 선반 위로 내려앉는다. 줄여서 우겨넣는 대신 뺀다 —
+     같은 내용을 좌측 안내 메모지가 이미 말하고, 그 메모지도 이 폭에서는 함께 접힌다. */
+  .pe-headrule {
+    display: none;
+  }
+  /* ⚠️ 단, **링크가 실린 줄은 접지 않는다.** 접는 근거는 "같은 내용을 좌측 메모지가 이미
+     말한다"인데, 「나의 활동 기록」(407)은 메모지가 말하지 않는 데다 이 링크가 앱 전체에서
+     /me/activity로 가는 **유일한 진입점**이다 — 함께 접으면 좁은 화면에서 그 화면에 닿을 길이
+     사라진다(하단 도크에도 없다).
+     대신 접어야 할 것은 접는다: 두 줄로 흘러 머리 띠를 넘기던 것은 설명 문장이므로 그것만
+     감추고, 괘선과 링크만 남겨 한 줄 높이를 지킨다. 링크는 nowrap이라 흐르지 않는다.
+     `:has()`로 두 화면을 가른다 — 탐색의 괘선 줄은 링크 없이 문장뿐이라 위 규칙대로 통째로
+     접히고, 책장만 이 예외에 걸린다. 화면별 클래스를 새로 만들지 않으려는 선택이다. */
+  .pe-headrule:has(.pe-headlink) {
+    display: flex;
+  }
+  .pe-headrule:has(.pe-headlink) > span {
+    display: none;
+  }
+  /* 제목 크기는 폭에 매인다(3.6cqw). 이 폭에서 그대로 두면 12~14px까지 떨어져 본문과 구분이
+     안 되므로, 좁은 판형에서는 폭 대비 비율을 올려 제목의 자리를 지킨다. */
+  .pe-stage .pe-title {
+    font-size: min(5.4cqh, 8.4cqw, 34px);
+  }
+  .pe-cornernav {
+    gap: 14px;
+  }
+  .pe-head {
+    right: calc(var(--pe-pad) + 92px);
+  }
+}

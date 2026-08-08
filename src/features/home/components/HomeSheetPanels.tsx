@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
+import { PaperNoteParts } from '@/shared/ui/PaperNoteParts';
 import type { RecordMapItem } from '@/features/map/api/getRecordMapMarkers';
 
 /** 하판 목록에 세우는 줄 수. 그 이상은 판 높이를 넘긴다. */
@@ -73,7 +74,7 @@ export function HomeLeftType({ places, onSelectRecord }: HomeLeftTypeProps) {
   return (
     <>
       <div className="pl-note pl-note-list">
-        <NoteParts />
+        <PaperNoteParts />
         <div className="pl-note-h">내가 적어 둔 곳</div>
         {listed.length > 0 ? (
           listed.map((place) => (
@@ -95,20 +96,10 @@ export function HomeLeftType({ places, onSelectRecord }: HomeLeftTypeProps) {
       </div>
 
       <button type="button" className="pl-note pl-note-add" onClick={sheet.open}>
-        <NoteParts />
+        <PaperNoteParts />
         <b aria-hidden="true">+</b>
         <span>장소 추가</span>
       </button>
-    </>
-  );
-}
-
-/** 포스트잇 공통 장식 — 마스킹 테이프와 접힌 모서리. 값은 공용 ContextStickyNote와 같다. */
-function NoteParts() {
-  return (
-    <>
-      <span className="pl-note-tape" aria-hidden="true" />
-      <span className="pl-note-dogear" aria-hidden="true" />
     </>
   );
 }

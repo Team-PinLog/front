@@ -1,71 +1,53 @@
+import { useCallback, useState } from 'react';
 import { FeedList } from '@/features/feed/components/FeedList';
-import { FEED_LAYOUT } from '@/features/feed/lib/feedLayout';
+import { PaperSpreadStage } from '@/features/paper/components/PaperSpreadStage';
 import {
-  PAGE_CONTAINER_CLASS,
-  PAGE_MIN_HEIGHT_CLASS,
-  PAGE_TITLE_GAP_CLASS,
-  PAGE_VERTICAL_PADDING_CLASS,
-} from '@/shared/lib/shelfCabinetLayout';
-import { PageTitle } from '@/shared/ui/PageTitle';
-import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
+  ExploreCornerNav,
+  ExploreHeadType,
+  ExploreLeftType,
+  ExploreRightType,
+} from '@/features/explore/components/ExploreSpreadPanels';
 
-// 287-8: min-h는 뷰포트 높이(100dvh)에서 AppLayout 고정 헤더 높이를 뺀 값이다 — 헤더 아래 남는
-// 세로 공간 전체를 이 페이지가 쓴다. 캐비닛 래퍼는 flex-1 min-h-0으로 나머지를 전부 채운다 — 정확한
-// px 합산 대신 flexbox가 "남는 공간"을 계산하게 한다.
-// 330: min-h 리터럴은 PAGE_MIN_HEIGHT_CLASS 하나로 모았다(같은 값이 세 페이지에 복제돼 있었다).
-// sm은 하단 탭바(3.5rem + safe-area)만큼 뷰포트에서 덜고, md 이상은 사이드바가 세로를 먹지 않아
-// 뷰포트 높이를 그대로 쓴다 — AppLayout <main>의 pb/pl과 반드시 함께 맞춘다.
-// 287-9: 제목은 PageTitle(shared/ui/PageTitle.tsx)로 고정 height를 준다 — Library의 h1과 폰트
-// 크기/line-height가 달라(text-2xl vs text-[27px]) 자연 높이가 미세하게 어긋나면, flex-1인 캐비닛이
-// 그 차이만큼 다르게 커져 페이지 전환 시 화면이 "이동"해 보였다.
+/**
+ * 탐색 — "펼쳐 놓은 종이 위의 책장".
+ *
+ * 홈("종이에 오려낸 창")과 같은 종이 세계의 다른 상태다. 홈이 덮인 종이를 오려 지도를 드러낸다면
+ * 이쪽은 그 종이를 펼쳐 놓고 그 위에 선반을 얹는다 — 질감 · 브랜드 색 · 포스트잇 · 표지 조판을
+ * 전부 홈과 공유한다(paperSpread.css 머리말). 414가 확정한 값(메모지 348px, 표지 240px,
+ * 「이동하기」 밑줄 손짓)도 그대로 상속받는다.
+ *
+ * ⚠️ 파일 이름이 FeedPage로 남은 것은 라우트(/feed)와 도메인(Feed API, 08_API_명세 10.1)이 그대로이기
+ * 때문이다. 사용자에게 보이는 이름은 계속 "탐색"이고, 이 화면의 조형을 맡는 컴포넌트는
+ * features/explore에 있다 — 데이터(feed)와 지면(explore)을 나눠 둔 구분이다.
+ *
+ * 개편 전에는 PageTitle + 페이지 컨테이너(PAGE_CONTAINER_CLASS/PAGE_MIN_HEIGHT_CLASS) 위에 오픈
+ * 책장이 놓였다. 이 화면은 지면이 화면을 가장자리까지 채워야 해서 그 여백 상수들을 쓰지 않고,
+ * 책장이 쓸 상자는 지면 안에서 실측한다(PaperSpreadStage → FeedList의 area).
+ */
 export function FeedPage() {
-  return (
-    <main
-      className={`${PAGE_CONTAINER_CLASS} ${PAGE_MIN_HEIGHT_CLASS} flex flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS}`}
-    >
-      {/* 382: 서점 레이아웃에서는 표제를 명조(380이 들여온 제주명조, font-serif)로 세운다 — 서점
-          매대의 안내판은 고딕보다 명조로 조판되는 쪽이 "책이 놓인 자리"라는 인상을 만든다. 문구는
-          그대로 두었다: 이 페이지가 하는 일이 바뀐 게 아니라 놓는 방식만 바뀌었고, 서점 흉내를 내는
-          새 문구("이번 주의 책" 같은)는 실제로 주간 큐레이션이 아닌데 그렇게 읽히게 만든다.
-          ⏪ 롤백: FEED_LAYOUT이 'classic'이면 이 조판도 예전 그대로(고딕)로 돌아간다. */}
-      {/* 414: 셸의 좌측 네비를 걷어내면서 이 화면도 나가는 길을 스스로 가져야 한다. 395에서 Feed가
-          classic 배치로 롤백돼 종이 지면(3/3 이식)이 아직 없으므로, 홈처럼 지면 위에 얹지 않고
-          책장(LibraryPage)과 **같은 형태**로 제목 줄 오른쪽에 둔다 — 캐비닛을 쓰는 두 화면이 같은
-          자리·같은 조판이어야 한다. Feed 지면을 이식하는 후속 티켓이 이 줄을 종이 어깨로 옮긴다.
-          ⚠️ 이 파일은 414의 선언된 범위 밖이지만, 마운트하지 않으면 md 이상에서 탐색 화면이
-          되돌아갈 길 없는 막다른 화면이 된다. 추가한 것은 이 한 블록뿐이다. */}
-      <div className="flex flex-none items-start justify-between gap-6">
-        <PageTitle
-          className={`text-2xl font-extrabold text-pin-navy ${
-            FEED_LAYOUT === 'bookstore' ? 'font-serif' : ''
-          }`}
-          description="익명의 사용자가 만든 다양한 컬렉션을 구경해 보세요."
-        >
-          새로운 장소를 발견해 보세요
-        </PageTitle>
+  // 쪽 번호는 FeedList가 소유한 페이지네이션 상태의 **읽기 전용 사본**이다(FeedList 주석).
+  // 콜백을 useCallback으로 고정해 두면 FeedList의 보고 effect가 쪽이 바뀔 때만 돈다.
+  const [pageNumber, setPageNumber] = useState<number | null>(null);
+  const handlePageNumberChange = useCallback((value: number) => setPageNumber(value), []);
 
-        <PaperCornerNav
-          className="mt-2 flex-none"
-          items={[
-            { to: '/', label: '홈' },
-            { to: '/library', label: '책장' },
-          ]}
-        />
-      </div>
-      {/* 328: items-center를 더했다. 이 래퍼는 flex-1이라 타이틀 아래 남는 세로를 전부 차지하는데,
-          그 안의 책장은 그 높이를 다 쓰지 못하는 경우가 많다 — Feed 카드 크기는 세로 예산과 가로
-          가용폭 중 빡빡한 쪽에 맞춰지고(solveFeedScale), 넓은 화면에서는 거의 항상 가로가 이긴다
-          (xl 1920×1080 기준 세로 예산 904px 중 실제 사용 562px). 기본 정렬(stretch → 내용은 위에
-          붙는다)이면 그 차이 342px이 통째로 책장 아래 빈 여백이 돼, 캐비닛이 예산을 꽉 채우는
-          나의 책장과 비교했을 때 "탐색만 아래가 휑하다"로 보였다. 남는 세로를 위아래로 나눠 가지면
-          두 페이지 모두 책장이 화면 중앙에 온다(LibraryPage에도 같은 정렬을 뒀다).
-          정렬을 items-center가 아니라 자식의 auto 마진(FeedList 루트의 m-auto)으로 주는 이유:
-          예산 하한(SHELF_SCROLL_MIN_H_PX)에 걸리는 아주 낮은 뷰포트에서는 책장이 이 래퍼보다 커질
-          수 있는데, items-center는 그때 넘치는 만큼을 위로도 밀어내 책장 윗부분이 타이틀 뒤로
-          잘린다. auto 마진은 공간이 남을 때만 나눠 갖고 모자라면 0이 돼 위로 밀지 않는다. */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <FeedList />
-      </div>
+  return (
+    // 홈과 같은 이유로 PAGE_MIN_HEIGHT_CLASS를 쓰지 않는다 — 이 지면은 여백 없이 화면을
+    // 가장자리까지 채운다. 414에서 셸 <main>의 여백이 전부 사라져 content box 높이가 정확히
+    // 100dvh라 h-full이면 된다(HomePage와 같은 근거).
+    <main className="relative h-full">
+      <PaperSpreadStage
+        head={<ExploreHeadType />}
+        left={<ExploreLeftType pageNumber={pageNumber} />}
+        right={<ExploreRightType />}
+        corner={<ExploreCornerNav />}
+        shelf={(area) => (
+          <FeedList
+            area={area.live}
+            layoutArea={area.settled}
+            onPageNumberChange={handlePageNumberChange}
+          />
+        )}
+      />
     </main>
   );
 }

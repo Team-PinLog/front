@@ -1,32 +1,35 @@
-import { useEffect, useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { useCallback, useEffect, useState } from 'react';
 import { MyShelfColumn } from '@/features/collections/components/MyShelfList';
 import { FollowedShelfCard } from '@/features/follows/components/FollowedShelfCard';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
-import { useMeSummaryQuery } from '@/features/me/hooks/useMeSummaryQuery';
+import {
+  LibraryCornerNav,
+  LibraryHeadType,
+  LibraryLeftType,
+  LibraryRightType,
+} from '@/features/library/components/LibrarySpreadPanels';
+import { PaperSpreadStage, type ShelfArea } from '@/features/paper/components/PaperSpreadStage';
 import {
   getLibraryCabinetHeightPx,
   getLibraryPageCount,
   getLibraryPageSlots,
-  getLibraryVisibleRowCount,
   getLibraryPagingFirstColumn,
   getPageContentBudgetPx,
-  getShelfScale,
   libraryPinsMyShelf,
   LIBRARY_CABINET_SIDE_CHROME_PX,
   LIBRARY_COLUMNS_BY_TIER,
-  LIBRARY_PAGE_DOTS_MAX,
+  LIBRARY_ROW_COUNT_BY_TIER,
   SHELF_COLUMN_GAP_PX,
-  PAGE_CONTAINER_CLASS,
-  PAGE_MIN_HEIGHT_CLASS,
-  PAGE_TITLE_GAP_CLASS,
-  PAGE_VERTICAL_PADDING_CLASS,
 } from '@/shared/lib/shelfCabinetLayout';
 import { useLayoutMetrics } from '@/shared/lib/LayoutMetricsContext';
 import { useShelfWidthTier, useViewportSize } from '@/shared/lib/useShelfBreakpoint';
-import { PageTitle } from '@/shared/ui/PageTitle';
-import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
-import { ShelfCabinet, ShelfColumn, ShelfColumnGrid } from '@/shared/ui/Shelf';
+import {
+  ShelfCabinet,
+  ShelfColumn,
+  ShelfColumnGrid,
+  ShelfColumnHeadSpacer,
+  ShelfColumnSkeleton,
+} from '@/shared/ui/Shelf';
 
 /**
  * Library: "내 책장"(141)과 "팔로우한 책장"(144)을 한 화면에서 조회한다.
@@ -56,10 +59,70 @@ import { ShelfCabinet, ShelfColumn, ShelfColumnGrid } from '@/shared/ui/Shelf';
  * 보여줄지"(가상 페이지 크기)와 "네트워크에서 한 번에 얼마나 가져올지"(fetch batch)를 분리해, 가상
  * 페이지 경계가 서버 커서 경계와 어긋나도(xl은 2개씩, mdlg는 1개씩, sm은 페이지0만 0개+이후 1개씩)
  * 문제없이 동작한다.
+ *
+ * 411: 이 화면도 종이 지면 위로 올라갔다(홈·탐색과 같은 무대). 좌측 포스트잇과 우측 이동 표지가
+ * 곁열에 서고, 캐비닛은 그 사이에 남은 상자를 실측해 그 안에서 열·행을 정한다 — 페이지가
+ * 이 컴포넌트(무대)와 아래 LibraryShelf(캐비닛)로 나뉜 이유가 그것이다.
  */
 export function LibraryPage() {
-  const tier = useShelfWidthTier();
-  const columns = LIBRARY_COLUMNS_BY_TIER[tier];
+  // 쪽 번호는 캐비닛이 소유한 페이지네이션 상태의 **읽기 전용 사본**이다(탐색과 같은 규약).
+  // 콜백을 useCallback으로 고정해 두면 보고 effect가 쪽이 바뀔 때만 돈다.
+  const [pageNumber, setPageNumber] = useState<number | null>(null);
+  const handlePageNumberChange = useCallback((value: number) => setPageNumber(value), []);
+
+  return (
+    // 홈·탐색과 같은 이유로 PAGE_MIN_HEIGHT_CLASS·PAGE_CONTAINER_CLASS를 쓰지 않는다 — 이 지면은
+    // 여백 없이 화면을 가장자리까지 채운다. 414에서 셸 <main>의 여백이 전부 사라져 content box
+    // 높이가 정확히 100dvh라 h-full이면 된다.
+    <main className="relative h-full">
+      <PaperSpreadStage
+        head={<LibraryHeadType />}
+        left={<LibraryLeftType pageNumber={pageNumber} />}
+        right={<LibraryRightType />}
+        corner={<LibraryCornerNav />}
+        shelf={(area) => (
+          <LibraryShelf
+            area={area.live}
+            layoutArea={area.settled}
+            onPageNumberChange={handlePageNumberChange}
+          />
+        )}
+      />
+    </main>
+  );
+}
+
+interface LibraryShelfProps {
+  /**
+   * 캐비닛이 쓸 수 있는 상자(px). 지면이 조판·곁열에 내주는 몫은 CSS의 clamp()/cqw에서 나와
+   * JS가 알 수 없으므로 실측한 값을 받는다. 아직 측정 전이면 null이고, 그때는 지금까지의
+   * 뷰포트 기반 계산으로 폴백한다(FeedList의 area와 완전히 같은 규약이다).
+   */
+  area?: ShelfArea | null;
+  /** **구성**(몇 열 · 몇 행)을 정할 때만 쓰는 상자. 크기는 area, 구성은 이 값 — ShelfAreaFeed 주석. */
+  layoutArea?: ShelfArea | null;
+  /** 지금 펼친 쪽(1부터)을 알린다. 곁열의 쪽 번호 메모지가 쓴다. */
+  onPageNumberChange?: (pageNumber: number) => void;
+}
+
+function LibraryShelf({ area, layoutArea, onPageNumberChange }: LibraryShelfProps) {
+  // ⚠️ 훅은 분기와 무관하게 항상 부른다(호출 순서 고정). 상자를 받으면 값을 쓰지 않을 뿐이다.
+  const viewportTier = useShelfWidthTier();
+  const { height: viewportHeight } = useViewportSize();
+  const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
+
+  // 캐비닛 높이만 상자를 쓴다. 크기는 살아 있는 상자(area)를 따라 지면과 함께 자라고, 멎은
+  // 상자(layoutArea)는 첫 프레임의 폴백으로만 남는다 — **구성(열·행)은 상자를 보지 않으므로**
+  // 411에서 두 상자를 나누던 이유(pageSize가 흔들려 목록을 다시 요청한다)가 책장에는 없다.
+  const heightBox = area ?? layoutArea ?? null;
+
+  // 416/21번: 열 수·행 수는 **오직 뷰포트 구간표**에서 나온다. 데이터 개수·로딩 상태·측정 도착
+  // 순서 어느 것도 여기에 섞이지 않는다 — 데스크톱 책장은 언제나 3열 × 2행이고, 그 조형이
+  // 팔로우가 0개든 20개든 같아야 "가구"로 읽힌다.
+  // ⚠️ 411에서 한때 캐비닛 실측 폭으로 열 수를 정했는데 되돌렸다. 그러면 곁열이 붙고 떨어지는
+  // 것만으로 3열 → 1열까지 오르내려, 같은 화면에서 책장 모양이 달라졌다.
+  const columns = LIBRARY_COLUMNS_BY_TIER[viewportTier];
+  const visibleRowCount = LIBRARY_ROW_COUNT_BY_TIER[viewportTier];
   // 330: 판단 기준이 tier가 아니라 열 수다 — libraryPinsMyShelf 주석 참고.
   const pinsMyShelf = libraryPinsMyShelf(columns);
   // 329: 좌우 버튼과 페이지 인디케이터가 공유하는 "넘어가는 구간"의 시작 열. 둘이 같은 값을 써야
@@ -70,37 +133,33 @@ export function LibraryPage() {
   // h-full 퍼센트 체인 + 스크롤 박스 max-h-[590px] 조합이라, 높은 화면에서 캐비닛이 래퍼를 다
   // 채우지 못하고 아래가 크게 비었다. 여기서 확정한 높이를 캐비닛에 직접 넘기므로 (a) 캐비닛이
   // 화면을 채우고 (b) 좌우 버튼 오버레이(캐비닛과 같은 박스)의 세로 중앙이 곧 캐비닛 중앙이 된다.
-  const { width: viewportWidth, height: viewportHeight } = useViewportSize();
-  const { navChromeHeightPx, titleHeightPx } = useLayoutMetrics();
   // 329: 캐비닛 아래에 페이지 인디케이터가 생겼다 — 세로 예산에서 그 높이를 덜어낸 나머지가 캐비닛
   // 높이다. 덜지 않으면 인디케이터만큼 화면 밖으로 밀린다(328에서 맞춘 예산 계약).
+  // 411: 상자를 받으면 그 높이가 곧 예산이다. 크기는 살아 있는 상자(scaleBox)를 따라 지면과 함께
+  // 자란다 — 구성(열·행)만 멎은 상자로 정한다.
   const cabinetHeightPx = getLibraryCabinetHeightPx(
-    getPageContentBudgetPx(viewportHeight, { navChromeHeightPx, titleHeightPx }, tier),
+    heightBox
+      ? heightBox.heightPx
+      : getPageContentBudgetPx(viewportHeight, { navChromeHeightPx, titleHeightPx }, viewportTier),
   );
-  // 행 수는 그 높이에 실제로 몇 행이 들어가는지로 정한다(고정 3행 폐기) — 책이 커진 만큼
-  // (SPINE_MAX_HEIGHT 168→190) 짧은 화면에서는 2행, 높은 화면에서는 4행까지 간다.
-  const visibleRowCount = getLibraryVisibleRowCount(cabinetHeightPx, getShelfScale(viewportWidth));
-
   const [virtualPageIndex, setVirtualPageIndex] = useState(0);
-  // 구간이 바뀌면(리사이즈로 tier 전환) 가상 페이지 크기 자체가 달라져 이전 인덱스가 더 이상 같은
-  // 지점을 가리키지 않는다 — 항상 "내 책장"으로 시작하는 첫 페이지로 되돌린다. "prop이 바뀌면
-  // state를 리셋"하는 리액트 표준 패턴(렌더 중 setState) — useEffect+setState는 커밋 후 리렌더를
-  // 한 번 더 유발해(react-hooks/set-state-in-effect) 화면이 잠깐 깜빡일 수 있다.
-  const [prevTier, setPrevTier] = useState(tier);
-  if (tier !== prevTier) {
-    setPrevTier(tier);
+  // 열 수가 바뀌면(리사이즈) 가상 페이지 크기 자체가 달라져 이전 인덱스가 더 이상 같은 지점을
+  // 가리키지 않는다 — 항상 "내 책장"으로 시작하는 첫 페이지로 되돌린다. "prop이 바뀌면 state를
+  // 리셋"하는 리액트 표준 패턴(렌더 중 setState) — useEffect+setState는 커밋 후 리렌더를 한 번 더
+  // 유발해(react-hooks/set-state-in-effect) 화면이 잠깐 깜빡일 수 있다.
+  // 411: 판단 기준을 tier가 아니라 columns로 둔다 — 리셋이 지키려던 것이 처음부터 "가상 페이지
+  // 크기"였고 tier는 그 대리 변수였다(libraryPinsMyShelf가 330에 내린 것과 같은 판단).
+  const [prevColumns, setPrevColumns] = useState(columns);
+  if (columns !== prevColumns) {
+    setPrevColumns(columns);
     setVirtualPageIndex(0);
   }
 
-  // 407: "나의 활동 기록"(/me/activity) 진입점의 노출 여부. docs 이슈 #55는 **기록 0건이면 책장에서
-  // 이 진입점을 숨기자**고 제안한다 — 전부 0인 화면을 첫 사용자에게 주는 것은 그 페이지의 목적과
-  // 어긋나기 때문이다.
-  // 판정에 GET /me/activity가 아니라 3.5(마이페이지 요약)의 recordCount를 쓰는 이유: 집계 응답은
-  // 그 화면에 들어가야 받는 것이 맞고(진입 시 1회 호출이 계약이다), 요약 쪽은 설정 패널이 이미 같은
-  // 쿼리 키(['me','summary'])로 쓰고 있어 캐시를 그대로 나눠 쓴다. 책장에 새 요청이 늘지 않는다.
-  // 로딩 중(data === undefined)에는 숨긴다 — 없다가 생기는 편이, 있다가 사라지는 것보다 낫다.
-  const meSummaryQuery = useMeSummaryQuery();
-  const hasAnyRecord = (meSummaryQuery.data?.recordCount ?? 0) > 0;
+  // 411: 쪽 번호를 곁열 메모지로 흘려보낸다. 페이지네이션 상태는 계속 이 컴포넌트가 소유하고
+  // 읽기 전용 값만 나간다(탐색의 FeedList와 같은 규약).
+  useEffect(() => {
+    onPageNumberChange?.(virtualPageIndex + 1);
+  }, [onPageNumberChange, virtualPageIndex]);
 
   const followsQuery = useFollowsQuery();
   const pages = followsQuery.data?.pages ?? [];
@@ -186,101 +245,53 @@ export function LibraryPage() {
       </ShelfColumn>,
     );
   });
+  // 416: 남는 칸도 **선반이 깔린 빈 칸**이다. 이전에는 문구 한 줄만 넣어서, 팔로우한 책장이 0개인
+  // 계정은 2·3열이 선반 없이 텅 빈 상자로 보였고("책장이 안 보인다"), 목록이 도착하는 순간에만
+  // 선반이 나타나 선반 수가 바뀌는 것처럼 보였다. 빈 책장도 책장으로 보여야 한다(Feed가 314에서
+  // 내린 것과 같은 결론 — FeedList의 EmptyShelves).
+  // ⚠️ rowCount는 책이 놓인 칸과 **같은 visibleRowCount**다 — 다른 값을 주면 열마다 선반 높이가
+  // 어긋난다.
   let statusMessageShown = false;
   while (slotNodes.length < columns) {
+    const showsMessage = !statusMessageShown && followStatusMessage !== null;
     slotNodes.push(
       <ShelfColumn key={`empty-${slotNodes.length}`}>
-        {!statusMessageShown && followStatusMessage && (
-          <p className={followsQuery.isError ? 'text-sm text-red-600' : 'text-sm text-ink-gray'}>
-            {followStatusMessage}
-          </p>
-        )}
+        {/* 416/25번: 머리에 놓을 것이 없어도 자리는 비워 둔다 — 그래야 세 열의 첫 선반이 같은
+            높이에 온다(ShelfColumnHeadSpacer 주석). */}
+        <ShelfColumnHeadSpacer />
+        <ShelfColumnSkeleton
+          rowCount={visibleRowCount}
+          message={showsMessage ? followStatusMessage : null}
+          tone={followsQuery.isError ? 'error' : 'muted'}
+        />
       </ShelfColumn>,
     );
     statusMessageShown = true;
   }
 
   return (
-    // 287-8: min-h(뷰포트 높이 - AppLayout 헤더 높이)와 좌우 컨테이너(PAGE_CONTAINER_CLASS)·타이틀-
-    // 캐비닛 gap(PAGE_TITLE_GAP_CLASS)을 FeedPage와 그대로 공유한다. 캐비닛 래퍼(flex-1 min-h-0)가
-    // 제목을 제외한 나머지 세로 공간을 전부 채운다.
-    // 287-9: 제목도 PageTitle(shared/ui/PageTitle.tsx)로 FeedPage와 같은 고정 height를 공유한다 —
-    // 이 페이지 폰트 스타일(text-[27px] font-bold tracking-tight)은 그대로 유지하되, 바깥 박스
-    // 높이만 고정해 Feed의 h1(text-2xl)과 자연 높이가 달라도 캐비닛 크기가 어긋나지 않게 한다.
-    // 330: min-h는 PAGE_MIN_HEIGHT_CLASS를 FeedPage·HomePage와 공유한다(동일 근거).
-    <main
-      className={`${PAGE_CONTAINER_CLASS} ${PAGE_MIN_HEIGHT_CLASS} flex flex-col ${PAGE_TITLE_GAP_CLASS} ${PAGE_VERTICAL_PADDING_CLASS}`}
-    >
-      {/* 414: 셸의 좌측 네비가 사라져 이 화면에도 나가는 길이 필요해졌다. 홈·탐색이 쓰는 것과
-          **같은 부품**(PaperCornerNav)을 같은 자리(오른쪽 어깨)에 둔다 — 세 화면에서 링크가 같은
-          모양·같은 위치에 있어야 "돌아가는 길은 언제나 오른쪽 위"라는 위치 기억이 성립한다.
-          설정 진입점도 이 줄이 항상 포함하므로 계정·로그아웃·탈퇴 경로가 끊기지 않는다.
-
-          홈·탐색과 두 가지가 다르다:
-          ① `--rails` 변형을 쓰지 않는다. 그 변형은 "곁열의 표지 두 권이 같은 목적지를 이미 보여
-             주는 넓은 폭에서는 링크를 접는다"는 규칙인데, 책장에는 곁열이 없어 접을 이유가 없다.
-          ② 지면 위에 absolute로 얹지 않고 제목과 같은 줄의 흐름 안에 둔다. 이 화면은 종이 무대가
-             아니라 캐비닛 레이아웃이고, 캐비닛 높이가 실측 예산으로 정해져 있어(아래
-             cabinetHeightPx) 떠 있는 요소를 얹으면 그 위에 걸친다.
-          items-start: 제목 블록은 설명 줄까지 포함해 2단이라 세로 중앙을 맞추면 링크가 내려앉는다.
-          제목의 첫 줄과 눈높이를 맞추려고 mt-2만 준다.
-
-          407: 활동 기록 진입점은 **PageTitle의 description 안에** 둔다. 제목 블록 바깥(형제)에 한
-          줄을 더 얹으면 그만큼의 높이가 ResizeObserver 측정에서 빠져 titleHeightPx가 실제보다 작게
-          보고되고, getPageContentBudgetPx가 세로 예산을 과대 계상해 sm·mdlg에서 책장 마지막 행이
-          잘린다(PageTitle 313 주석의 그 함정 그대로다). description은 ReactNode라 노드를 그대로
-          넘길 수 있고, 안에 들어가면 링크의 높이·줄바꿈까지 측정에 포함된다.
-          링크 스타일은 LoginPage 약관 링크와 같은 문법이다(밑줄 + 네이비). */}
-      <div className="flex flex-none items-start justify-between gap-6">
-        <PageTitle
-          className="text-[27px] font-bold tracking-tight text-pin-navy"
-          description={
-            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span>저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요.</span>
-              {hasAnyRecord && (
-                <Link
-                  to="/me/activity"
-                  className="font-semibold text-pin-navy underline underline-offset-2"
-                >
-                  나의 활동 기록 보기
-                </Link>
-              )}
-            </span>
-          }
-        >
-          나의 책장
-        </PageTitle>
-
-        <PaperCornerNav
-          className="mt-2 flex-none"
-          items={[
-            { to: '/', label: '홈' },
-            { to: '/feed', label: '탐색' },
-          ]}
-        />
-      </div>
-
-      {/* 328: 바깥에 flex-1 + items-center 래퍼를 한 겹 더 뒀다 — 남는 세로 공간에서 책장이 중앙에
-          오도록 FeedPage와 정렬 규칙을 통일한다. 여기서 남는 양은 대개 안전 여백(8px) 정도라 육안
-          변화는 거의 없지만, 두 페이지가 같은 규칙을 쓰는 것 자체가 목적이다(예산 상수가 바뀌어
-          한쪽만 남는 공간이 생겨도 어긋나지 않는다).
-          319 디자인 피드백: 안쪽 박스는 flex-1이 아니라 flex-none을 그대로 유지한다. 래퍼가
-          캐비닛보다 크면 그 차이가 전부 캐비닛 아래 빈 여백이 되고, inset-0인 버튼 오버레이도
-          캐비닛이 아니라 그 빈 공간까지 포함한 박스의 중앙에 놓인다(피드백의 "버튼 위치가
-          별로다"). 이 박스의 높이는 캐비닛 높이 그 자체여야 한다 — 오버레이 inset-0 = 캐비닛
-          테두리와 정확히 일치한다. 그래서 중앙 정렬은 바깥 래퍼가 맡는다 — 정렬을 items-center가
-          아니라 자식의 my-auto로 주는 이유는 FeedPage 주석 참고(낮은 뷰포트에서 위로 밀지 않는다). */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        {/* 329: 인디케이터가 캐비닛 아래에 붙으면서 한 겹이 더 생겼다 — 좌우 버튼 오버레이의
+    // 411: 페이지 컨테이너·제목 줄은 지면 조판(LibraryHeadType)과 곁열이 대신하므로 여기서
+    // 사라졌다. 남은 것은 캐비닛과 그 아래 인디케이터뿐이고, 이 블록이 놓이는 상자(.pe-shelf)는
+    // 이미 flex 열이라 my-auto만으로 세로 중앙이 잡힌다.
+    // 328: 남는 세로 공간에서 책장이 중앙에 오도록 탐색과 정렬 규칙을 통일한다. 정렬을
+    // items-center가 아니라 자식의 my-auto로 주는 이유는 FeedList 주석 참고(낮은 뷰포트에서
+    // 위로 밀지 않는다).
+    // 319 디자인 피드백: 안쪽 박스는 flex-1이 아니라 flex-none을 그대로 유지한다. 래퍼가
+    // 캐비닛보다 크면 그 차이가 전부 캐비닛 아래 빈 여백이 되고, inset-0인 버튼 오버레이도
+    // 캐비닛이 아니라 그 빈 공간까지 포함한 박스의 중앙에 놓인다(피드백의 "버튼 위치가 별로다").
+    // 이 박스의 높이는 캐비닛 높이 그 자체여야 한다 — 오버레이 inset-0 = 캐비닛 테두리와 정확히
+    // 일치한다.
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* 329: 인디케이터가 캐비닛 아래에 붙으면서 한 겹이 더 생겼다 — 좌우 버튼 오버레이의
             기준 박스(inset-0)는 반드시 "캐비닛 그 자체"여야 하므로(319), 인디케이터는 그 relative
             박스 바깥, 이 my-auto 블록 안에 둔다. */}
-        <div className="my-auto w-full flex-none">
-          <div className="relative">
-            <ShelfCabinet heightPx={cabinetHeightPx}>
-              <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
-            </ShelfCabinet>
+      <div className="my-auto w-full flex-none">
+        <div className="relative">
+          <ShelfCabinet heightPx={cabinetHeightPx}>
+            <ShelfColumnGrid columns={columns}>{slotNodes}</ShelfColumnGrid>
+          </ShelfCabinet>
 
-            {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
+          {/* 319: 이전엔 오버레이가 두 벌이었다 — xl은 "1열|2열" 내부 경계에 이전 버튼을 두고 다음
               버튼만 바깥에 뒀고(내 책장이 고정이라 이전/다음이 2·3열에만 걸린다는 뜻이었다),
               mdlg·sm은 둘 다 바깥에 뒀다. 두 벌 모두 캐비닛 안쪽 여백(px-[28px])에 버튼을 맞추느라
               테두리+본문 padding 합을 리터럴로 복제하고 있어서, 캐비닛 상자 모델이 바뀌면 조용히
@@ -299,47 +310,46 @@ export function LibraryPage() {
               버튼이 책을 가리지 않는다: 칸 안쪽으로 걸치는 폭은 버튼 반지름(16px)인데, 칸
               padding(10px)과 스크롤 박스 padding(12px)만 해도 22px이라 책이 놓이는 영역 바깥이다.
               페이지 이동 로직(canGoPrevious/canGoNext, getLibraryPageSlots)은 그대로다. */}
-            <div
-              style={{
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                columnGap: SHELF_COLUMN_GAP_PX,
-                padding: LIBRARY_CABINET_SIDE_CHROME_PX,
-              }}
-              className="pointer-events-none absolute inset-0 grid"
-            >
-              {/* 넘어가는 구간의 양 끝 트랙 위에 빈 칸을 얹고, 버튼을 그 바깥 경계에 절반씩 걸친다.
+          <div
+            style={{
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+              columnGap: SHELF_COLUMN_GAP_PX,
+              padding: LIBRARY_CABINET_SIDE_CHROME_PX,
+            }}
+            className="pointer-events-none absolute inset-0 grid"
+          >
+            {/* 넘어가는 구간의 양 끝 트랙 위에 빈 칸을 얹고, 버튼을 그 바깥 경계에 절반씩 걸친다.
                   세로 중앙도 이 칸 기준이라 캐비닛 중앙과 같다(본문 padding이 상하 대칭이기
                   때문이다). 1열 구간에서는 두 칸이 같은 트랙에 겹치는데, 각 버튼이 그 칸의 left-0 /
                   right-0에 붙으므로 서로 부딪히지 않는다. */}
-              <div className="relative" style={{ gridColumnStart: pagingFirstColumn }}>
-                <ShelfPageButton
-                  direction="left"
-                  onClick={handlePrevious}
-                  disabled={!canGoPrevious}
-                  label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
-                />
-              </div>
-              <div className="relative" style={{ gridColumnStart: columns }}>
-                <ShelfPageButton
-                  direction="right"
-                  onClick={handleNext}
-                  disabled={!canGoNext}
-                  label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
-                />
-              </div>
+            <div className="relative" style={{ gridColumnStart: pagingFirstColumn }}>
+              <ShelfPageButton
+                direction="left"
+                onClick={handlePrevious}
+                disabled={!canGoPrevious}
+                label={pinsMyShelf ? '이전 팔로우 책장' : '이전 책장'}
+              />
+            </div>
+            <div className="relative" style={{ gridColumnStart: columns }}>
+              <ShelfPageButton
+                direction="right"
+                onClick={handleNext}
+                disabled={!canGoNext}
+                label={pinsMyShelf ? '다음 팔로우 책장' : '다음 책장'}
+              />
             </div>
           </div>
-
-          <LibraryPageIndicator
-            currentPageIndex={virtualPageIndex}
-            pageCount={pageCount}
-            hasMoreFromServer={hasMoreFromServer}
-            columns={columns}
-            pagingFirstColumn={pagingFirstColumn}
-          />
         </div>
+
+        <LibraryPageIndicator
+          currentPageIndex={virtualPageIndex}
+          pageCount={pageCount}
+          hasMoreFromServer={hasMoreFromServer}
+          columns={columns}
+          pagingFirstColumn={pagingFirstColumn}
+        />
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -402,30 +412,15 @@ function LibraryPageIndicator({
         className="flex items-center justify-center gap-1.5"
       >
         <span className="sr-only">{label}</span>
-        {visiblePageCount > LIBRARY_PAGE_DOTS_MAX ? (
-          // 점이 너무 많아지면 현재 위치가 오히려 안 읽힌다 — 숫자로 바꾼다.
-          <span aria-hidden="true" className="text-[10px] tabular-nums leading-none text-ink-gray">
-            {currentPageIndex + 1} / {visiblePageCount}
-            {hasMoreFromServer ? '+' : ''}
-          </span>
-        ) : (
-          <>
-            {Array.from({ length: visiblePageCount }, (_, index) => (
-              <span
-                key={index}
-                aria-hidden="true"
-                className={`h-1.5 w-1.5 flex-none rounded-full transition ${
-                  index === currentPageIndex ? 'bg-pin-navy' : 'bg-line-card'
-                }`}
-              />
-            ))}
-            {hasMoreFromServer && (
-              <span aria-hidden="true" className="text-[10px] leading-none text-ink-gray-light">
-                …
-              </span>
-            )}
-          </>
-        )}
+        {/* 416/24·28번: 몇 번째 책장인지 **숫자로만** 보여준다. 점은 뺐다 — 점은 "몇 개 중
+            몇 번째"를 세어야 알 수 있고, 팔로우 목록이 더 있을 수 있어 개수가 확정되지도
+            않는다(그래서 점 끝에 "…"를 달아야 했다). 숫자 하나가 같은 것을 더 정확히 말한다.
+            좌측 곁열의 「지금 펼친 쪽」 메모지와 중복이 아니다 — 그쪽은 지면 문법으로 멀리서
+            읽는 표시이고, 이 숫자는 좌우 버튼 바로 옆에서 손이 있는 자리의 즉시 피드백이다. */}
+        <span aria-hidden="true" className="text-[10px] tabular-nums leading-none text-ink-gray">
+          {currentPageIndex + 1} / {visiblePageCount}
+          {hasMoreFromServer ? '+' : ''}
+        </span>
       </div>
     </div>
   );
