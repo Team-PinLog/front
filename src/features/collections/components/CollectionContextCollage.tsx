@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
+import { ContextComposerSlot } from '@/features/records/components/ContextComposerSlot';
 import { ContextStickyNoteCard } from '@/features/records/components/ContextStickyNoteCard';
 import {
   COLLAGE_BOTTOM_SLACK_PX,
@@ -86,6 +87,9 @@ export function CollectionContextCollage({ recordId, contexts }: CollectionConte
     contexts.map((context) => context.body.length),
     targetPx,
     (box ?? FALLBACK_BOX).widthPx,
+    // 418-43: 무리의 끝에 '맥락 한 장 더' 점선 자리를 둔다. 배치 계산에도 한 칸으로 들어가므로
+    // 겹침·스크롤 0 규칙은 그대로다.
+    true,
   );
 
   const measure = useCallback(() => {
@@ -100,7 +104,7 @@ export function CollectionContextCollage({ recordId, contexts }: CollectionConte
   // 폭·밀도가 바뀌면 카드 높이도 바뀐다. 그리자마자 재고, 이후 변화(웹폰트 도착·본문 수정)는
   // ResizeObserver가 잡는다. 목록·밀도가 같으면 다시 걸지 않도록 서명 문자열로 묶는다.
   const layoutSignature = `${collage.metrics.bodyFontPx}:${collage.cells
-    .map((cell) => `${contexts[cell.index].contextId}@${cell.widthPx}`)
+    .map((cell) => `${cell.isSlot ? 'slot' : contexts[cell.index].contextId}@${cell.widthPx}`)
     .join(',')}`;
   useLayoutEffect(measure, [measure, layoutSignature]);
   useEffect(() => {
@@ -133,13 +137,20 @@ export function CollectionContextCollage({ recordId, contexts }: CollectionConte
   }
 
   if (contexts.length === 0) {
+    // 맥락이 없을 때의 안내 문구는 그대로 두고(418), 그 아래에 418-43의 점선 자리를 둔다.
+    // 칸이 하나뿐이라 겹칠 것이 없어 배치기를 거치지 않는다.
     return (
       <div
         ref={setBoxElement}
         data-page-turn="ignore"
-        className="relative mt-1 min-h-0 flex-1 pt-5"
+        className="relative mt-1 flex min-h-0 flex-1 flex-col gap-3 pt-5"
       >
-        <p className="font-hand text-[20px] text-[#a29d95]">이 장소에 적어 둔 맥락이 아직 없어요</p>
+        <p className="flex-none font-hand text-[20px] text-[#a29d95]">
+          이 장소에 적어 둔 맥락이 아직 없어요
+        </p>
+        <div className="flex-none">
+          <ContextComposerSlot recordId={recordId} isFirst />
+        </div>
       </div>
     );
   }
@@ -158,7 +169,7 @@ export function CollectionContextCollage({ recordId, contexts }: CollectionConte
         const placement = placements[cell.index] ?? { topPx: 0, raisePx: 0 };
         return (
           <div
-            key={context.contextId}
+            key={cell.isSlot ? 'composer-slot' : context.contextId}
             ref={(element) => {
               cardRefs.current[cell.index] = element;
             }}
@@ -176,14 +187,18 @@ export function CollectionContextCollage({ recordId, contexts }: CollectionConte
           >
             {/* 회전은 안쪽에 건다 — 바깥의 transform은 호버 들어올림 몫이다. */}
             <div style={{ transform: `rotate(${cell.rotateDeg}deg)` }}>
-              <ContextStickyNoteCard
-                recordId={recordId}
-                context={context}
-                ownedByMe
-                stackIndex={0}
-                attachment="flat"
-                metrics={collage.metrics}
-              />
+              {cell.isSlot ? (
+                <ContextComposerSlot recordId={recordId} isFirst={contexts.length === 0} />
+              ) : (
+                <ContextStickyNoteCard
+                  recordId={recordId}
+                  context={context}
+                  ownedByMe
+                  stackIndex={0}
+                  attachment="flat"
+                  metrics={collage.metrics}
+                />
+              )}
             </div>
           </div>
         );

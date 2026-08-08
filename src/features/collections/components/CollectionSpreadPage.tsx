@@ -144,14 +144,16 @@ export function CollectionSpreadPage({
         )}
         {canGoNext && onNext && <PageTurnZone side="right" label="다음 장" onClick={onNext} />}
 
-        <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
-          {/* 접힌 자국. md 미만에서는 두 면이 위아래로 쌓여 접힘 자체가 없다. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-6 left-1/2 z-20 hidden w-20 -translate-x-1/2 md:block"
-            style={{ backgroundImage: BOOK_FOLD_SHADE }}
-          />
+        {/* 접힌 자국. md 미만에서는 두 면이 위아래로 쌓여 접힘 자체가 없다.
+            418-40: 두 면을 감싸는 상자 안에서 위아래 24px씩 비워 두던 것을 **펼침면 전체**(쪽 번호
+            줄까지)로 옮겨 위에서 아래까지 이어지게 했다 — 실물 책의 골은 종이 끝까지 간다. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-1/2 z-20 hidden w-20 -translate-x-1/2 md:block"
+          style={{ backgroundImage: BOOK_FOLD_SHADE }}
+        />
 
+        <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
           <div
             role="presentation"
             onClick={(event) => {

@@ -32,7 +32,7 @@ export function RecordRemoveButton({ collectionId, recordId }: RecordRemoveButto
         title="이 기록을 컬렉션에서 빼기"
         className="rounded-full px-2 py-1 text-[11px] font-bold text-[#b6b0a6] underline-offset-4 transition-colors hover:text-red-500 hover:underline focus:outline-none focus-visible:text-red-500 focus-visible:underline disabled:opacity-40"
       >
-        {removeRecordMutation.isPending ? '빼는 중…' : '이 장 덜어내기'}
+        {removeRecordMutation.isPending ? '빼는 중…' : '이 장 뜯어내기'}
       </button>
 
       {showInlineError && (

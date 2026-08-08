@@ -452,6 +452,13 @@ export function planContextNoteCollage(
  *    상자를 넘지 않는다. 415가 상수 여유(FIT_SAFETY)로 막아야 했던 오차가 구조적으로 사라진다.
  * ------------------------------------------------------------------------- */
 
+/**
+ * 418-43: 점선 '맥락 한 장 더' 자리의 어림 높이(px). ContextComposerSlot의 기본 최소 높이와 같은
+ * 값이다 — 그 자리는 두 줄짜리 안내("이 장소의 기억이 더 쌓이길 기다려요")를 온전히 보여야 해서
+ * 밀도와 함께 줄이지 않는다.
+ */
+const COMPOSER_SLOT_HEIGHT_PX = 104;
+
 /** 카드 위에 걸친 마스킹 테이프가 위로 튀어나오는 만큼(px). 첫 카드는 그만큼 내려서 앉힌다. */
 export const COLLAGE_TAPE_HEADROOM_PX = 14;
 
@@ -475,8 +482,10 @@ export function noteBottomDeadZonePx(density: StickyNoteMetrics): number {
 }
 
 export interface OverlapCollageCell {
-  /** contexts 배열의 인덱스. 이 배치에는 빈 칸도 슬롯도 없다. */
+  /** contexts 배열의 인덱스. 슬롯 칸(isSlot)이면 목록의 바로 다음 자리다. */
   index: number;
+  /** 418-43: '맥락 한 장 더' 점선 자리인가. 무리의 마지막 칸에 한 장만 놓인다. */
+  isSlot: boolean;
   /** 0 = 왼쪽 열, 1 = 오른쪽 열. */
   column: number;
   widthPx: number;
@@ -515,23 +524,31 @@ function buildOverlapCells(
   density: CollageDensity,
   columnCount: number,
   areaWidthPx: number,
+  includeComposerSlot: boolean,
 ): OverlapCollageCell[] {
   const columnPx = (areaWidthPx - COLLAGE_COLUMN_GAP_PX * (columnCount - 1)) / columnCount;
   const scale = offsetScale(density);
-  return bodyLengths.map((length, index) => {
+  const place = (index: number, isSlot: boolean, length: number) => {
     const column = index % columnCount;
     const base = COLLAGE_CELL_OFFSETS[index % COLLAGE_CELL_OFFSETS.length];
     const jitter = Math.round(base.left * scale);
-    const widthPx = noteWidthPx(length, density, columnPx - jitter);
+    // 슬롯은 "다음 한 장"의 빈 실루엣이라 열을 꽉 채운다(415와 같은 판형).
+    const widthPx = isSlot ? columnPx - jitter : noteWidthPx(length, density, columnPx - jitter);
     return {
       index,
+      isSlot,
       column,
       widthPx,
       leftPx: column * (columnPx + COLLAGE_COLUMN_GAP_PX) + jitter,
       rotateDeg: base.rotate,
-      estimatedHeightPx: noteHeightPx(length, widthPx, density),
+      estimatedHeightPx: isSlot ? COMPOSER_SLOT_HEIGHT_PX : noteHeightPx(length, widthPx, density),
     };
-  });
+  };
+  const cells = bodyLengths.map((length, index) => place(index, false, length));
+  if (includeComposerSlot) {
+    cells.push(place(bodyLengths.length, true, 0));
+  }
+  return cells;
 }
 
 /** 후보 배치 하나를 재 본다 — 열별 자연 높이·죽은 영역 예산·가장 높은 카드·겹쳤을 때의 최소 걸음. */
@@ -587,6 +604,7 @@ export function planOverlapContextCollage(
   bodyLengths: number[],
   availableHeightPx: number | null | undefined,
   areaWidthPx: number,
+  includeComposerSlot = false,
 ): OverlapContextCollage {
   const targetPx =
     availableHeightPx && availableHeightPx > 0 ? availableHeightPx : DEFAULT_AVAILABLE_HEIGHT_PX;
@@ -597,10 +615,17 @@ export function planOverlapContextCollage(
         { length: columnCount },
         (_, column) => COLLAGE_TAPE_HEADROOM_PX + column * OVERLAP_COLUMN_STAGGER_PX,
       );
-      const cells = buildOverlapCells(bodyLengths, density, columnCount, areaWidthPx);
+      const cells = buildOverlapCells(
+        bodyLengths,
+        density,
+        columnCount,
+        areaWidthPx,
+        includeComposerSlot,
+      );
       return {
         density,
         cells,
+        columnCount,
         startTops,
         ...gaugeOverlapPlan(cells, density, columnCount, startTops, targetPx),
       };
@@ -608,16 +633,26 @@ export function planOverlapContextCollage(
   );
 
   const usable = candidates.filter((candidate) => candidate.fitsTallestCard);
+  // 깊은 겹침 구간: 포갠 사이로 가장 넓은 띠가 남는 후보를 고른다. 띠 폭이 같으면(점선 슬롯처럼
+  // 밀도와 무관하게 높이가 고정된 칸이 마지막에 오면 자주 그렇다) **같은 열 수 안에서 더 조인**
+  // 쪽을 택한다 — 카드가 작을수록 덮이는 글자가 줄기 때문이다. 열 수는 확실히 더 넓어질 때만 바꾼다.
+  let widestDeep: (typeof candidates)[number] | undefined;
+  for (const candidate of usable) {
+    if (widestDeep === undefined || candidate.minStepPx > widestDeep.minStepPx + 0.5) {
+      widestDeep = candidate;
+    } else if (
+      candidate.columnCount === widestDeep.columnCount &&
+      Math.abs(candidate.minStepPx - widestDeep.minStepPx) <= 0.5
+    ) {
+      widestDeep = candidate;
+    }
+  }
   const chosen =
     usable.find((candidate) => candidate.fitsWithoutOverlap) ??
     usable.find((candidate) => candidate.fitsWithSafeOverlap) ??
-    // 깊은 겹침 구간: 포갠 사이로 가장 넓은 띠가 남는 후보. 후보가 하나도 없으면(카드 한 장이
-    // 상자보다 높은 극단) 가장 조인 1열을 쓴다 — 그때만 넘칠 수 있고, 그것이 이 화면의 한계다.
-    usable.reduce<(typeof candidates)[number] | undefined>(
-      (best, candidate) =>
-        best === undefined || candidate.minStepPx > best.minStepPx ? candidate : best,
-      undefined,
-    ) ??
+    // 후보가 하나도 없으면(카드 한 장이 상자보다 높은 극단) 가장 조인 1열을 쓴다 — 그때만 넘칠 수
+    // 있고, 그것이 이 화면의 한계다.
+    widestDeep ??
     candidates[candidates.length - 1];
 
   return {

@@ -111,6 +111,9 @@ export function CollectionDetailView({
   const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
   // lg 미만에서는 책장을 나란히 둘 가로 폭이 없어 서랍(오른쪽 슬라이드)으로 연다.
   const [isShelfOpen, setIsShelfOpen] = useState(false);
+  // 418-39: 목차 장(첫 장) 노출 여부. spreadIndex(CollectionSpreadContext)와 달리 이 화면 안에서만
+  // 의미가 있어 로컬 state로 둔다 — 332~378에서 쓰던 것과 같은 구조다.
+  const [isTocOpen, setIsTocOpen] = useState(true);
 
   // 진입 시 hasNextPage가 false가 될 때까지 자동으로 순차 로드한다 — 왼쪽 지도가 Collection의 모든
   // record를 한 번에 보여줘야 하기 때문이다. isFetchNextPageError면 더 재시도하지 않는다.
@@ -186,18 +189,34 @@ export function CollectionDetailView({
   // 이전 record 것인데 넘기는 recordId는 새 record 것이 되는 레이스가 생긴다(203 논의).
   const isRecordDeleteConfirmOpen = recordDeleteConfirm.isOpen;
 
+  // 418-39: 목차 장을 되살린다. 쪽 순서는 [목차] → [record 0] → … → [record n-1]이고, 목차는
+  // 되돌아갈 수 있는 첫 장이다(332의 규칙 그대로). 지도 맞춤도 이 상태로 갈린다 — 목차에서는
+  // 컬렉션의 모든 핀이 보이게, record 장에서는 그 record의 핀 위치로 맞춘다.
   const handleNext = () => {
-    if (!isRecordDeleteConfirmOpen && canGoNext) {
+    if (isRecordDeleteConfirmOpen) {
+      return;
+    }
+    if (isTocOpen) {
+      setIsTocOpen(false);
+      return;
+    }
+    if (canGoNext) {
       spreadState.goToNext();
     }
   };
   const handlePrevious = () => {
-    if (!isRecordDeleteConfirmOpen && canGoPrevious) {
-      spreadState.goToPrevious();
+    if (isRecordDeleteConfirmOpen || isTocOpen) {
+      return;
     }
+    if (canGoPrevious) {
+      spreadState.goToPrevious();
+      return;
+    }
+    setIsTocOpen(true);
   };
   const handleSelectIndex = (index: number) => {
     if (!isRecordDeleteConfirmOpen) {
+      setIsTocOpen(false);
       spreadState.goToIndex(index);
     }
   };
@@ -236,34 +255,10 @@ export function CollectionDetailView({
           기록 {flatRecords.length}
           {isLoadingAllPlaces ? '+' : ''}개 · {formatMadeOn(createdAt)} 만듦
         </p>
-      </div>
-
-      {/* 지도는 조작 대상이라 페이지 넘김에서 통째로 제외한다 — 지도를 끌어 옮기려다 장이
-          넘어가면 안 된다(332부터의 규칙). 폴라로이드도 이 상자 안이라 함께 제외된다. */}
-      <div data-page-turn="ignore" className="relative mt-6 flex min-h-0 flex-1 flex-col">
-        <CollectionMapPoster
-          collectionId={collectionId}
-          places={isLoadingAllPlaces ? [] : mapPlaces}
-          activeRecordId={currentRecord?.recordId ?? null}
-          isLoadingAll={isLoadingAllPlaces}
-          onSelectPlace={handleSelectFromMap}
-        />
-        {ownedByMe && currentRecord && (
-          <CollectionRecordPhoto
-            key={currentRecord.recordId}
-            placeName={currentRecord.place.name}
-            thumbnailUrl={currentRecord.place.thumbnailUrl}
-            className="absolute -bottom-3 right-2 z-20 w-[46%]"
-          />
-        )}
-      </div>
-
-      <div className="mt-5 flex flex-none flex-wrap items-center justify-between gap-2">
-        <p className="font-hand text-[21px] leading-none text-[#8a857e]">이 컬렉션의 장소들</p>
-        {/* 소유자 전용 도구. 시안에는 없지만 기능은 유지해야 하고(332 확정), 표제 옆이 아니라
-            면의 아래 구석에 두어 펼쳤을 때 먼저 읽히는 것이 컬렉션 자체이게 한다. */}
+        {/* 418-42: 소유자 전용 도구를 면 아래 구석에서 **표제 바로 아래(왼쪽 상단)**로 올렸다.
+            버튼 구성·동작은 그대로이고 자리만 바뀐다. */}
         {ownedByMe && (
-          <div className="flex flex-wrap items-center gap-0.5">
+          <div className="mt-3 flex flex-wrap items-center gap-0.5">
             <button
               type="button"
               onClick={() => setIsAddRecordOpen(true)}
@@ -285,12 +280,74 @@ export function CollectionDetailView({
           </div>
         )}
       </div>
+
+      {/* 지도는 조작 대상이라 페이지 넘김에서 통째로 제외한다 — 지도를 끌어 옮기려다 장이
+          넘어가면 안 된다(332부터의 규칙). 폴라로이드도 이 상자 안이라 함께 제외된다. */}
+      <div data-page-turn="ignore" className="relative mt-6 flex min-h-0 flex-1 flex-col">
+        <CollectionMapPoster
+          collectionId={collectionId}
+          places={isLoadingAllPlaces ? [] : mapPlaces}
+          activeRecordId={currentRecord?.recordId ?? null}
+          isLoadingAll={isLoadingAllPlaces}
+          // 418-39: 목차 장이면 컬렉션 전체 핀, record 장이면 그 record의 핀으로 맞춘다.
+          fitAllBounds={isTocOpen}
+          onSelectPlace={handleSelectFromMap}
+        />
+        {ownedByMe && currentRecord && (
+          <CollectionRecordPhoto
+            key={currentRecord.recordId}
+            placeName={currentRecord.place.name}
+            thumbnailUrl={currentRecord.place.thumbnailUrl}
+            className="absolute -bottom-3 right-2 z-20 w-[46%]"
+          />
+        )}
+      </div>
+
+      <div className="mt-5 flex flex-none flex-wrap items-center justify-between gap-2">
+        <p className="font-hand text-[21px] leading-none text-[#8a857e]">이 컬렉션의 장소들</p>
+      </div>
     </div>
   );
 
-  // ── 오른쪽 면: 장소 + (소유자) 맥락 콜라주 / (타인) 폴라로이드 + 저장 진입점 ──
+  // ── 오른쪽 면: (목차 장) 장 목록 / 장소 + (소유자) 맥락 콜라주 / (타인) 폴라로이드 + 저장 진입점 ──
   let rightPage: ReactNode;
-  if (!currentRecord) {
+  if (isTocOpen) {
+    // 418-39: 되살린 목차 장. 왼쪽 면은 그대로 표제 + 전체 지도이고, 오른쪽 면이 장 목록이다.
+    // 항목이 많으면 이 목록 **안에서** 스크롤한다(인덱스 레일과 같은 규칙) — 펼침면은 자라지 않는다.
+    rightPage = (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <h2 className="flex-none text-[23px] font-extrabold leading-[1.12] tracking-[-0.02em] text-[#2c2a28] sm:text-[26px]">
+          목차
+        </h2>
+        {flatRecords.length === 0 ? (
+          <p className="mt-6 font-hand text-[20px] text-[#a29d95]">
+            아직 이 책에 담긴 장소가 없어요
+          </p>
+        ) : (
+          <div
+            data-page-turn="ignore"
+            className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#4f9b78]"
+          >
+            {flatRecords.map((record, index) => (
+              <button
+                key={record.recordId}
+                type="button"
+                onClick={() => handleSelectIndex(index)}
+                className="flex w-full items-center gap-3 border-b border-dashed border-[#e4ded3] px-1 py-3 text-left transition-colors hover:bg-black/[0.03] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#4f9b78]"
+              >
+                <span className="w-5 flex-none text-[12px] font-extrabold text-[#4f9b78]">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[15px] font-bold text-[#2c2a28]">
+                  {record.place.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  } else if (!currentRecord) {
     rightPage = (
       <div className="m-auto flex flex-col items-center gap-3 text-center">
         <p className="font-hand text-[22px] text-[#a29d95]">아직 이 책에 담긴 장소가 없어요</p>
@@ -423,10 +480,14 @@ export function CollectionDetailView({
             right={rightPage}
             onPrevious={handlePrevious}
             onNext={handleNext}
-            canGoPrevious={canGoPrevious}
-            canGoNext={canGoNext}
+            // 418-39: 목차가 첫 장이라 목차에서는 더 앞이 없고, 첫 record에서는 목차로 되돌아간다.
+            canGoPrevious={!isTocOpen}
+            canGoNext={isTocOpen ? flatRecords.length > 0 : canGoNext}
             footer={
-              flatRecords.length > 0 && (
+              flatRecords.length > 0 &&
+              (isTocOpen ? (
+                <span className="text-[13px] font-extrabold text-[#2c2a28]">목차</span>
+              ) : (
                 <>
                   <span className="text-[13px] font-extrabold text-[#2c2a28]">
                     {currentIndex + 1}
@@ -435,7 +496,7 @@ export function CollectionDetailView({
                   {flatRecords.length}
                   {isLoadingAllPlaces ? '+' : ''}
                 </>
-              )
+              ))
             }
           />
         </div>
@@ -444,8 +505,10 @@ export function CollectionDetailView({
           <CollectionIndexRail
             records={flatRecords}
             activeIndex={currentIndex}
+            isTocActive={isTocOpen}
             disabled={isRecordDeleteConfirmOpen}
             onSelect={handleSelectIndex}
+            onSelectToc={() => setIsTocOpen(true)}
           />
         )}
       </div>

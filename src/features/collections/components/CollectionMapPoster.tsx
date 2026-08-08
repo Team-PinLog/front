@@ -6,6 +6,11 @@ interface CollectionMapPosterProps {
   places: CollectionSpreadMapPlace[];
   activeRecordId: number | null;
   isLoadingAll: boolean;
+  /**
+   * 418-39: 목차 장이면 true — 컬렉션의 모든 핀이 보이도록 fitBounds한다. record 장이면 false라
+   * 그 record의 핀 위치로 중심을 옮긴다(CollectionSpreadMap이 두 규칙을 모두 갖고 있다).
+   */
+  fitAllBounds: boolean;
   onSelectPlace: (recordId: number) => void;
 }
 
@@ -31,6 +36,7 @@ export function CollectionMapPoster({
   places,
   activeRecordId,
   isLoadingAll,
+  fitAllBounds,
   onSelectPlace,
 }: CollectionMapPosterProps) {
   return (
@@ -54,7 +60,7 @@ export function CollectionMapPoster({
             places={places}
             activeRecordId={activeRecordId}
             isLoadingAll={isLoadingAll}
-            fitAllBounds
+            fitAllBounds={fitAllBounds}
             onSelectPlace={onSelectPlace}
           />
           {/* 하프톤: 3px 격자의 검정 3.5% 점. 색조를 바꾸지 않는 무채색 인쇄 질감이다(415와 같은 값). */}
