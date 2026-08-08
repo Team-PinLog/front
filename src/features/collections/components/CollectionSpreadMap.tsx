@@ -166,9 +166,10 @@ export function CollectionSpreadMap({
       ...places.filter((place) => place.recordId === activeRecordId),
     ];
     markersRef.current = orderedPlaces.map((place) => {
-      // 목차 장(fitAllBounds)은 "이 책의 모든 장소"를 한눈에 보여주는 지도라 주인공이 따로 없다 —
-      // 전부 활성 모양으로 똑같이 그린다. record 장에서만 지금 보고 있는 한 곳을 앞세운다.
-      const isActive = fitAllBounds || place.recordId === activeRecordId;
+      // 418: 강조를 뷰포트 규칙(fitAllBounds)에서 **떼어냈다**. 목차 장이 사라지고 좌측 포스터가
+      // 늘 "이 컬렉션의 장소들 전체"를 담게 되면서, 전체를 보여주면서도 지금 펼친 장을 앞세워야
+      // 하는 상태가 기본이 됐다 — 두 규칙을 한 플래그로 겸하던 것을 나눈다.
+      const isActive = place.recordId === activeRecordId;
       return new kakao.maps.CustomOverlay({
         map,
         position: new kakao.maps.LatLng(place.lat, place.lng),
@@ -249,7 +250,9 @@ export function CollectionSpreadMap({
             : null;
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-line-card bg-line-subtle">
+    // 418: 테두리·라운드를 뺐다 — 이 지도는 이제 흰 매트 포스터(CollectionMapPoster) 안에 인쇄된
+    // 그림이라, 자기 액자를 또 두르면 액자가 두 겹이 된다.
+    <div className="relative h-full w-full overflow-hidden bg-[#eae6e0]">
       <div ref={containerRef} className="h-full w-full" />
       {overlayMessage && (
         <div className="absolute inset-0 flex items-center justify-center bg-paper-white/90 px-6 text-center text-xs leading-relaxed text-ink-gray">

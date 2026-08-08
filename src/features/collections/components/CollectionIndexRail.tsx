@@ -1,10 +1,9 @@
-import { COLLECTION_FOCUS_RING_CLASS } from './collectionActionStyles';
 import type { CollectionRecordItem } from './CollectionDetailView';
 
 interface CollectionIndexRailProps {
   records: CollectionRecordItem[];
   activeIndex: number;
-  /** 지금 목차 장(첫 장)을 보고 있는지. true면 맨 위 "목차" 탭이 활성으로 그려진다. */
+  /** 지금 목차 장을 보고 있는지. true면 맨 위 "목차" 탭이 활성으로 그려진다(418-39). */
   isTocActive: boolean;
   disabled: boolean;
   onSelect: (index: number) => void;
@@ -12,46 +11,36 @@ interface CollectionIndexRailProps {
   onSelectToc: () => void;
 }
 
-// 356: 키보드로 탭을 옮길 때 브라우저 기본 포커스 사각형이 그려져 책 디자인과 겉돌았다. 표시를
-// 없애는 게 아니라(그건 키보드 사용자가 자기 위치를 잃는 접근성 후퇴다) 브랜드 톤 아웃라인으로
-// 바꾼다. 프로젝트에 이미 있는 패턴(LoginPage·TermsPage·PrivacyPage)과 같은 형태다.
-//  - `outline-none`을 쓰지 않는다. 우리 outline을 지정하면 기본 사각형은 자연히 대체되고, 강제
-//    색상 모드(Windows 고대비)에서도 box-shadow 기반 ring과 달리 표시가 살아남는다.
-//  - 마우스 클릭에는 뜨지 않아야 하므로 :focus가 아니라 :focus-visible이다.
-//  - offset이 **음수**인 이유: 레일이 overflow-y-auto라 바깥으로 내민 아웃라인은 좌우가 잘린다.
-//    탭 안쪽으로 그리면 잘리지 않고, 책 옆면에 물린 탭 모양과도 잘 맞는다.
-const TAB_BASE_CLASS =
-  'flex flex-none items-center rounded-r-lg border-y border-r py-2 pl-5 pr-2 text-left shadow-[3px_3px_8px_-3px_rgba(4,33,66,0.22)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:opacity-40';
-// 아웃라인 색은 탭 바탕색과 대비되는 쪽으로 각자 고른다 — 민트 탭에 민트 아웃라인은 보이지 않는다.
-const TAB_ACTIVE_CLASS =
-  'border-log-mint bg-log-mint text-paper-white focus-visible:outline-paper-white';
-const TAB_IDLE_CLASS =
-  'border-line-card bg-snow-white text-ink-gray hover:border-log-mint/40 hover:text-log-mint focus-visible:outline-log-mint';
-// 332 디자인 피드백 2번: "목차" 탭은 선택되지 않은 상태에서도 record 탭들과 구분돼야 한다 —
-// 같은 회색이면 장소명 하나로 오인된다. 옅은 알파 면은 충분히 눈에 띄지 않아(2차 피드백) 브랜드
-// 남색 단색으로 칠한다. 활성 색(민트)과는 색상 자체가 달라 "지금 이 장"이라는 신호는 그대로 남는다.
-const TOC_TAB_IDLE_CLASS =
-  'border-pin-navy bg-pin-navy text-paper-white hover:bg-pin-navy/85 focus-visible:outline-paper-white';
-
 /**
- * Collection 상세(플립북) 우측에 붙는 세로 인덱스 탭 레일. 근거: Jira S15P11A705-246,
- * 목업 book-index-panel/book-index-scroll(mockup/index.html 262-271행, 2876-2895행) —
- * record마다 세로로 쌓인 탭을 두고 클릭 시 해당 스프레드로 바로 이동한다.
- * 목업은 이 레일을 책 바깥쪽에 절대 위치(left:100%)로 붙이고 드래그 스크롤·자석(hover proximity)
- * 효과까지 구현하지만, SpreadFadeIn(CollectionDetailView.tsx 26-27행)과 같은 판단으로 그 물리 효과는
- * 가져오지 않고 flex 형제 요소 + 표준 overflow-y-auto로만 구현한다 — 반응형 레이아웃에서 절대 위치는
- * 뷰포트 폭에 따라 잘리거나 겹칠 수 있어서다.
- * 332 시안은 이 레일이 책 옆에 떨어져 있지 않고 "책 오른쪽 가장자리에 물려 튀어나온 탭"이다 —
- * 절대 위치 대신 호출부에서 책을 z-10으로 올려 탭의 왼쪽 끝이 책 뒤로 들어가게 만든다.
- * ⚠️ 겹치는 양을 정할 때 책 표지가 페이지보다 8px 크다는 것(CollectionDetailView의 -inset-2)을
- * 반드시 함께 본다. 첫 구현은 여기에 -ml-3(12px)까지 더해 총 20px이 가려졌는데, 탭의 왼쪽
- * 패딩(16px)보다 커서 장소명 글자가 책 뒤로 잘려 들어갔다(디자인 피드백 1번). 이제 음수 마진 없이
- * 표지 턱 8px만 겹치고, 왼쪽 패딩을 pl-5(20px)로 둬 글자가 항상 표지 바깥에서 시작하게 한다.
+ * 컬렉션 펼침면 오른쪽 가장자리에 물려 튀어나온 **세로 인덱스 탭**. 근거: Jira S15P11A705-246,
+ * 418(다이어리 리디자인).
  *
- * 332 디자인 피드백 2번: 폭을 w-28(112px)에서 w-20(80px)으로 줄이고, 맨 위에 "목차" 탭을 더했다 —
- * 하단 목차 버튼을 없애면서(페이지 클릭으로 이동) 목차로 곧장 돌아갈 진입점이 이 레일밖에 남지
- * 않았기 때문이다. 목차도 하나의 장이므로 record 탭들과 같은 모양·같은 줄에 세운다.
+ * 246/332에서는 민트·남색 알약 탭이었다. 418에서 화면 전체가 종이가 되면서 탭도 종이가 된다 —
+ * 다이어리 옆구리에 붙인 크라프트 인덱스 라벨이고, 지금 펼친 장만 잉크가 진해진다.
+ * 색은 415가 확정한 팔레트(크림·잉크·민트)에서 가져왔다.
+ *
+ * 418-39에서 **목차 탭이 돌아왔다.** 목차 장이 되살아나면서 그 장으로 곧장 되돌아갈 진입점이
+ * 다시 필요해졌기 때문이다(332가 이 탭을 둔 것과 같은 이유다). 목차도 하나의 장이므로 record
+ * 탭들과 같은 모양·같은 줄에 세운다.
+ *
+ * ⚠️ 높이는 펼침면과 같은 상한을 쓴다(CollectionSpreadPage와 같은 식). 항목이 많으면 레일 **안에서**
+ * 스크롤되고, 펼침면 자체나 페이지는 자라지 않는다 — 418이 금지한 것은 페이지 스크롤이다.
  */
+
+const TAB_BASE_CLASS =
+  'flex flex-none items-center rounded-r-[4px] border-y border-r py-2 pl-4 pr-2 text-left transition-colors focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:opacity-40';
+const TAB_ACTIVE_CLASS =
+  'border-[#cfd9d1] bg-[#dff0e4] text-[#2f6a4e] focus-visible:outline-[#3f7d5f]';
+// 418-45: 기본 상태를 브랜드 네이비(pin-navy #042142)로 바꾼다. 글자는 paper-white라 대비가
+// 충분하고(#042142 위 #FAF7F6 ≈ 16:1, WCAG AAA), 호버는 현행 문법 그대로 "한 단계 밝게"로 남긴다
+// (알파 85%). 활성 상태는 지금처럼 색상 자체가 다른 민트라 세 상태가 서로 구분된다.
+// 418-47: 네이비는 **'목차' 탭 하나에만** 남는다. 장(record) 탭은 45 이전의 크라프트 라벨로
+// 되돌린다 — 레일 전체가 네이비가 되니 종이 옆구리에 붙은 라벨이 아니라 색 띠로 보였다.
+const TAB_TOC_IDLE_CLASS =
+  'border-pin-navy bg-pin-navy text-paper-white hover:bg-pin-navy/85 focus-visible:outline-paper-white';
+const TAB_IDLE_CLASS =
+  'border-[#e4ded3] bg-[#f7f3ec] text-[#8a857e] hover:bg-[#efe9df] hover:text-[#5c574f] focus-visible:outline-[#4f9b78]';
+
 export function CollectionIndexRail({
   records,
   activeIndex,
@@ -61,20 +50,23 @@ export function CollectionIndexRail({
   onSelectToc,
 }: CollectionIndexRailProps) {
   return (
-    // 356: 스크롤 상자 자체도 크롬에서는 키보드 포커스를 받는다(키보드 스크롤 지원) — 그때 뜨는
-    // 기본 사각형도 같은 아웃라인으로 바꾼다.
-    <div
-      className={`hidden w-20 flex-none flex-col gap-1 overflow-y-auto pt-12 md:flex md:max-h-[600px] xl:max-h-[720px] ${COLLECTION_FOCUS_RING_CLASS}`}
-    >
+    // 탭은 펼침면에 **닿되 물리지는 않는다**(-ml-1). 처음엔 12px을 물렸는데, 펼침면이 자기 열보다
+    // 좁을 때(mx-auto)와 꽉 찰 때 물림량이 달라져 어떤 폭에서는 장소명 앞글자가 책 뒤로 잘렸다
+    // (실렌더 확인 — 246이 겪었던 함정과 같은 것이다). 붙어 보이는 일은 왼쪽 모서리를 각지게
+    // 두는 것(rounded-r만 준다)이 이미 하고 있다.
+    // 418-41: `relative z-20`이 없으면 이 레일은 **위치 지정되지 않은** 요소라 형제 중 위치 지정된
+    // 것들(펼침면의 z-10 상자, 그리고 오른쪽으로 14px 삐져나오는 뒤쪽 종이 2겹) 아래에 깔린다 —
+    // 탭 왼쪽 끝과 장소명 앞글자가 종이 뒤로 들어가 잘린 것처럼 보였다(실렌더 확인).
+    <div className="relative z-20 -ml-1 hidden max-h-[min(760px,calc(100dvh-88px))] w-[96px] flex-none flex-col gap-1 overflow-y-auto pt-14 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#4f9b78] lg:flex">
       <button
         type="button"
         onClick={onSelectToc}
         disabled={disabled}
         aria-current={isTocActive}
         title="목차"
-        className={`${TAB_BASE_CLASS} ${isTocActive ? TAB_ACTIVE_CLASS : TOC_TAB_IDLE_CLASS}`}
+        className={`${TAB_BASE_CLASS} ${isTocActive ? TAB_ACTIVE_CLASS : TAB_TOC_IDLE_CLASS}`}
       >
-        <span className="min-w-0 flex-1 truncate text-xs font-bold">목차</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-bold">목차</span>
       </button>
 
       {records.map((record, index) => {
@@ -89,7 +81,9 @@ export function CollectionIndexRail({
             title={record.place.name}
             className={`${TAB_BASE_CLASS} ${isActive ? TAB_ACTIVE_CLASS : TAB_IDLE_CLASS}`}
           >
-            <span className="min-w-0 flex-1 truncate text-xs font-bold">{record.place.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-bold">
+              {record.place.name}
+            </span>
           </button>
         );
       })}

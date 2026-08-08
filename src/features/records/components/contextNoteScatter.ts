@@ -76,12 +76,14 @@ export function contextNoteScatterStyle(index: number): CSSProperties {
 /**
  * 맥락 영역의 실사용 폭(px). 모달 1000 - 안쪽 여백 112 - 사진 열 300 - 열 간격 40 = 548에서
  * 마지막 안전 여유를 뺀 값이다.
+ *
+ * 418: 컬렉션 펼침면의 오른쪽 페이지는 폭이 다르다(≈470px) — 그래서 이 값은 **기본값**이 되고,
+ * 호출부가 `areaWidthPx`로 자기 폭을 넘길 수 있다. 나머지 규칙(밀도 사다리·폭 역산·줄 계산)은
+ * 두 화면이 그대로 공유한다.
  */
 const COLLAGE_AREA_PX = 540;
 /** 두 열 사이 간격. */
 const COLLAGE_COLUMN_GAP_PX = 24;
-/** 한 열의 폭(px). 카드는 이 폭을 넘지 않는다. */
-const COLLAGE_COLUMN_PX = (COLLAGE_AREA_PX - COLLAGE_COLUMN_GAP_PX) / 2;
 /** 콜라주 상자의 위아래 여백(테이프가 위로 튀어나오는 자리 + 마지막 줄 기울임 여유). */
 const COLLAGE_PADDING_Y_PX = 40;
 /**
@@ -89,6 +91,13 @@ const COLLAGE_PADDING_Y_PX = 40;
  * 낙관적이다. 실렌더에서 맥락 6~9장이 6~17px씩 넘쳤고, 이 여유를 두자 한 단계 더 조여 들어갔다.
  */
 const COLLAGE_FIT_SAFETY_PX = 22;
+/**
+ * 418: 위 여유는 **줄 수와 무관한 상수**였는데, 오차는 줄마다 쌓인다(줄 하나가 그 줄에서 가장 높은
+ * 카드로 정해지고, 그 카드의 어림이 몇 px씩 낙관적이다). 컬렉션 펼침면에서 맥락 9장(5줄)을
+ * 실렌더했을 때 마지막 줄이 30px쯤 잘렸고, 줄당 이만큼을 더 빼자 한 단계 더 조여 들어가 담겼다.
+ * Record 상세(415)에도 같은 규칙이 적용된다 — 맥락이 적어 줄이 1~2줄인 흔한 경우에는 영향이 없다.
+ */
+const COLLAGE_ROW_SAFETY_PX = 6;
 /**
  * 높이를 아직 재지 못했을 때 쓰는 기본값(px). 1000x760 모달에서 실측한 맥락 영역 높이다.
  * 첫 페인트부터 맞는 단계가 나오게 하려는 값이고, 실측이 들어오면 그 값으로 대체된다.
@@ -223,6 +232,14 @@ export interface ContextNoteCell {
   style: CSSProperties;
 }
 
+/** 418: 화면마다 다른 것(폭·추가 자리 유무)만 받는다. 밀도 사다리와 배치 규칙은 공유한다. */
+export interface ContextNoteCollageOptions {
+  /** 2열이 들어앉을 전체 폭(px). 기본은 Record 상세(1000px 모달)의 540px. */
+  areaWidthPx?: number;
+  /** '새로운 맥락 추가' 고정 칸을 둘지. 기본 true(Record 상세). */
+  includeComposerSlot?: boolean;
+}
+
 export interface ContextNoteCollage {
   /** 읽는 순서(좌→우, 위→아래)의 칸 목록. COMPOSER_SLOT_CELL_INDEX 자리가 슬롯이다. */
   cells: ContextNoteCell[];
@@ -286,9 +303,17 @@ function noteHeightPx(bodyLength: number, widthPx: number, density: CollageDensi
 }
 
 /** 한 밀도 단계에서 칸을 채우고, 전체 높이를 함께 낸다. */
-function planCells(bodyLengths: number[], density: CollageDensity) {
+function planCells(
+  bodyLengths: number[],
+  density: CollageDensity,
+  columnPx: number,
+  slotCellIndex: number | null,
+) {
   // 슬롯이 네 번째 칸을 잡고 있으므로 칸은 최소 4개다(맥락이 0~2개여도 두 줄을 유지한다).
-  const cellCount = Math.max(COMPOSER_SLOT_CELL_INDEX + 1, bodyLengths.length + 1);
+  // 418: 슬롯이 없는 화면(컬렉션 펼침면)은 그 하한도 없다 — 맥락 수만큼만 칸을 만든다.
+  const noteCellCount = bodyLengths.length + (slotCellIndex === null ? 0 : 1);
+  const cellCount =
+    slotCellIndex === null ? noteCellCount : Math.max(slotCellIndex + 1, noteCellCount);
   const cells: ContextNoteCell[] = [];
   const heights: number[] = [];
   let nextNote = 0;
@@ -302,7 +327,7 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
       top: Math.round(base.top * scale),
       rotate: base.rotate,
     };
-    const isSlot = cellIndex === COMPOSER_SLOT_CELL_INDEX;
+    const isSlot = cellIndex === slotCellIndex;
     const noteIndex = isSlot ? null : bodyLengths[nextNote] === undefined ? null : nextNote;
 
     if (noteIndex === null) {
@@ -312,7 +337,7 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
         index: null,
         style: isSlot
           ? {
-              width: COLLAGE_COLUMN_PX - offset.left,
+              width: columnPx - offset.left,
               marginLeft: offset.left,
               marginTop: offset.top,
               transform: `rotate(${offset.rotate}deg)`,
@@ -324,7 +349,7 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
     }
 
     const length = bodyLengths[noteIndex];
-    const width = noteWidthPx(length, density, COLLAGE_COLUMN_PX - offset.left);
+    const width = noteWidthPx(length, density, columnPx - offset.left);
     cells.push({
       index: noteIndex,
       style: {
@@ -340,13 +365,15 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
 
   // 줄 높이는 그 줄에서 가장 높은 칸이 정한다(2열).
   let totalHeight = 0;
+  let rowCount = 0;
   for (let rowStart = 0; rowStart < heights.length; rowStart += 2) {
     totalHeight +=
       Math.max(heights[rowStart], heights[rowStart + 1] ?? 0) +
       (rowStart > 0 ? density.rowGapPx : 0);
+    rowCount += 1;
   }
 
-  return { cells, totalHeight };
+  return { cells, totalHeight: totalHeight + rowCount * COLLAGE_ROW_SAFETY_PX };
 }
 
 /**
@@ -361,14 +388,21 @@ function planCells(bodyLengths: number[], density: CollageDensity) {
 export function planContextNoteCollage(
   bodyLengths: number[],
   availableHeightPx?: number | null,
+  options?: ContextNoteCollageOptions,
 ): ContextNoteCollage {
+  const areaWidthPx = options?.areaWidthPx ?? COLLAGE_AREA_PX;
+  const columnPx = (areaWidthPx - COLLAGE_COLUMN_GAP_PX) / 2;
+  // 418: 컬렉션 펼침면에는 '새로운 맥락 추가' 자리가 없다 — 컬렉션 상세는 맥락을 **읽는** 화면이고,
+  // 맥락 추가 진입점은 Record 상세(389)에만 있다. 없는 진입점의 자리를 비워 두면 그 칸이 왜 비어
+  // 있는지 설명할 수 없다.
+  const slotCellIndex = options?.includeComposerSlot === false ? null : COMPOSER_SLOT_CELL_INDEX;
   const usableHeight =
     (availableHeightPx && availableHeightPx > 0 ? availableHeightPx : DEFAULT_AVAILABLE_HEIGHT_PX) -
     COLLAGE_PADDING_Y_PX -
     COLLAGE_FIT_SAFETY_PX;
 
   for (const density of COLLAGE_DENSITIES) {
-    const { cells, totalHeight } = planCells(bodyLengths, density);
+    const { cells, totalHeight } = planCells(bodyLengths, density, columnPx, slotCellIndex);
     if (totalHeight <= usableHeight) {
       return {
         cells,
@@ -384,11 +418,312 @@ export function planContextNoteCollage(
   // 가장 조인 단계로도 넘치면 그 단계로 그리고 스크롤을 허용한다. 글자를 줄이거나 가리지 않는다.
   const densest = COLLAGE_DENSITIES[COLLAGE_DENSITIES.length - 1];
   return {
-    cells: planCells(bodyLengths, densest).cells,
+    cells: planCells(bodyLengths, densest, columnPx, slotCellIndex).cells,
     metrics: densest,
     slotMinHeightPx: densest.slotMinHeightPx,
     columnGapPx: COLLAGE_COLUMN_GAP_PX,
     rowGapPx: densest.rowGapPx,
     fits: false,
   };
+}
+
+/* ------------------------------------------------------------------------- *
+ * 418 보완 — 컬렉션 펼침면의 **포개 붙인** 맥락 배치
+ *
+ * 위 `planContextNoteCollage`(415, Record 상세)는 마지막 안전장치가 **스크롤**이다. 컬렉션 펼침면은
+ * 그 예외조차 허용되지 않는다(418-33) — 어떤 장수·어떤 뷰포트에서도 콜라주 상자와 페이지 모두
+ * 스크롤이 0이어야 하고, 본문을 자르거나 말줄임해서도 안 된다.
+ *
+ * 남는 수단은 **겹침**이다. 종이를 서로 포개 붙이면 필요한 세로 공간이 실제로 줄어든다.
+ *
+ * ## 규칙
+ *
+ * 1. 2열은 유지한다(415가 확정한 리듬). 다만 칸이 줄로 정렬되는 그리드가 아니라 **열마다 독립된
+ *    한 무더기**다 — 겹침의 깊이를 카드마다 다르게 주려면 줄 높이라는 공통 제약이 없어야 한다.
+ * 2. 겹침의 1단계는 **죽은 영역까지**다. 카드 아래쪽의 여백 + `created:` 줄은 덮여도 읽을 것이
+ *    사라지지 않는다(사용자 허용 범위). `noteBottomDeadZonePx`가 그 깊이다.
+ * 3. 그래도 넘치면 **밀도를 조인다**(415와 같은 사다리). 밀도를 조이는 편이 글자를 가리는 것보다
+ *    낫기 때문에, 죽은 영역만으로 담기는 가장 느슨한 단계를 먼저 찾는다.
+ * 4. 가장 조인 단계에서도 죽은 영역으로 부족하면 **겹침을 깊게** 한다(글자 위로 포갠다). 이때
+ *    가려진 카드는 호버·포커스에서 위로 떠올라 전문이 드러난다 — 잘라낸 것이 아니라 덮인 것이고,
+ *    덮인 것은 되돌릴 수 있다.
+ * 5. 마지막 위치 계산은 **어림이 아니라 실측 높이**로 한다(CollectionContextCollage). 여기서 내는
+ *    높이는 밀도 단계를 고르기 위한 어림일 뿐이라, 어림이 빗나가도 겹침이 조금 더 깊어질 뿐
+ *    상자를 넘지 않는다. 415가 상수 여유(FIT_SAFETY)로 막아야 했던 오차가 구조적으로 사라진다.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 418-43: 점선 '맥락 한 장 더' 자리의 어림 높이(px). ContextComposerSlot의 기본 최소 높이와 같은
+ * 값이다 — 그 자리는 두 줄짜리 안내("이 장소의 기억이 더 쌓이길 기다려요")를 온전히 보여야 해서
+ * 밀도와 함께 줄이지 않는다.
+ */
+const COMPOSER_SLOT_HEIGHT_PX = 104;
+
+/** 카드 위에 걸친 마스킹 테이프가 위로 튀어나오는 만큼(px). 첫 카드는 그만큼 내려서 앉힌다. */
+export const COLLAGE_TAPE_HEADROOM_PX = 14;
+
+/**
+ * 상자 아랫변에 남겨 두는 여유(px). 카드가 ±1.5도 기울어 있어 **레이아웃 상자**가 상자 안에 들어와도
+ * 기울어진 실루엣의 아래 모서리는 그보다 몇 px 더 내려온다(폭 440px·1.5도면 약 6px). 그 몇 px이
+ * 상자의 scrollHeight를 늘려 "스크롤 0" 계약을 깬다 — 눈에 보이는 스크롤바가 아니어도 계약은 계약이다.
+ */
+export const COLLAGE_BOTTOM_SLACK_PX = 10;
+
+/**
+ * 겹쳐도 **글자를 가리지 않는** 카드 아래쪽 죽은 영역(px).
+ * 구성: 아래 여백 + `created:` 줄 + 그 줄 위 간격. 본문 마지막 줄에는 닿지 않는다.
+ */
+export function noteBottomDeadZonePx(density: StickyNoteMetrics): number {
+  return (
+    density.padBottomPx +
+    Math.round(density.metaFontPx * 1.4) +
+    Math.round(density.dividerGapPx * 0.7)
+  );
+}
+
+export interface OverlapCollageCell {
+  /** contexts 배열의 인덱스. 슬롯 칸(isSlot)이면 목록의 바로 다음 자리다. */
+  index: number;
+  /** 418-43: '맥락 한 장 더' 점선 자리인가. 무리의 마지막 칸에 한 장만 놓인다. */
+  isSlot: boolean;
+  /** 0 = 왼쪽 열, 1 = 오른쪽 열. */
+  column: number;
+  widthPx: number;
+  /** 콜라주 상자 왼쪽 기준 x(px). */
+  leftPx: number;
+  rotateDeg: number;
+  /** 밀도 선택에 쓴 어림 높이(px). 실측 전 첫 페인트의 위치도 이 값으로 잡는다. */
+  estimatedHeightPx: number;
+}
+
+export interface OverlapContextCollage {
+  cells: OverlapCollageCell[];
+  metrics: StickyNoteMetrics;
+  /** 겹치지 않아도 될 때 카드 사이에 두는 간격(px). */
+  rowGapPx: number;
+  /** 열마다 첫 카드가 앉는 y(px). 테이프 자리 + 열끼리 어긋나는 리듬. */
+  columnStartTopPx: number[];
+  /** true면 죽은 영역만으로는 못 담아 글자 위까지 포개야 한다(호버로 끌어올려 읽는 구간). */
+  deep: boolean;
+}
+
+/**
+ * 열 수도 밀도처럼 **조이는 대상**이다. 기본은 2열이고, 한 장이 상자보다 높아지면 1열(면 전체 폭)로
+ * 펼친다 — 폭이 두 배가 되면 줄 수가 절반이 되어 카드 높이가 실제로 반토막 난다.
+ *
+ * 이 사다리가 없으면 초장문 한 장이 2열 폭(≈208px)에서 17줄·350px가 되어 **상자보다 높아진다**.
+ * 그런 카드는 겹침으로도 담을 수 없다(맨 위 카드는 늘 온전히 보여야 하므로). 1280x720 + 초장문
+ * 9장에서 스크롤이 남아 있던 원인이 정확히 이것이었다.
+ */
+const OVERLAP_COLUMN_COUNTS = [2, 1] as const;
+/** 오른쪽 열을 아래로 살짝 내려 두 무더기가 자로 잰 듯 나란해 보이지 않게 하는 값(px). */
+const OVERLAP_COLUMN_STAGGER_PX = 12;
+
+function buildOverlapCells(
+  bodyLengths: number[],
+  density: CollageDensity,
+  columnCount: number,
+  areaWidthPx: number,
+  includeComposerSlot: boolean,
+): OverlapCollageCell[] {
+  const columnPx = (areaWidthPx - COLLAGE_COLUMN_GAP_PX * (columnCount - 1)) / columnCount;
+  const scale = offsetScale(density);
+  const place = (index: number, isSlot: boolean, length: number) => {
+    const column = index % columnCount;
+    const base = COLLAGE_CELL_OFFSETS[index % COLLAGE_CELL_OFFSETS.length];
+    const jitter = Math.round(base.left * scale);
+    // 슬롯은 "다음 한 장"의 빈 실루엣이라 열을 꽉 채운다(415와 같은 판형).
+    const widthPx = isSlot ? columnPx - jitter : noteWidthPx(length, density, columnPx - jitter);
+    return {
+      index,
+      isSlot,
+      column,
+      widthPx,
+      leftPx: column * (columnPx + COLLAGE_COLUMN_GAP_PX) + jitter,
+      rotateDeg: base.rotate,
+      estimatedHeightPx: isSlot ? COMPOSER_SLOT_HEIGHT_PX : noteHeightPx(length, widthPx, density),
+    };
+  };
+  const cells = bodyLengths.map((length, index) => place(index, false, length));
+  if (includeComposerSlot) {
+    cells.push(place(bodyLengths.length, true, 0));
+  }
+  return cells;
+}
+
+/** 후보 배치 하나를 재 본다 — 열별 자연 높이·죽은 영역 예산·가장 높은 카드·겹쳤을 때의 최소 걸음. */
+function gaugeOverlapPlan(
+  cells: OverlapCollageCell[],
+  density: CollageDensity,
+  columnCount: number,
+  startTops: number[],
+  targetPx: number,
+) {
+  const natural = new Array<number>(columnCount).fill(0);
+  const counts = new Array<number>(columnCount).fill(0);
+  const lastHeight = new Array<number>(columnCount).fill(0);
+  let tallest = 0;
+  for (const cell of cells) {
+    natural[cell.column] +=
+      cell.estimatedHeightPx + (counts[cell.column] > 0 ? density.rowGapPx : 0);
+    counts[cell.column] += 1;
+    lastHeight[cell.column] = cell.estimatedHeightPx;
+    tallest = Math.max(tallest, cell.estimatedHeightPx);
+  }
+  const deadZone = noteBottomDeadZonePx(density);
+
+  let fitsWithoutOverlap = true;
+  let fitsWithSafeOverlap = true;
+  let minStepPx = Number.POSITIVE_INFINITY;
+  for (let column = 0; column < columnCount; column += 1) {
+    const room = targetPx - startTops[column];
+    const safeBudget = Math.max(0, counts[column] - 1) * (deadZone + density.rowGapPx);
+    fitsWithoutOverlap &&= natural[column] <= room;
+    fitsWithSafeOverlap &&= natural[column] - safeBudget <= room;
+    if (counts[column] > 1) {
+      minStepPx = Math.min(minStepPx, (room - lastHeight[column]) / (counts[column] - 1));
+    }
+  }
+
+  // 맨 위에 놓이는 카드는 늘 온전히 보여야 한다 — 상자보다 높은 카드가 하나라도 있으면 그 배치는
+  // 겹침으로도 담을 수 없다.
+  const fitsTallestCard = tallest <= targetPx - Math.max(...startTops);
+  return { fitsWithoutOverlap, fitsWithSafeOverlap, fitsTallestCard, minStepPx };
+}
+
+/**
+ * 컬렉션 펼침면 맥락 무리의 배치. **스크롤은 결과에 없다** — 담기지 않으면 겹침이 깊어질 뿐이다.
+ *
+ * 고르는 순서:
+ * 1. 겹침 없이 담기는 배치 중 가장 느슨한 것(2열 우선, 그다음 느슨한 밀도 순).
+ * 2. 죽은 영역까지의 겹침으로 담기는 배치 중 가장 느슨한 것 — 여기까지는 글자가 하나도 안 가려진다.
+ * 3. 그래도 안 되면 **깊은 겹침**. 이때는 반대로 조인 쪽이 낫다 — 카드가 작을수록 포갠 사이로
+ *    드러나는 띠가 넓어지므로, 최소 걸음(minStepPx)이 가장 큰 후보를 고른다.
+ */
+export function planOverlapContextCollage(
+  bodyLengths: number[],
+  availableHeightPx: number | null | undefined,
+  areaWidthPx: number,
+  includeComposerSlot = false,
+): OverlapContextCollage {
+  const targetPx =
+    availableHeightPx && availableHeightPx > 0 ? availableHeightPx : DEFAULT_AVAILABLE_HEIGHT_PX;
+
+  const candidates = OVERLAP_COLUMN_COUNTS.flatMap((columnCount) =>
+    COLLAGE_DENSITIES.map((density) => {
+      const startTops = Array.from(
+        { length: columnCount },
+        (_, column) => COLLAGE_TAPE_HEADROOM_PX + column * OVERLAP_COLUMN_STAGGER_PX,
+      );
+      const cells = buildOverlapCells(
+        bodyLengths,
+        density,
+        columnCount,
+        areaWidthPx,
+        includeComposerSlot,
+      );
+      return {
+        density,
+        cells,
+        columnCount,
+        startTops,
+        ...gaugeOverlapPlan(cells, density, columnCount, startTops, targetPx),
+      };
+    }),
+  );
+
+  const usable = candidates.filter((candidate) => candidate.fitsTallestCard);
+  // 깊은 겹침 구간: 포갠 사이로 가장 넓은 띠가 남는 후보를 고른다. 띠 폭이 같으면(점선 슬롯처럼
+  // 밀도와 무관하게 높이가 고정된 칸이 마지막에 오면 자주 그렇다) **같은 열 수 안에서 더 조인**
+  // 쪽을 택한다 — 카드가 작을수록 덮이는 글자가 줄기 때문이다. 열 수는 확실히 더 넓어질 때만 바꾼다.
+  let widestDeep: (typeof candidates)[number] | undefined;
+  for (const candidate of usable) {
+    if (widestDeep === undefined || candidate.minStepPx > widestDeep.minStepPx + 0.5) {
+      widestDeep = candidate;
+    } else if (
+      candidate.columnCount === widestDeep.columnCount &&
+      Math.abs(candidate.minStepPx - widestDeep.minStepPx) <= 0.5
+    ) {
+      widestDeep = candidate;
+    }
+  }
+  const chosen =
+    usable.find((candidate) => candidate.fitsWithoutOverlap) ??
+    usable.find((candidate) => candidate.fitsWithSafeOverlap) ??
+    // 후보가 하나도 없으면(카드 한 장이 상자보다 높은 극단) 가장 조인 1열을 쓴다 — 그때만 넘칠 수
+    // 있고, 그것이 이 화면의 한계다.
+    widestDeep ??
+    candidates[candidates.length - 1];
+
+  return {
+    cells: chosen.cells,
+    metrics: chosen.density,
+    rowGapPx: chosen.density.rowGapPx,
+    columnStartTopPx: chosen.startTops,
+    deep: !chosen.fitsWithoutOverlap && !chosen.fitsWithSafeOverlap,
+  };
+}
+
+/** 한 무더기를 실측 높이로 앉힌다. 마지막 카드의 아랫변이 `targetPx`를 넘지 않는 것이 이 함수의 계약이다. */
+export interface StackPlacement {
+  /** 상자 위쪽 기준 y(px). */
+  topPx: number;
+  /** 호버·포커스 때 위로 끌어올릴 양(px, 음수). 이미 다 보이면 0이다. */
+  raisePx: number;
+}
+
+/** 겹쳐도 이만큼은 남긴다 — 카드가 완전히 사라져 "몇 장인지"조차 읽히지 않는 일을 막는다(px). */
+const MIN_VISIBLE_STEP_PX = 22;
+
+export function placeOverlapStack(
+  heights: number[],
+  rowGapPx: number,
+  startTopPx: number,
+  targetPx: number,
+): StackPlacement[] {
+  const count = heights.length;
+  if (count === 0) {
+    return [];
+  }
+  const lastHeight = heights[count - 1];
+  // 마지막(가장 위에 놓이는) 카드는 늘 온전히 보인다. 나머지가 나눠 쓸 세로 길이가 이만큼이다.
+  const room = Math.max(0, targetPx - startTopPx - lastHeight);
+  const naturalSteps = heights.slice(0, count - 1).map((height) => height + rowGapPx);
+  const naturalSum = naturalSteps.reduce((sum, step) => sum + step, 0);
+
+  let steps = naturalSteps;
+  if (naturalSum > room) {
+    // 비례 축소 — 높은 카드일수록 더 깊이 포개진다(짧은 카드를 통째로 삼키지 않는다).
+    const ratio = naturalSum > 0 ? room / naturalSum : 0;
+    steps = naturalSteps.map((step) => Math.max(MIN_VISIBLE_STEP_PX, step * ratio));
+    const clampedSum = steps.reduce((sum, step) => sum + step, 0);
+    if (clampedSum > room) {
+      // 하한까지 걸고도 넘치면 하한을 포기한다 — "스크롤 없음"이 이 화면의 상위 계약이다.
+      const rescale = clampedSum > 0 ? room / clampedSum : 0;
+      steps = steps.map((step) => step * rescale);
+    }
+  }
+
+  const tops: number[] = [];
+  let top = startTopPx;
+  for (let index = 0; index < count; index += 1) {
+    tops.push(top);
+    top += steps[index] ?? 0;
+  }
+
+  // 비례 축소만으로는 **중간에 낀 큰 카드**가 아래로 삐져나올 수 있다(뒤에 짧은 카드가 오면 그
+  // 카드 기준으로 자리가 남는 것처럼 계산되기 때문이다). 뒤에서부터 "아랫변이 상자를 넘지 않는
+  // 자리"로 끌어올리고, 앞 카드는 뒤 카드보다 아래로 내려가지 않게 함께 당긴다 — 결과는 그 구간의
+  // 겹침이 더 깊어지는 것이고, 그것이 이 화면이 넘침 대신 택한 값이다.
+  for (let index = count - 1; index >= 0; index -= 1) {
+    tops[index] = Math.min(tops[index], targetPx - heights[index]);
+    if (index > 0 && tops[index - 1] > tops[index]) {
+      tops[index - 1] = tops[index];
+    }
+  }
+
+  return tops.map((topPx, index) => ({
+    topPx,
+    raisePx: Math.min(0, targetPx - (topPx + heights[index])),
+  }));
 }
