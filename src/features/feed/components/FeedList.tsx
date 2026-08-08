@@ -15,7 +15,6 @@ import {
   getPageContentBudgetPx,
   getFeedGridAreaWidthPx,
   getFeedRowsContentBudgetPx,
-  getFeedShelfWidthPx,
   getShelfTierForGridWidth,
   solveFeedScale,
   FEED_SIDE_GUTTER_PX,
@@ -121,9 +120,10 @@ let lastFeedPagePosition: FeedPagePosition | null = null;
  * 대비한 안전판으로만 남긴다).
  * 314: 짙은 남색 캐비닛(ShelfCabinet)과 "추천 도서" 헤더바를 걷어내고 페이지 배경 위에 선반 판과
  * 책만 남긴다 — 시안의 밝은 오픈 책장이다. 셸이 없어졌으므로 좌우 페이지 버튼이 들어앉을 안쪽
- * 여백도 사라진다. 대신 선반 덩어리(책 줄 + 좌우 gutter, getFeedShelfWidthPx)를 가운데 정렬하고
- * 그 gutter를 버튼 자리로 쓴다 — 버튼이 양 끝 카드 위를 덮지 않고, 선반 판도 책 없는 허공까지
- * 뻗지 않는다.
+ * 여백도 사라진다. 대신 그리드에 좌우 gutter(FEED_SIDE_GUTTER_PX)를 주고 그 자리를 버튼에 내준다 —
+ * 버튼이 양 끝 카드 위를 덮지 않는다.
+ * 31번: 선반 덩어리를 책 줄 자연 폭으로 좁히던 규칙은 걷었다 — 판이 지면 상자를 그대로 채워
+ * 책장 캐비닛과 폭이 같아진다(아래 return 주석).
  * 314: 카드 아래 순번 배지도 없앴다 — 책이 선반 판에 딱 닿아 얹혀 보여야 하는데 배지가 그 사이를
  * 벌리고 있었다. position은 표시에서만 빠지고 CLICK 이벤트에는 응답 값 그대로 실린다(재계산 금지).
  * 315: 카드 안쪽도 표지 한 장으로 합쳤다 — 표지 아래 붙어 있던 정보 패널을 없애고 제목·키워드·
@@ -263,8 +263,6 @@ export function FeedList({ area, layoutArea, onPageNumberChange }: FeedListProps
   // 책 사이가 휑하게 벌어졌다(gridGap 20px인데 실제 간격은 100px을 넘기도 했다). 고정 폭이면 책
   // 사이 간격은 항상 정확히 gridGap이고, 남는 폭은 선반 덩어리 바깥으로 빠진다.
   const gridTemplateColumns = `repeat(${columns}, ${dims.cardWidth}px)`;
-  // 선반 한 덩어리(책 줄 + 좌우 gutter)를 가운데 정렬한다 — 판이 책 없는 허공까지 뻗지 않는다.
-  const shelfWidthPx = getFeedShelfWidthPx(columns, dims.cardWidth, dims.gridGap);
   const cardBoxStyle = { width: dims.cardWidth, height: dims.cardHeight };
   // 314: 순번 배지를 없애면서 카드 아래에 붙던 배지 높이·간격도 사라졌다 — 칸 높이가 곧 카드
   // 높이이고, 책이 선반 판 바로 위에 얹힌다.
@@ -332,7 +330,6 @@ export function FeedList({ area, layoutArea, onPageNumberChange }: FeedListProps
 
   const emptyShelfLayout: EmptyShelfLayout = {
     columns,
-    shelfWidthPx,
     pageSize,
     gridTemplateColumns,
     itemColumnHeight,
@@ -485,8 +482,16 @@ export function FeedList({ area, layoutArea, onPageNumberChange }: FeedListProps
   // "남는 세로 공간을 위아래로 나눠 갖는다"는 뜻을 갖게 됐다 — 책장이 화면 중앙에 온다. 가로는
   // 기존 mx-auto와 동일하게 동작하고, flex 컨테이너가 아닌 곳에 놓여도 세로 auto는 0으로 풀려
   // 기존 동작 그대로다(FeedPage 주석 참고).
+  // 31번(사용자 지시): 선반 덩어리가 **지면이 내준 상자를 그대로 채운다.**
+  // 이전에는 폭을 책 줄 자연 폭(getFeedShelfWidthPx)으로 잡고 가운데 정렬했다 — 판이 책 없는
+  // 허공까지 뻗지 않게 하려던 314의 값이다. 20번 2차(곁열 예약분을 peek로 낮춤)로 상자가 크게
+  // 넓어지면서 그 차이가 눈에 띄게 됐고, 같은 뷰포트에서 탐색(1532px)과 책장 캐비닛(1696px)의
+  // 폭이 164px 어긋나 **두 화면이 다른 종이로 읽혔다.** 넓은 쪽(책장)에 맞춘다 — 반대로 맞추면
+  // 캐비닛이 지면을 채우지 못해 방금 얻은 peek 개편의 결과를 되돌리게 된다.
+  // 책 줄 자체는 그대로다: FEED_GRID_CLASS의 justify-center가 고정 폭 트랙을 가운데 세우므로
+  // 책 사이 간격은 여전히 정확히 gridGap이고, 남는 폭은 판 위 여백으로 빠진다.
   return (
-    <div className="relative m-auto flex flex-col" style={{ width: shelfWidthPx }}>
+    <div className="relative m-auto flex w-full flex-col">
       <FeedArrowButton direction="left" disabled={!canGoPrevious} onClick={handlePrevious} />
       <FeedArrowButton direction="right" disabled={!canGoNext} onClick={handleNext} />
 
@@ -592,7 +597,6 @@ function BookstoreShell({
 
 interface EmptyShelfLayout {
   columns: number;
-  shelfWidthPx: number;
   pageSize: number;
   gridTemplateColumns: string;
   itemColumnHeight: number;
@@ -619,8 +623,10 @@ function EmptyShelves({
   slotClassName?: string;
   overlay?: ReactNode;
 }) {
+  // 31번: 책이 있는 화면과 **같은 폭 규칙**이다(FeedList 본문 주석) — 빈 선반만 좁게 그리면
+  // 데이터가 도착하는 순간 판 폭이 바뀐다.
   return (
-    <div className="relative m-auto flex flex-col" style={{ width: layout.shelfWidthPx }}>
+    <div className="relative m-auto flex w-full flex-col">
       {/* 314: 데이터가 없는 상태에서도 좌우 버튼은 자리에 있어야 한다 — 책장 가구의 일부라, 로딩·빈
           목록·에러에서 사라졌다가 데이터가 오면 나타나면 레이아웃이 흔들린 것처럼 보인다.
           넘길 페이지가 없는 상태이므로 항상 disabled다. */}

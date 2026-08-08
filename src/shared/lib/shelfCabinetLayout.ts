@@ -649,6 +649,11 @@ export const FEED_PLANK_SHADOW_BLEED_PX = 8;
  * 328: 여기에 그림자 번짐 폭이 더해진다 — 이 값은 스크롤 박스의 좌우 padding으로 들어가므로
  * 선반 판 자체는 여전히 "책 줄 + gutter"만큼만 넓다(판이 더 넓어지는 게 아니라, 판 바깥에 그림자가
  * 살 자리가 생긴다). 좌우 페이지 버튼은 이 바깥 박스의 left-0/right-0이라 판 끝에 반쯤 걸친다.
+ *
+ * ⚠️ 31번(사용자 지시): **더 이상 선반 컨테이너의 폭이 아니다.** 판은 지면이 내준 상자를 그대로
+ * 채워 책장 캐비닛과 폭을 맞춘다(FeedList의 return 주석). 이 함수가 남아 있는 이유는 값이
+ * 여전히 참이기 때문이다 — "책 줄이 실제로 차지하는 가로"라서, 그 줄이 상자를 넘지 않는지
+ * (= 가로 스크롤이 생기지 않는지) 검증하는 데 쓴다(shelfCabinetLayout.test.ts).
  */
 export function getFeedShelfWidthPx(
   columns: number,
