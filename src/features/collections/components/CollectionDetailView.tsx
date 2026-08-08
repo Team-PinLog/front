@@ -4,15 +4,12 @@ import { useCollectionDeleteConfirm } from '@/contexts/useCollectionDeleteConfir
 import { useCollectionSpread } from '@/contexts/useCollectionSpread';
 import { useDeleteConfirm } from '@/contexts/useDeleteConfirm';
 import { ErrorState } from '@/shared/ui/ErrorState';
-import { ContextStickyNoteCard } from '@/features/records/components/ContextStickyNoteCard';
-// 415가 만든 맥락 콜라주 배치기를 그대로 쓴다 — 폭과 '추가 자리 유무'만 이 화면 값으로 넘긴다.
-// 밀도 사다리(글자·여백·줄 간격을 단계로 조여 스크롤 없이 담는 규칙)가 두 화면의 공유 자산이다.
-import { planContextNoteCollage } from '@/features/records/components/contextNoteScatter';
 import { DeleteConfirmDialog } from '@/features/records/components/DeleteConfirmDialog';
 import type { CollectionDetail } from '../api/getCollectionDetail';
 import { useCollectionDetailQuery } from '../hooks/useCollectionDetailQuery';
 import { AddRecordToCollectionDialog } from './AddRecordToCollectionDialog';
 import { AuthorShelfPanel } from './AuthorShelfPanel';
+import { CollectionContextCollage } from './CollectionContextCollage';
 import { CollectionIndexRail } from './CollectionIndexRail';
 import { CollectionMapPoster } from './CollectionMapPoster';
 import { CollectionRecordPhoto } from './CollectionRecordPhoto';
@@ -21,13 +18,6 @@ import { RecordRemoveButton } from './RecordRemoveButton';
 import { RecordSaveButton } from './RecordSaveButton';
 
 export type CollectionRecordItem = CollectionDetail['records']['items'][number];
-
-/**
- * 맥락 콜라주가 앉는 오른쪽 페이지의 실사용 폭(px).
- * 펼침면 1160 - 바깥 여백 96 = 1064, 한 면 532, 안쪽 여백(pl-9 + pr-12 = 84)을 빼면 448이고
- * 여기에 마지막 안전 여유를 둔다. 값을 바꾸면 CollectionSpreadPage의 여백과 함께 본다.
- */
-const COLLAGE_AREA_PX = 440;
 
 /** "YYYY. M. D." — 시안의 부제 표기. 서버 ISO 문자열 앞 10자만 쓴다(shared/lib/formatDate와 같은 규칙). */
 function formatMadeOn(isoDateTime: string): string {
@@ -61,6 +51,8 @@ interface CollectionDetailViewProps {
   feedRequestId?: string;
   feedPosition?: number;
   // 332: 오른쪽 책장에서 다른 Collection으로 넘어온 진입인지(router.tsx HistoryState.shelfContext).
+  // 418-36부터 책장 노출 조건에서는 쓰지 않는다(타인 컬렉션이면 언제나 세운다). 라우터가 계속
+  // 넘기고 있어 계약은 그대로 두되, 이 컴포넌트는 더 이상 읽지 않는다.
   hasShelfContext?: boolean;
   // 돌아갈 앱 내 지점이 있을 때만 넘어온다 — 펼침면 우상단 ✕를 그릴지 결정한다.
   onClose?: () => void;
@@ -107,7 +99,6 @@ export function CollectionDetailView({
   collectionId,
   feedRequestId,
   feedPosition,
-  hasShelfContext = false,
   onClose,
 }: CollectionDetailViewProps) {
   const detailQuery = useCollectionDetailQuery(collectionId);
@@ -120,22 +111,6 @@ export function CollectionDetailView({
   const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
   // lg 미만에서는 책장을 나란히 둘 가로 폭이 없어 서랍(오른쪽 슬라이드)으로 연다.
   const [isShelfOpen, setIsShelfOpen] = useState(false);
-
-  // 맥락 영역의 실높이(px). 이 높이 안에 스크롤 없이 담기는 밀도 단계를 배치기가 고른다.
-  // 이 상자는 flex-1 + min-h-0이라 **내용과 무관하게** 남는 높이로 정해진다 — 그래서 관찰해도
-  // 되먹임 고리가 생기지 않는다(415와 같은 구조).
-  const [collageBox, setCollageBox] = useState<HTMLDivElement | null>(null);
-  const [collageHeightPx, setCollageHeightPx] = useState<number | null>(null);
-  useEffect(() => {
-    if (!collageBox || typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver((entries) => {
-      setCollageHeightPx(entries[0]?.contentRect.height ?? collageBox.clientHeight);
-    });
-    observer.observe(collageBox);
-    return () => observer.disconnect();
-  }, [collageBox]);
 
   // 진입 시 hasNextPage가 false가 될 때까지 자동으로 순차 로드한다 — 왼쪽 지도가 Collection의 모든
   // record를 한 번에 보여줘야 하기 때문이다. isFetchNextPageError면 더 재시도하지 않는다.
@@ -197,9 +172,11 @@ export function CollectionDetailView({
   // 217: 전체 로드가 끝나기 전에는 이 목록이 불완전해 "이미 담김" 필터링을 신뢰할 수 없다.
   const excludedRecordIds = new Set(flatRecords.map((record) => record.recordId));
 
-  // 332: "이 작성자의 다른 컬렉션"은 **Feed 경유 진입 또는 책장 경유 진입**일 때만 세운다.
-  // 내 Collection에는 세우지 않는다 — 이 패널이 Follow/Unfollow를 함께 다루기 때문이다.
-  const showShelfPanel = (feedRequestId !== undefined || hasShelfContext) && !ownedByMe;
+  // 타인 컬렉션 펼침면에는 **항상** 작성자의 다른 컬렉션 책장을 세운다(418-36).
+  // 332는 Feed·책장 경유 진입으로만 한정했는데, 그 결과 탐색·직접 URL로 남의 책을 펼치면 책장이
+  // 통째로 사라졌다 — 같은 화면이 진입 경로에 따라 다른 구성이 되는 것이 결함으로 지목됐다.
+  // 내 Collection에는 여전히 세우지 않는다(이 패널이 Follow/Unfollow를 함께 다룬다).
+  const showShelfPanel = !ownedByMe;
 
   const currentIndex = Math.min(spreadState.spreadIndex, Math.max(0, flatRecords.length - 1));
   const currentRecord = flatRecords[currentIndex] as CollectionRecordItem | undefined;
@@ -332,11 +309,6 @@ export function CollectionDetailView({
   } else {
     // contexts는 ownedByMe일 때만 배열이고 타인 조회는 null이다 — null이면 접근조차 하지 않는다.
     const contexts = (ownedByMe && currentRecord.contexts) || [];
-    const collage = planContextNoteCollage(
-      contexts.map((context) => context.body.length),
-      collageHeightPx,
-      { areaWidthPx: COLLAGE_AREA_PX, includeComposerSlot: false },
-    );
 
     rightPage = (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -376,50 +348,11 @@ export function CollectionDetailView({
             <h3 className="mt-5 flex-none text-[12px] font-extrabold tracking-[0.14em] text-[#4f9b78]">
               기록한 맥락
             </h3>
-            {/* 415와 같은 2열 콜라주. 카드는 각자의 칸에 앉고 겹치지 않으며, 장수가 늘면 배치기가
-                글자·여백을 단계로 조여 **스크롤 없이** 담는다. overflow-y-auto는 가장 조인 단계로도
-                넘칠 때만 도는 마지막 안전장치다 — 글자를 지우거나 가리는 대신 스크롤을 택한다.
-                포스트잇 무리는 조작 대상(✎/× 버튼)이라 페이지 넘김에서 제외한다. */}
-            <div
-              ref={setCollageBox}
-              data-page-turn="ignore"
-              // 위 여백은 마스킹 테이프가 위로 12px 튀어나오는 자리다(pt-5=20px면 충분하다).
-              // 배치기가 가정하는 여백(COLLAGE_PADDING_Y_PX=40)보다 실제를 작게 두면 어림이
-              // 보수적인 쪽으로 틀리므로, 경계에 걸친 장수에서 한 줄을 더 담을 여지가 생긴다.
-              className="-mx-2 mt-1 grid min-h-0 flex-1 grid-cols-2 content-start items-start overflow-y-auto px-2 pb-2 pt-5"
-              style={{ columnGap: collage.columnGapPx, rowGap: collage.rowGapPx }}
-            >
-              {contexts.length === 0 ? (
-                <p className="col-span-2 font-hand text-[20px] text-[#a29d95]">
-                  이 장소에 적어 둔 맥락이 아직 없어요
-                </p>
-              ) : (
-                collage.cells.map((cell, cellIndex) => {
-                  if (cell.index === null) {
-                    return <div key={`empty-${cellIndex}`} aria-hidden="true" style={cell.style} />;
-                  }
-                  const context = contexts[cell.index];
-                  return (
-                    <div
-                      key={context.contextId}
-                      // z-index는 인라인으로 주지 않는다 — 래퍼의 transform이 쌓임 맥락을 만들어
-                      // 포스트잇 자신의 호버 z-index를 가둔다. 호버·포커스일 때만 래퍼를 올린다.
-                      className="relative min-w-0 hover:z-20 focus-within:z-20"
-                      style={cell.style}
-                    >
-                      <ContextStickyNoteCard
-                        recordId={currentRecord.recordId}
-                        context={context}
-                        ownedByMe
-                        stackIndex={0}
-                        attachment="flat"
-                        metrics={collage.metrics}
-                      />
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            {/* 418-33: 맥락은 **포개 붙인다**. 밀도 사다리로도 안 담기면 스크롤이 아니라 겹침이
+                깊어지고, 덮인 카드는 호버·포커스로 떠올라 전문을 드러낸다(CollectionContextCollage).
+                포스트잇 무리는 조작 대상(✎/× 버튼)이라 페이지 넘김에서 제외한다(그 컴포넌트가
+                data-page-turn="ignore"를 직접 단다). */}
+            <CollectionContextCollage recordId={currentRecord.recordId} contexts={contexts} />
 
             {/* 파괴적 동작은 면의 오른쪽 아래 구석에, 작게(418 코멘트 2의 4번). */}
             <div className="mt-1 flex flex-none justify-end">

@@ -114,11 +114,15 @@ export function RecordSaveButton({
     if (isSlot) {
       // 389의 '다음 포스트잇 자리'와 같은 점선 실루엣 문법이되, 하는 일이 다르므로 색이 다르다 —
       // 저장은 이 페이지에서 유일하게 내 서재를 건드리는 동작이라 민트로 표시한다.
+      // 418-37: 폭을 면 전체(w-full)에서 **문구 폭**으로 줄였다. 점선 카드가 우측 면을 가로지르면
+      // 폴라로이드(w-[68%] max-w-[260px])보다 넓어져 이 면의 주인공이 사진이 아니라 버튼이 된다.
+      // 세로로 쌓았던 ＋와 문구를 한 줄로 눕히고(문구는 nowrap이라 두 줄로 끊기지 않는다) 좌우
+      // 여백만 남기면 폭이 약 260px로 폴라로이드와 나란해진다. 세로 위치는 그대로다.
       return (
         <button
           type="button"
           onClick={handleOpen}
-          className="flex w-full flex-col items-center justify-center gap-1.5 rounded-sm border-2 border-dashed border-[#cfe2d6] bg-white/45 px-4 py-6 text-center transition-colors hover:border-[#4f9b78] hover:bg-white/75 focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white/75"
+          className="flex max-w-full items-center justify-center gap-2 self-center whitespace-nowrap rounded-sm border-2 border-dashed border-[#cfe2d6] bg-white/45 px-5 py-3.5 text-center transition-colors hover:border-[#4f9b78] hover:bg-white/75 focus:outline-none focus-visible:border-[#4f9b78] focus-visible:bg-white/75"
         >
           <span className="text-xl leading-none text-[#9dc4ac]" aria-hidden="true">
             ＋

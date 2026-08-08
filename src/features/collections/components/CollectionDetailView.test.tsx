@@ -152,11 +152,21 @@ function noteBodies() {
 }
 
 describe('CollectionDetailView — 펼침면 소유자 배치(418)', () => {
-  it('맥락은 2열 그리드에 앉고, 추가 자리는 두지 않는다', async () => {
+  it('맥락은 2열로 포개 앉고, 추가 자리는 두지 않는다', async () => {
     await renderView({ ownedByMe: true, contextCount: 3 });
 
-    const grid = container.querySelector<HTMLElement>('.grid-cols-2');
-    expect(grid).not.toBeNull();
+    // 418-33: 그리드가 아니라 **겹칠 수 있는 절대 배치**다(스크롤을 만들지 않는 유일한 방법).
+    // 그래도 열은 둘이라, 카드의 left가 두 종류로만 갈린다.
+    const cards = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-page-turn="ignore"] > div[style*="left"]'),
+    );
+    expect(cards).toHaveLength(3);
+    const columns = new Set(
+      cards.map((card) => (Number.parseFloat(card.style.left) > 200 ? 1 : 0)),
+    );
+    expect(columns).toEqual(new Set([0, 1]));
+    // 콜라주 상자는 스크롤 상자가 아니다 — 넘치면 겹침이 깊어질 뿐이다.
+    expect(cards[0].parentElement?.className).not.toContain('overflow');
     expect(noteBodies()).toHaveLength(3);
     // 맥락 추가 진입점은 Record 상세(389)에만 있다 — 여기 점선 자리가 생기면 남의 규칙이 새어든 것이다.
     expect(container.textContent).not.toContain('맥락 한 장 더');

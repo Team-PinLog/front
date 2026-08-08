@@ -9,11 +9,12 @@ import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
 import { useUnfollowMutation } from '@/features/follows/hooks/useUnfollowMutation';
 
 /**
- * 한 화면(=한 쪽)에 세우는 책 수. **2열 고정 × 3줄**이다(418 코멘트 3의 6번).
+ * 한 화면(=한 쪽)에 세우는 책 수. **2열 고정 × 선반 2행**이다(418-34; 원래 3행이었다).
  * 이보다 많으면 선반이 세로로 자라 펼침면 밖으로 나간다 — 그것이 이 컴포넌트가 만들어진 이유다.
+ * 넘치는 권수는 세로로 늘리지 않고 쪽 넘김으로 받는다.
  */
 const SHELF_COLUMNS = 2;
-const SHELF_ROWS = 3;
+const SHELF_ROWS = 2;
 const ITEMS_PER_PAGE = SHELF_COLUMNS * SHELF_ROWS;
 
 interface AuthorShelfPanelProps {
@@ -56,14 +57,14 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
   const unfollowMutation = useUnfollowMutation();
   const [pageIndex, setPageIndex] = useState(0);
 
-  const heading = (
-    <h2 className="font-hand text-[19px] leading-none text-[#6f6a63]">이 작성자의 다른 컬렉션</h2>
-  );
+  // 418-35: 패널 위에 붙어 있던 "이 작성자의 다른 컬렉션" 제목을 뺐다 — 책등이 늘어선 모양 자체가
+  // 이미 "다른 컬렉션"을 말하고 있어 글자가 한 겹 더 얹히면 종이 위가 라벨투성이가 된다.
+  // 화면에서 사라진 만큼 이름은 <section>의 aria-label로 남긴다(스크린리더에는 그대로 들린다).
+  const SHELF_LABEL = '이 작성자의 다른 컬렉션';
 
   if (shelfExploreQuery.isPending || shelfExploreQuery.isError) {
     return (
-      <section className="flex h-full min-h-0 flex-col gap-3">
-        {heading}
+      <section aria-label={SHELF_LABEL} className="flex h-full min-h-0 flex-col gap-3">
         <p
           className={`text-[13px] ${shelfExploreQuery.isError ? 'text-red-600' : 'text-[#a29d95]'}`}
         >
@@ -123,9 +124,9 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
   const followError = followMutation.error ?? unfollowMutation.error;
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
-      <div className="flex flex-none items-center justify-between gap-3">
-        {heading}
+    <section aria-label={SHELF_LABEL} className="flex h-full min-h-0 flex-col gap-4">
+      {/* 제목이 빠져 이 줄에는 팔로우 버튼만 남는다 — 오른쪽에 붙여 둔다. */}
+      <div className="flex flex-none items-center justify-end gap-3">
         {isLoggedIn ? (
           <button
             type="button"
