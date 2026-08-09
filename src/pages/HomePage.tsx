@@ -5,7 +5,10 @@ import { RecordDetailOverlay } from '@/features/records/components/RecordDetailO
 import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
 import { useRecordMapMarkersQuery } from '@/features/map/hooks/useRecordMapMarkersQuery';
 import { HomeMapSection } from '@/features/home/components/HomeMapSection';
-import { SearchResultGallery } from '@/features/home/components/SearchResultGallery';
+import {
+  SearchEmptyModal,
+  SearchResultGallery,
+} from '@/features/home/components/SearchResultGallery';
 import { PaperApertureStage } from '@/features/home/components/PaperApertureStage';
 import { HomeSearchDock } from '@/features/home/components/HomeSearchDock';
 import {
@@ -69,6 +72,10 @@ export function HomePage() {
 
   // 창이 열린 뒤 검색바 아래에 뜨는 한 줄. 결과 개수를 여기서 말하고, 결과 자체는 아래
   // 갤러리가 보여준다. items: []는 오류가 아니라 정상 응답이다(AGENTS.md 절대 금지 4).
+  // hasNoResults일 때는 이 줄을 채우지 않는다 — S15P11A705-426으로 SearchEmptyModal이
+  // 화면 중앙에서 같은 안내를 맡았고, 도크 아래 한 줄과 모달 표제가 동시에 뜨면 같은
+  // "결과 없음"을 두 자리에서 중복 전달한다(실렌더로 확인). 모달이 포커스를 가져가며
+  // 내용을 설명하므로 이 줄은 비운다.
   let status: string | null = null;
   if (searchMutation.isPending) {
     status = '찾는 중입니다…';
@@ -76,8 +83,6 @@ export function HomePage() {
     status = '검색하지 못했습니다. 잠시 후 다시 시도해 주세요.';
   } else if (hasResults) {
     status = `${searchMutation.data.items.length}곳을 찾았습니다`;
-  } else if (hasNoResults) {
-    status = '그 문장으로는 아직 찾지 못했습니다. 다르게 적어 보세요.';
   }
 
   return (
@@ -141,6 +146,13 @@ export function HomePage() {
               />
             </div>
           )}
+
+          <SearchEmptyModal
+            isOpen={hasNoResults}
+            query={query}
+            onClose={resetSearch}
+            onRetry={resetSearch}
+          />
         </PaperApertureStage>
 
         {/* 지면 오른쪽 어깨. 이 화면에서 설정(계정·로그아웃·탈퇴)으로 가는 종이 쪽 진입점이고,
