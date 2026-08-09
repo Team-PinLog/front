@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { useWithdrawConfirm } from '@/contexts/useWithdrawConfirm';
 import { useLogoutMutation } from '@/features/auth/hooks/useLogoutMutation';
@@ -66,6 +67,21 @@ export function SettingsPanel() {
           <p className="mt-0.5 text-[11px] text-ink-gray">팔로워</p>
         </div>
       </div>
+
+      {/* S15P11A705-424: "나의 활동 기록"(/me/activity) 진입점을 책장 지면(LibrarySpreadPanels의
+          .pe-headrule)에서 여기로 옮겼다 — 책장 콘텐츠가 아니라 계정 메뉴에 속하는 항목이라는
+          판단이다. 아래 로그아웃 버튼과 같은 행 스타일(테두리·rounded-xl·px-3 py-3)을 그대로
+          재사용해 새로 그리지 않았고, 이 항목만 이동을 뜻하므로 색을 text-pin-navy로 구분한다.
+          원래 노출 조건(기록 0건이면 숨김, docs 이슈 #55)도 그대로 옮긴다 — 이 패널이 이미
+          recordCount를 들고 있어 조건을 다시 계산할 필요가 없다. */}
+      {recordCount > 0 && (
+        <Link
+          to="/me/activity"
+          className="rounded-xl border border-pin-navy/[0.18] px-3 py-3 text-sm font-semibold text-pin-navy"
+        >
+          나의 활동 기록
+        </Link>
+      )}
 
       <button
         type="button"
