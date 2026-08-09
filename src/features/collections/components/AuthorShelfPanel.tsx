@@ -3,30 +3,45 @@ import { useNavigate } from '@tanstack/react-router';
 import { getIsLoggedIn } from '@/features/auth/lib/getIsLoggedIn';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
 import { SHELF_SCROLL_TOP_PADDING_PX } from '@/shared/lib/shelfSpine';
-import { ShelfBookSpine, ShelfCabinet, ShelfColumn, ShelfTier } from '@/shared/ui/Shelf';
+import {
+  ShelfBookSpine,
+  ShelfCabinet,
+  ShelfColumn,
+  ShelfIconButton,
+  ShelfTier,
+} from '@/shared/ui/Shelf';
 import { PendingLabel } from '@/shared/ui/PendingLabel';
 import { useShelfExploreQuery } from '@/features/feed/hooks/useShelfExploreQuery';
 import { useFollowMutation } from '@/features/follows/hooks/useFollowMutation';
 import { useUnfollowMutation } from '@/features/follows/hooks/useUnfollowMutation';
 
 /**
- * 한 화면(=한 쪽)에 세우는 책 수. **선반 1열 × 2행**이고, 한 행에 책등 3권이 꽂힌다(418-46).
- * 이보다 많으면 선반이 세로로 자라 펼침면 밖으로 나간다 — 그것이 이 컴포넌트가 만들어진 이유다.
- * 넘치는 권수는 세로로 늘리지 않고 쪽 넘김으로 받는다.
+ * 한 쪽(선반 1열 × `rowCount`행)에 세우는 책 수 기본값. 이보다 많으면 선반이 세로로 자라 펼침면
+ * 밖으로 나간다 — 그것이 이 컴포넌트가 만들어진 이유다(418-46). 넘치는 권수는 세로로 늘리지 않고
+ * 쪽 넘김으로 받는다.
  *
- * 행당 3권인 근거(폭 예산, 스케일 1 기준): 패널 300px - p-5×2(40) = 260 → 캐비닛 테두리 20 →
- * 본문 p-2.5×2(20) → 칸 p-2.5×2(20) = 200px. 책등 폭은 40/46/52 3주기(getSpineWidth)라 3권이
- * 138px이고, 기울어진 책의 좌우 여백(getSpineNeighborClearancePx, 권당 최악 6.6px)을 다 더해도
- * 158px이라 예산 안이다. 4권이면 최악 204px으로 넘친다.
+ * 기본값(행당 3권, 2행)의 근거(폭 예산, 스케일 1 기준, 컬렉션 상세 좌측 패널 300px 기준): 패널
+ * 300px - p-5×2(40) = 260 → 캐비닛 테두리 20 → 본문 p-2.5×2(20) → 칸 p-2.5×2(20) = 200px. 책등
+ * 폭은 40/46/52 3주기(getSpineWidth)라 3권이 138px이고, 기울어진 책의 좌우 여백
+ * (getSpineNeighborClearancePx, 권당 최악 6.6px)을 다 더해도 158px이라 예산 안이다. 4권이면 최악
+ * 204px으로 넘친다.
+ *
+ * 422: 이 컴포넌트를 Feed(다른 컬렉션 탐색 패널)에서도 쓰게 되면서, 위 300px 전제가 모든 호출부에
+ * 성립한다고 가정할 수 없어졌다 — Feed 쪽 실제 칸 폭은 아직 배선 전이라 모른다. 그래서 이제
+ * `spinesPerRow`/`rowCount`를 props로 받는다. 기본값은 컬렉션 상세 좌측 패널(원 소비처)의 검증된
+ * 값을 그대로 유지하고, 폭이 다른 호출부는 실측 후 조정해서 넘긴다.
  */
-const SHELF_ROWS = 2;
-const SPINES_PER_ROW = 3;
-const ITEMS_PER_PAGE = SHELF_ROWS * SPINES_PER_ROW;
+const DEFAULT_SPINES_PER_ROW = 3;
+const DEFAULT_ROW_COUNT = 2;
 
 interface AuthorShelfPanelProps {
   collectionId: number;
   /** 좁은 화면의 서랍에서 책을 고르면 서랍을 닫기 위해 호출부가 넘긴다. */
   onSelectCollection?: () => void;
+  /** 한 행에 세울 책등 수. 기본값 3(컬렉션 상세 좌측 패널 300px 기준 — 위 주석 참고). */
+  spinesPerRow?: number;
+  /** 한 쪽에 세울 선반 행 수. 기본값 2. */
+  rowCount?: number;
 }
 
 /**
@@ -57,13 +72,27 @@ interface AuthorShelfPanelProps {
  *
  * 표시하는 값은 `title`·`recordCount`뿐이고 진입점은 `collectionId`다 — `member.id`를 쓰지 않는다
  * (privacy-rules.md: "타인 접근의 진입점은 Collection id"). 143이 이 경로를 고른 근거를 그대로 잇는다.
+ *
+ * ## 422 — Feed의 "다른 컬렉션 탐색" 패널도 이 컴포넌트를 쓴다
+ *
+ * 색은 전부 하드코딩 hex 대신 브랜드 토큰(log-mint/pin-navy/snow-white/line-card/ink-gray-light)으로
+ * 옮겼다 — LibraryPage 책장(FollowedShelfCard 등)과 같은 톤이어야 "같은 책장"으로 읽힌다는 것이
+ * 이번 정리의 전제다. 폭이 300px가 아닌 호출부를 위해 `spinesPerRow`/`rowCount`를 열어 뒀다(위
+ * 상수 주석 참고). Feed 쪽 실제 소비는 `src/features/feed/components/FeedShelfExplorePanel.tsx`가
+ * 얇게 감싼다.
  */
-export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShelfPanelProps) {
+export function AuthorShelfPanel({
+  collectionId,
+  onSelectCollection,
+  spinesPerRow = DEFAULT_SPINES_PER_ROW,
+  rowCount = DEFAULT_ROW_COUNT,
+}: AuthorShelfPanelProps) {
   const navigate = useNavigate();
   const shelfExploreQuery = useShelfExploreQuery(collectionId);
   const followMutation = useFollowMutation();
   const unfollowMutation = useUnfollowMutation();
   const [pageIndex, setPageIndex] = useState(0);
+  const itemsPerPage = rowCount * spinesPerRow;
 
   // 418-35: 패널 위에 붙어 있던 "이 작성자의 다른 컬렉션" 제목을 뺐다 — 책등이 늘어선 모양 자체가
   // 이미 "다른 컬렉션"을 말하고 있어 글자가 한 겹 더 얹히면 종이 위가 라벨투성이가 된다.
@@ -74,7 +103,7 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
     return (
       <section aria-label={SHELF_LABEL} className="flex h-full min-h-0 flex-col gap-3">
         <p
-          className={`text-[13px] ${shelfExploreQuery.isError ? 'text-red-600' : 'text-[#a29d95]'}`}
+          className={`text-[13px] ${shelfExploreQuery.isError ? 'text-red-600' : 'text-ink-gray-light'}`}
         >
           {shelfExploreQuery.isError ? '책장을 불러오지 못했어요.' : '책장을 세우는 중…'}
         </p>
@@ -88,14 +117,11 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
   const otherCollections = pages.flatMap((page) => page.collections.items);
   const hasNext = pages[pages.length - 1].collections.hasNext;
 
-  const visible = otherCollections.slice(
-    pageIndex * ITEMS_PER_PAGE,
-    (pageIndex + 1) * ITEMS_PER_PAGE,
-  );
-  const canGoNext = (pageIndex + 1) * ITEMS_PER_PAGE < otherCollections.length || hasNext;
+  const visible = otherCollections.slice(pageIndex * itemsPerPage, (pageIndex + 1) * itemsPerPage);
+  const canGoNext = (pageIndex + 1) * itemsPerPage < otherCollections.length || hasNext;
   const canGoPrevious = pageIndex > 0;
   // 로드된 수로 낸 쪽 수. 더 받을 게 남아 있으면(hasNext) 총 쪽 수는 아직 확정이 아니라 '+'를 붙인다.
-  const pageCount = Math.max(1, Math.ceil(otherCollections.length / ITEMS_PER_PAGE));
+  const pageCount = Math.max(1, Math.ceil(otherCollections.length / itemsPerPage));
 
   const isFollowPending = followMutation.isPending || unfollowMutation.isPending;
   // logged_in 쿠키 기반 UI 힌트(143과 동일) — 실제 인가 판단이 아니라 버튼 문구·동작 분기에만 쓴다.
@@ -118,7 +144,7 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
   };
 
   const handleNextPage = () => {
-    const nextStart = (pageIndex + 1) * ITEMS_PER_PAGE;
+    const nextStart = (pageIndex + 1) * itemsPerPage;
     if (nextStart < otherCollections.length) {
       setPageIndex(pageIndex + 1);
       return;
@@ -143,8 +169,8 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
             aria-busy={isFollowPending}
             className={`h-8 flex-none rounded-full px-3.5 text-[12px] font-bold transition-colors disabled:opacity-40 ${
               follow.followed
-                ? 'border border-[#ded8cd] bg-white/70 text-[#6f6a63] hover:border-[#c7bda9]'
-                : 'bg-[#4f9b78] text-white hover:bg-[#448a6a]'
+                ? 'border border-line-card bg-snow-white text-pin-navy hover:border-log-mint'
+                : 'bg-log-mint text-pin-navy hover:brightness-95'
             }`}
           >
             {/* 396: 라벨을 "처리 중…"으로 교체하면 버튼 폭이 튄다. 라벨은 그대로 두고 스피너만 겹친다. */}
@@ -157,7 +183,7 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
           <button
             type="button"
             onClick={handleLoginRedirect}
-            className="h-8 flex-none rounded-full bg-[#4f9b78] px-3.5 text-[12px] font-bold text-white"
+            className="h-8 flex-none rounded-full bg-log-mint px-3.5 text-[12px] font-bold text-pin-navy hover:brightness-95"
           >
             로그인하고 팔로우
           </button>
@@ -167,7 +193,7 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
       {followError && <p className="flex-none text-[12px] text-red-600">{followError.message}</p>}
 
       {otherCollections.length === 0 ? (
-        <p className="flex-none text-[13px] text-[#a29d95]">아직 다른 컬렉션이 없어요.</p>
+        <p className="flex-none text-[13px] text-ink-gray-light">아직 다른 컬렉션이 없어요.</p>
       ) : (
         <>
           {/* 선반 1열 × 2행. 행 수가 고정이라 항목이 몇이든 이 상자의 높이는 변하지 않는다 —
@@ -181,16 +207,16 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
                   style={{ paddingTop: SHELF_SCROLL_TOP_PADDING_PX }}
                   className="flex flex-col gap-1.5"
                 >
-                  {Array.from({ length: SHELF_ROWS }, (_, rowIndex) => (
+                  {Array.from({ length: rowCount }, (_, rowIndex) => (
                     <ShelfTier key={rowIndex}>
                       {visible
-                        .slice(rowIndex * SPINES_PER_ROW, (rowIndex + 1) * SPINES_PER_ROW)
+                        .slice(rowIndex * spinesPerRow, (rowIndex + 1) * spinesPerRow)
                         .map((collection, indexInRow) => (
                           <ShelfBookSpine
                             key={collection.collectionId}
                             // index는 "선반 위 위치"(폭 순환)에만 쓴다 — 색·높이·기울기는
                             // collectionId로 정해져 화면이 바뀌어도 같은 책이 같은 모습이다.
-                            index={rowIndex * SPINES_PER_ROW + indexInRow}
+                            index={rowIndex * spinesPerRow + indexInRow}
                             collectionId={collection.collectionId}
                             title={collection.title}
                             recordCount={collection.recordCount}
@@ -222,29 +248,28 @@ export function AuthorShelfPanel({ collectionId, onSelectCollection }: AuthorShe
 
           {/* 쪽 넘김. 세로로 자라는 대신 여기서 받는다 — 선반이 화면 밖으로 자라지 않게 하는 장치다. */}
           {(canGoNext || canGoPrevious) && (
-            <div className="flex flex-none items-center justify-center gap-3 text-[12px] text-[#a29d95]">
-              <button
-                type="button"
+            <div className="flex flex-none items-center justify-center gap-3 text-[12px] text-ink-gray-light">
+              {/* 422: 다른 책장 화면(FeedList·LibraryPage·Shelf.tsx)의 원형 페이지 이동 버튼과
+                  같은 부품(ShelfIconButton, 테두리 line-card → 호버 시 log-mint 채움)을 그대로
+                  쓴다 — 직접 hex를 적어 이 화면만 다른 버튼처럼 보이던 것을 없앤다. */}
+              <ShelfIconButton
+                label="이전 책장"
                 onClick={() => setPageIndex(pageIndex - 1)}
                 disabled={!canGoPrevious}
-                aria-label="이전 책장"
-                className="grid h-7 w-7 place-items-center rounded-full text-[15px] text-[#8a857e] transition-colors hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4f9b78] disabled:opacity-30"
               >
-                ‹
-              </button>
+                <span className="text-[15px] leading-none">‹</span>
+              </ShelfIconButton>
               <span>
                 {pageIndex + 1} / {pageCount}
                 {hasNext ? '+' : ''}
               </span>
-              <button
-                type="button"
+              <ShelfIconButton
+                label="다음 책장"
                 onClick={handleNextPage}
                 disabled={!canGoNext || shelfExploreQuery.isFetchingNextPage}
-                aria-label="다음 책장"
-                className="grid h-7 w-7 place-items-center rounded-full text-[15px] text-[#8a857e] transition-colors hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4f9b78] disabled:opacity-30"
               >
-                ›
-              </button>
+                <span className="text-[15px] leading-none">›</span>
+              </ShelfIconButton>
             </div>
           )}
         </>
