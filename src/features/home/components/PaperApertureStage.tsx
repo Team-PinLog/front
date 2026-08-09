@@ -103,7 +103,6 @@ export function PaperApertureStage({
 
       <div className="pl-sheet pl-sheet-t">
         <PaperSurface />
-        <span className="pl-deckle" aria-hidden="true" />
         <div className="pl-type-t">{top}</div>
       </div>
 
@@ -130,7 +129,6 @@ export function PaperApertureStage({
 
       <div className="pl-sheet pl-sheet-b">
         <PaperSurface />
-        <span className="pl-deckle" aria-hidden="true" />
         {bottom ? <div className="pl-type-b">{bottom}</div> : null}
       </div>
 

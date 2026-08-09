@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
+import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
 import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
@@ -10,7 +11,10 @@ import {
   SearchResultGallery,
 } from '@/features/home/components/SearchResultGallery';
 import { PaperApertureStage } from '@/features/home/components/PaperApertureStage';
-import { HomeSearchDock } from '@/features/home/components/HomeSearchDock';
+import {
+  HomeSearchDock,
+  type HomeSearchDockHandle,
+} from '@/features/home/components/HomeSearchDock';
 import {
   HomeLeftType,
   HomeRightType,
@@ -19,6 +23,25 @@ import {
 } from '@/features/home/components/HomeSheetPanels';
 import { computeOpen, MAP_TOP_OBSTRUCTION_PX } from '@/features/home/lib/paperAperture';
 import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
+
+interface HomeSearchEmptyModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onReset: () => void;
+}
+
+function HomeSearchEmptyModal({ isOpen, onClose, onReset }: HomeSearchEmptyModalProps) {
+  const sheet = usePlaceRecordSheet();
+  const handleAddPlace = useCallback(() => {
+    onReset();
+    sheet.open();
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('#place-search-input')?.focus(),
+    );
+  }, [onReset, sheet]);
+
+  return <SearchEmptyModal isOpen={isOpen} onClose={onClose} onAddPlace={handleAddPlace} />;
+}
 
 /**
  * 홈 화면 — "종이에 오려낸 창".
@@ -38,6 +61,7 @@ import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
  */
 export function HomePage() {
   const searchMutation = useSearchRecordsMutation();
+  const searchDockRef = useRef<HomeSearchDockHandle>(null);
   const [query, setQuery] = useState('');
   const [openRecordId, setOpenRecordId] = useState<number | null>(null);
   // 방금 저장한 Record. 마커 목록이 갱신되는 대로 지도가 그 좌표로 이동하고 값을 비운다.
@@ -66,6 +90,18 @@ export function HomePage() {
   );
 
   const open = computeOpen(query);
+
+  const handleEmptySearchReset = useCallback(() => {
+    setQuery('');
+    resetSearch();
+  }, [resetSearch]);
+
+  const handleEmptySearchClose = useCallback(() => {
+    handleEmptySearchReset();
+    // SearchEmptyModal의 unmount cleanup이 열리기 전 포커스를 먼저 복구한다. 그 커밋 뒤 다음
+    // 프레임에서 검색창을 다시 잡아야 ESC·딤으로 닫은 뒤 새 검색을 바로 시작할 수 있다.
+    requestAnimationFrame(() => searchDockRef.current?.focus());
+  }, [handleEmptySearchReset]);
 
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
   const hasNoResults = searchMutation.isSuccess && searchMutation.data.items.length === 0;
@@ -107,6 +143,7 @@ export function HomePage() {
           topmark={<HomeTopmark />}
           dock={
             <HomeSearchDock
+              ref={searchDockRef}
               query={query}
               onQueryChange={handleQueryChange}
               onSubmit={(value) => searchMutation.mutate(value)}
@@ -147,11 +184,10 @@ export function HomePage() {
             </div>
           )}
 
-          <SearchEmptyModal
+          <HomeSearchEmptyModal
             isOpen={hasNoResults}
-            query={query}
-            onClose={resetSearch}
-            onRetry={resetSearch}
+            onClose={handleEmptySearchClose}
+            onReset={handleEmptySearchReset}
           />
         </PaperApertureStage>
 

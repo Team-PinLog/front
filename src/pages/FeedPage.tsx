@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
+import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { FeedList } from '@/features/feed/components/FeedList';
 import { PaperSpreadStage } from '@/features/paper/components/PaperSpreadStage';
 import {
@@ -25,29 +26,22 @@ import {
  * 책장이 쓸 상자는 지면 안에서 실측한다(PaperSpreadStage → FeedList의 area).
  */
 export function FeedPage() {
-  // 쪽 번호는 FeedList가 소유한 페이지네이션 상태의 **읽기 전용 사본**이다(FeedList 주석).
-  // 콜백을 useCallback으로 고정해 두면 FeedList의 보고 effect가 쪽이 바뀔 때만 돈다.
-  const [pageNumber, setPageNumber] = useState<number | null>(null);
-  const handlePageNumberChange = useCallback((value: number) => setPageNumber(value), []);
-
   return (
-    // 홈과 같은 이유로 PAGE_MIN_HEIGHT_CLASS를 쓰지 않는다 — 이 지면은 여백 없이 화면을
-    // 가장자리까지 채운다. 414에서 셸 <main>의 여백이 전부 사라져 content box 높이가 정확히
-    // 100dvh라 h-full이면 된다(HomePage와 같은 근거).
-    <main className="relative h-full">
-      <PaperSpreadStage
-        head={<ExploreHeadType />}
-        left={<ExploreLeftType pageNumber={pageNumber} />}
-        right={<ExploreRightType />}
-        corner={<ExploreCornerNav />}
-        shelf={(area) => (
-          <FeedList
-            area={area.live}
-            layoutArea={area.settled}
-            onPageNumberChange={handlePageNumberChange}
-          />
-        )}
-      />
-    </main>
+    <PlaceRecordSheetProvider>
+      {/* 홈과 같은 이유로 PAGE_MIN_HEIGHT_CLASS를 쓰지 않는다 — 이 지면은 여백 없이 화면을
+          가장자리까지 채운다. 414에서 셸 <main>의 여백이 전부 사라져 content box 높이가 정확히
+          100dvh라 h-full이면 된다(HomePage와 같은 근거). */}
+      <main className="relative h-full">
+        <PaperSpreadStage
+          head={<ExploreHeadType />}
+          left={<ExploreLeftType />}
+          right={<ExploreRightType />}
+          corner={<ExploreCornerNav />}
+          shelf={(area) => <FeedList area={area.live} layoutArea={area.settled} />}
+        />
+      </main>
+
+      <PlaceRecordSheet />
+    </PlaceRecordSheetProvider>
   );
 }

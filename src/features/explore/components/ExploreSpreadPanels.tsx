@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router';
+import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PaperCoverFace } from '@/features/home/components/HomeSheetPanels';
 import { useRecentlyOpenedCount } from '@/features/feed/hooks/useRecentlyOpenedCount';
 import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
@@ -25,25 +26,16 @@ export function ExploreHeadType() {
   );
 }
 
-interface ExploreLeftTypeProps {
-  /** 지금 펼친 쪽(1부터). 아직 첫 응답 전이면 null이다. */
-  pageNumber: number | null;
-}
-
 /**
- * 좌측 메모지 두 장 — 위는 이 책장이 무엇인지, 아래는 지금 펼친 쪽.
- *
- * ⚠️ 쪽 번호 외에 다른 수치를 적지 않는다. Feed 응답에는 전체 쪽 수도 전체 컬렉션 수도 없고
- * (opaque cursor 기반, 08_API_명세 10.1) 소유자 정보는 공개 화면 노출 금지다
- * (docs/privacy-rules.md). 지어내면 메모가 거짓말을 한다 — 홈 우측 표지에서 저자명 줄을
- * 옮기지 않은 것과 같은 판단이다.
+ * 좌측 메모지 두 장 — 위는 이 책장이 무엇인지, 아래는 장소 추가 진입점.
  *
  * 「펼쳐본 책」한 줄만 예외로 수를 적는데, 그것은 서버가 준 값이 아니라 **이 브라우저에 남은 내
  * 기록**이다(382의 recentlyOpenedCollections). 세는 범위와 상한은 useRecentlyOpenedCount 주석에
  * 있고, 문구를 "지금까지 본 책 전부"로 쓰지 않은 이유도 그것이다.
  */
-export function ExploreLeftType({ pageNumber }: ExploreLeftTypeProps) {
+export function ExploreLeftType() {
   const openedCount = useRecentlyOpenedCount();
+  const placeRecordSheet = usePlaceRecordSheet();
 
   return (
     <>
@@ -59,13 +51,11 @@ export function ExploreLeftType({ pageNumber }: ExploreLeftTypeProps) {
         <PaperNoteTally label="펼쳐본 책" value={openedCount === 0 ? '아직' : `${openedCount}권`} />
       </div>
 
-      <div className="pl-note pe-note-folio">
+      <button type="button" className="pl-note pl-note-add" onClick={placeRecordSheet.open}>
         <PaperNoteParts />
-        <span>지금 펼친 쪽</span>
-        {/* 측정 전(첫 응답 전)에는 자리만 잡아 둔다 — 숫자가 들어오면서 메모지 높이가 바뀌면
-            곁열이 한 번 출렁인다. 같은 자릿수의 대체 문자를 세워 두면 그 일이 없다. */}
-        <b>{pageNumber === null ? '—' : pageNumber}</b>
-      </div>
+        <b aria-hidden="true">+</b>
+        <span>장소 추가하기</span>
+      </button>
     </>
   );
 }

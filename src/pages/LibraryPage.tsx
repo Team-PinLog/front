@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
+import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { MyShelfColumn } from '@/features/collections/components/MyShelfList';
 import { FollowedShelfCard } from '@/features/follows/components/FollowedShelfCard';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
@@ -65,30 +67,22 @@ import {
  * 이 컴포넌트(무대)와 아래 LibraryShelf(캐비닛)로 나뉜 이유가 그것이다.
  */
 export function LibraryPage() {
-  // 쪽 번호는 캐비닛이 소유한 페이지네이션 상태의 **읽기 전용 사본**이다(탐색과 같은 규약).
-  // 콜백을 useCallback으로 고정해 두면 보고 effect가 쪽이 바뀔 때만 돈다.
-  const [pageNumber, setPageNumber] = useState<number | null>(null);
-  const handlePageNumberChange = useCallback((value: number) => setPageNumber(value), []);
-
   return (
-    // 홈·탐색과 같은 이유로 PAGE_MIN_HEIGHT_CLASS·PAGE_CONTAINER_CLASS를 쓰지 않는다 — 이 지면은
-    // 여백 없이 화면을 가장자리까지 채운다. 414에서 셸 <main>의 여백이 전부 사라져 content box
-    // 높이가 정확히 100dvh라 h-full이면 된다.
-    <main className="relative h-full">
-      <PaperSpreadStage
-        head={<LibraryHeadType />}
-        left={<LibraryLeftType pageNumber={pageNumber} />}
-        right={<LibraryRightType />}
-        corner={<LibraryCornerNav />}
-        shelf={(area) => (
-          <LibraryShelf
-            area={area.live}
-            layoutArea={area.settled}
-            onPageNumberChange={handlePageNumberChange}
-          />
-        )}
-      />
-    </main>
+    <PlaceRecordSheetProvider>
+      {/* 홈·탐색과 같은 이유로 PAGE_MIN_HEIGHT_CLASS·PAGE_CONTAINER_CLASS를 쓰지 않는다 — 이 지면은
+          여백 없이 화면을 가장자리까지 채운다. 414에서 셸 <main>의 여백이 전부 사라져 content box
+          높이가 정확히 100dvh라 h-full이면 된다. */}
+      <main className="relative h-full">
+        <PaperSpreadStage
+          head={<LibraryHeadType />}
+          left={<LibraryLeftType />}
+          right={<LibraryRightType />}
+          corner={<LibraryCornerNav />}
+          shelf={(area) => <LibraryShelf area={area.live} layoutArea={area.settled} />}
+        />
+      </main>
+      <PlaceRecordSheet />
+    </PlaceRecordSheetProvider>
   );
 }
 
@@ -101,11 +95,9 @@ interface LibraryShelfProps {
   area?: ShelfArea | null;
   /** **구성**(몇 열 · 몇 행)을 정할 때만 쓰는 상자. 크기는 area, 구성은 이 값 — ShelfAreaFeed 주석. */
   layoutArea?: ShelfArea | null;
-  /** 지금 펼친 쪽(1부터)을 알린다. 곁열의 쪽 번호 메모지가 쓴다. */
-  onPageNumberChange?: (pageNumber: number) => void;
 }
 
-function LibraryShelf({ area, layoutArea, onPageNumberChange }: LibraryShelfProps) {
+function LibraryShelf({ area, layoutArea }: LibraryShelfProps) {
   // ⚠️ 훅은 분기와 무관하게 항상 부른다(호출 순서 고정). 상자를 받으면 값을 쓰지 않을 뿐이다.
   const viewportTier = useShelfWidthTier();
   const { height: viewportHeight } = useViewportSize();
@@ -154,12 +146,6 @@ function LibraryShelf({ area, layoutArea, onPageNumberChange }: LibraryShelfProp
     setPrevColumns(columns);
     setVirtualPageIndex(0);
   }
-
-  // 411: 쪽 번호를 곁열 메모지로 흘려보낸다. 페이지네이션 상태는 계속 이 컴포넌트가 소유하고
-  // 읽기 전용 값만 나간다(탐색의 FeedList와 같은 규약).
-  useEffect(() => {
-    onPageNumberChange?.(virtualPageIndex + 1);
-  }, [onPageNumberChange, virtualPageIndex]);
 
   const followsQuery = useFollowsQuery();
   const pages = followsQuery.data?.pages ?? [];
