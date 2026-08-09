@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
+import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
 import { useSearchRecordsMutation } from '@/features/search/hooks/useSearchRecordsMutation';
@@ -22,6 +23,25 @@ import {
 } from '@/features/home/components/HomeSheetPanels';
 import { computeOpen, MAP_TOP_OBSTRUCTION_PX } from '@/features/home/lib/paperAperture';
 import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
+
+interface HomeSearchEmptyModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onReset: () => void;
+}
+
+function HomeSearchEmptyModal({ isOpen, onClose, onReset }: HomeSearchEmptyModalProps) {
+  const sheet = usePlaceRecordSheet();
+  const handleAddPlace = useCallback(() => {
+    onReset();
+    sheet.open();
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>('#place-search-input')?.focus(),
+    );
+  }, [onReset, sheet]);
+
+  return <SearchEmptyModal isOpen={isOpen} onClose={onClose} onAddPlace={handleAddPlace} />;
+}
 
 /**
  * 홈 화면 — "종이에 오려낸 창".
@@ -71,13 +91,17 @@ export function HomePage() {
 
   const open = computeOpen(query);
 
-  const handleEmptySearchClose = useCallback(() => {
+  const handleEmptySearchReset = useCallback(() => {
     setQuery('');
     resetSearch();
-    // SearchEmptyModal의 unmount cleanup이 열리기 전 포커스를 먼저 복구한다. 그 커밋 뒤 다음
-    // 프레임에서 검색창을 다시 잡아야 CTA·ESC·딤 어느 경로로 닫아도 새 검색을 바로 시작할 수 있다.
-    requestAnimationFrame(() => searchDockRef.current?.focus());
   }, [resetSearch]);
+
+  const handleEmptySearchClose = useCallback(() => {
+    handleEmptySearchReset();
+    // SearchEmptyModal의 unmount cleanup이 열리기 전 포커스를 먼저 복구한다. 그 커밋 뒤 다음
+    // 프레임에서 검색창을 다시 잡아야 ESC·딤으로 닫은 뒤 새 검색을 바로 시작할 수 있다.
+    requestAnimationFrame(() => searchDockRef.current?.focus());
+  }, [handleEmptySearchReset]);
 
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
   const hasNoResults = searchMutation.isSuccess && searchMutation.data.items.length === 0;
@@ -160,11 +184,10 @@ export function HomePage() {
             </div>
           )}
 
-          <SearchEmptyModal
+          <HomeSearchEmptyModal
             isOpen={hasNoResults}
-            query={query}
             onClose={handleEmptySearchClose}
-            onRetry={handleEmptySearchClose}
+            onReset={handleEmptySearchReset}
           />
         </PaperApertureStage>
 

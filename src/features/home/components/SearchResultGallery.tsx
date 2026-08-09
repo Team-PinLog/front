@@ -84,18 +84,10 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
 
 interface SearchEmptyModalProps {
   isOpen: boolean;
-  /**
-   * 방금 검색한 문장. S15P11A705-426 리터치로 표제 인용 문구를 시안 그대로("아직 이 지도에
-   * 남긴 기억이 없어요")로 바꾸면서 JSX에서는 더 이상 쓰지 않는다. 다만 `HomePage.tsx`(L3
-   * 영역)가 아직 이 prop을 넘기고 있어(읽기만 허용된 파일이라 배선을 바꾸지 않았다) 시그니처는
-   * 유지한다 — L3가 호출부를 정리하면 그때 지운다.
-   */
-  query: string;
   /** ESC·배경 클릭으로 닫을 때. */
   onClose: () => void;
-  /** 하단 CTA. 호출부가 검색어를 지우고 입력으로 포커스를 되돌리는 동작까지 책임진다 — 이
-   * 컴포넌트는 검색 상태를 모른다. */
-  onRetry: () => void;
+  /** 하단 CTA. 호출부가 검색 상태를 정리하고 장소 추가 시트를 여는 동작을 책임진다. */
+  onAddPlace: () => void;
 }
 
 /**
@@ -124,11 +116,8 @@ interface SearchEmptyModalProps {
  * 잃을 입력이 없는 안내문이라 정책이 다르게 적용된다(같은 파일 안의 두 모달이 서로 다른 배경
  * 클릭 정책을 갖는 게 아니라, 이 결정은 ConfirmDialog의 정책과는 별개로 이 모달 하나에만 해당).
  *
- * ⚠️ 이 컴포넌트는 아직 `HomePage.tsx`에서 쓰이지 않는다. `hasNoResults`일 때 무엇을 렌더할지는
- * HomePage가 정하는 배선이고, L3 영역이라 이 레인에서 손대지 않았다 — 보고에 필요한 배선 변경을
- * 적었다.
  */
-export function SearchEmptyModal({ isOpen, onClose, onRetry }: SearchEmptyModalProps) {
+export function SearchEmptyModal({ isOpen, onClose, onAddPlace }: SearchEmptyModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const retryButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -223,9 +212,7 @@ export function SearchEmptyModal({ isOpen, onClose, onRetry }: SearchEmptyModalP
         <PinStanding height={40} className="mx-auto mb-4 text-log-mint" />
 
         <h2 id={titleId} className="text-xl font-bold leading-snug text-pin-navy">
-          아직 이 지도에 남긴
-          <br />
-          기억이 없어요
+          아직 남긴 기억이 없어요
         </h2>
 
         <p id={descriptionId} className="mt-3 text-sm leading-relaxed text-ink-gray">
@@ -236,10 +223,10 @@ export function SearchEmptyModal({ isOpen, onClose, onRetry }: SearchEmptyModalP
         <button
           ref={retryButtonRef}
           type="button"
-          onClick={onRetry}
+          onClick={onAddPlace}
           className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-log-mint px-6 py-2.5 text-sm font-bold text-pin-navy transition-transform hover:-translate-y-0.5"
         >
-          장소 찾아보기
+          장소 추가하기
           <span aria-hidden="true">›</span>
         </button>
       </div>

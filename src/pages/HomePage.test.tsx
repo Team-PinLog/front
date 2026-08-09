@@ -3,7 +3,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from './HomePage';
 
-const { resetSearchMock } = vi.hoisted(() => ({
+const { openPlaceSheetMock, resetSearchMock } = vi.hoisted(() => ({
+  openPlaceSheetMock: vi.fn(),
   resetSearchMock: vi.fn(),
 }));
 
@@ -33,7 +34,12 @@ vi.mock('@/features/map/hooks/useRecordMapMarkersQuery', () => ({
 vi.mock('@/contexts/PlaceRecordSheetProvider', () => ({
   PlaceRecordSheetProvider: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock('@/features/records/components/PlaceRecordSheet', () => ({ PlaceRecordSheet: () => null }));
+vi.mock('@/contexts/usePlaceRecordSheet', () => ({
+  usePlaceRecordSheet: () => ({ open: openPlaceSheetMock }),
+}));
+vi.mock('@/features/records/components/PlaceRecordSheet', () => ({
+  PlaceRecordSheet: () => <input id="place-search-input" aria-label="장소 검색" />,
+}));
 vi.mock('@/features/records/components/RecordDetailOverlay', () => ({
   RecordDetailOverlay: () => null,
 }));
@@ -73,6 +79,7 @@ beforeEach(() => {
     return 1;
   });
   resetSearchMock.mockClear();
+  openPlaceSheetMock.mockClear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -85,7 +92,7 @@ afterEach(() => {
 });
 
 describe('HomePage 빈 검색 결과', () => {
-  it('다시 검색하면 상태와 검색어를 비우고 검색 입력창으로 포커스를 돌린다', async () => {
+  it('장소 추가하기를 누르면 검색 상태를 비우고 장소 추가 시트를 연다', async () => {
     await act(async () => {
       root.render(<HomePage />);
     });
@@ -104,15 +111,34 @@ describe('HomePage 빈 검색 결과', () => {
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain('아직 남긴 기억이 없어요');
 
-    const retryButton = Array.from(dialog?.querySelectorAll('button') ?? []).find((button) =>
-      button.textContent?.includes('다시 검색하기'),
+    const addPlaceButton = Array.from(dialog?.querySelectorAll('button') ?? []).find((button) =>
+      button.textContent?.includes('장소 추가하기'),
     );
     await act(async () => {
-      retryButton?.click();
+      addPlaceButton?.click();
     });
 
     expect(resetSearchMock).toHaveBeenCalledOnce();
     expect(input?.value).toBe('');
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(openPlaceSheetMock).toHaveBeenCalledOnce();
+    expect(document.activeElement?.id).toBe('place-search-input');
+  });
+
+  it('ESC로 닫으면 장소 시트는 열지 않고 검색 입력창으로 포커스를 돌린다', async () => {
+    await act(async () => {
+      root.render(<HomePage />);
+    });
+
+    const input = container.querySelector<HTMLInputElement>('#home-search');
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    expect(resetSearchMock).toHaveBeenCalledOnce();
+    expect(openPlaceSheetMock).not.toHaveBeenCalled();
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(input);
   });
