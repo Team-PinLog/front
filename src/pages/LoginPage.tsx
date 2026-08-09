@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
+import pinLogLogo from '@/assets/logo-full.png';
 import { PaperStage } from '@/features/paper/components/PaperStage';
 import {
   CoverFrame,
   CoverLabelBetweenRules,
   CoverPaper,
   CoverRule,
-  CoverTitle,
 } from '@/features/feed/components/covers/coverParts';
 import { savePreLoginPath } from '@/features/auth/lib/preLoginPath';
 import {
@@ -149,9 +149,13 @@ export function LoginPage() {
                 <CoverFrame tone="gold" />
                 <div className="flex flex-col items-center gap-[0.6em]">
                   <CoverLabelBetweenRules>기억이 머무는 자리</CoverLabelBetweenRules>
-                  <CoverTitle size="md" align="center" tracking="tight" className="font-display">
-                    핀로그
-                  </CoverTitle>
+                  <img
+                    src={pinLogLogo}
+                    alt="핀로그"
+                    width={1447}
+                    height={1087}
+                    className="-my-[0.55em] h-auto w-[min(72%,6.2em)]"
+                  />
                   <CoverRule width="short" />
                 </div>
               </CoverPaper>
@@ -160,10 +164,11 @@ export function LoginPage() {
             {/* 열린 표지 안쪽 — 소셜 로그인. */}
             <div className="mt-9 flex w-[min(92vw,400px)] flex-col items-center gap-6">
               <p
-                className="login-item-in max-w-xs text-center text-sm text-ink-gray"
+                className="login-item-in max-w-sm break-keep text-center text-sm leading-relaxed text-ink-gray"
                 style={{ animationDelay: '0.66s' }}
               >
-                장소의 기억을 한 권의 책으로, 기록하고 모으고 새로운 이야기를 발견하세요
+                <span className="block">장소의 기억을 한 권의 책으로,</span>
+                <span className="block">기록하고 모으고 새로운 이야기를 발견하세요</span>
               </p>
 
               <div className="flex w-full flex-col gap-3">

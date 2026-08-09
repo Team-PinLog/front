@@ -1,3 +1,4 @@
+import { preload } from 'react-dom';
 import { Link } from '@tanstack/react-router';
 import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PaperNoteParts } from '@/shared/ui/PaperNoteParts';
@@ -152,6 +153,14 @@ export function HomeRightType() {
  * 표지 조판이 달라지면 "같은 시리즈의 책"이라는 인상이 깨진다. 그래서 복제하지 않고 내보낸다.
  */
 export function PaperCoverFace({ title }: { title: string }) {
+  // 이 표지가 실제로 필요한 화면에서만 제주명조를 미리 요청한다. index.html에서 전역
+  // preload하면 로그인·약관처럼 표지를 렌더하지 않는 진입도 241KB 폰트를 받게 된다.
+  preload('/fonts/jeju-myeongjo.woff2', {
+    as: 'font',
+    type: 'font/woff2',
+    crossOrigin: 'anonymous',
+  });
+
   return (
     <>
       <span className="pl-cover-frame" aria-hidden="true" />
