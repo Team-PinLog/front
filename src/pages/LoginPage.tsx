@@ -148,9 +148,9 @@ export function LoginPage() {
               <CoverPaper className="rounded-sm px-[1.15em] pb-[1.35em] pt-[1.55em] shadow-[0_22px_54px_-20px_rgba(4,33,66,0.32)]">
                 <CoverFrame tone="gold" />
                 <div className="flex flex-col items-center gap-[0.6em]">
-                  <CoverLabelBetweenRules>YOUR JOURNAL, PREVIEWED</CoverLabelBetweenRules>
+                  <CoverLabelBetweenRules>기억이 머무는 자리</CoverLabelBetweenRules>
                   <CoverTitle size="md" align="center" tracking="tight" className="font-display">
-                    PinLog
+                    핀로그
                   </CoverTitle>
                   <CoverRule width="short" />
                 </div>
