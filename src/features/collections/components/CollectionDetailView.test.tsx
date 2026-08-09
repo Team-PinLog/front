@@ -237,10 +237,24 @@ describe('CollectionDetailView — 펼침면 소유자 배치(418)', () => {
 
     // 펼치면 목차가 먼저다.
     expect(container.textContent).toContain('목차');
+    expect(container.textContent).toContain('이 컬렉션의 장소들');
     expect(container.textContent).not.toContain('1 / 2');
 
     await goToRecordPage('성수동 카페 온화');
     expect(container.textContent).toContain('1 / 2');
+    expect(container.textContent).not.toContain('이 컬렉션의 장소들');
+
+    await goToRecordPage('망원 한강공원');
+    expect(container.textContent).toContain('2 / 2');
+    expect(container.textContent).not.toContain('이 컬렉션의 장소들');
+
+    const tocTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.title === '목차',
+    );
+    await act(async () => {
+      tocTab?.click();
+    });
+    expect(container.textContent).toContain('이 컬렉션의 장소들');
   });
 
   it('표제는 컬렉션 제목과 "기록 N개 · 만든 날"이다', async () => {
@@ -252,6 +266,26 @@ describe('CollectionDetailView — 펼침면 소유자 배치(418)', () => {
 });
 
 describe('CollectionDetailView — 펼침면 타인 배치(418)', () => {
+  it('목차에서만 컬렉션 장소 안내 문구를 보여 준다', async () => {
+    await renderView({ ownedByMe: false, contextCount: 0 });
+
+    expect(container.textContent).toContain('이 컬렉션의 장소들');
+
+    await goToRecordPage('성수동 카페 온화');
+    expect(container.textContent).not.toContain('이 컬렉션의 장소들');
+
+    await goToRecordPage('망원 한강공원');
+    expect(container.textContent).not.toContain('이 컬렉션의 장소들');
+
+    const tocTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.title === '목차',
+    );
+    await act(async () => {
+      tocTab?.click();
+    });
+    expect(container.textContent).toContain('이 컬렉션의 장소들');
+  });
+
   it('Context 원문을 한 글자도 렌더하지 않는다(공개 범위)', async () => {
     await renderView({ ownedByMe: false, contextCount: 3 });
     await goToRecordPage('성수동 카페 온화');

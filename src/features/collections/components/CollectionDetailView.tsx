@@ -314,9 +314,11 @@ export function CollectionDetailView({
         )}
       </div>
 
-      <div className="mt-5 flex flex-none flex-wrap items-center justify-between gap-2">
-        <p className="font-hand text-[21px] leading-none text-[#8a857e]">이 컬렉션의 장소들</p>
-      </div>
+      {isTocOpen && (
+        <div className="mt-5 flex flex-none flex-wrap items-center justify-between gap-2">
+          <p className="font-hand text-[21px] leading-none text-[#8a857e]">이 컬렉션의 장소들</p>
+        </div>
+      )}
     </div>
   );
 
