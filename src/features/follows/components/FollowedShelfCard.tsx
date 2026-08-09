@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import {
   ShelfBookSpine,
   ShelfColumnSkeleton,
+  ShelfColumnStatus,
   ShelfIconButton,
   ShelfLabel,
   ShelfTier,
@@ -77,6 +78,17 @@ export function FollowedShelfCard({
   const [isUnfollowConfirmOpen, setIsUnfollowConfirmOpen] = useState(false);
   const [isEditingAlias, setIsEditingAlias] = useState(false);
   const [aliasInput, setAliasInput] = useState(alias ?? '');
+  const collections = collectionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const statusMessage = updateAliasMutation.isError
+    ? updateAliasMutation.error.message
+    : collectionsQuery.isPending
+      ? '불러오는 중…'
+      : collectionsQuery.isError
+        ? '책장을 불러오지 못했어요.'
+        : collections.length === 0
+          ? '공개된 컬렉션이 없습니다'
+          : null;
+  const statusTone = updateAliasMutation.isError || collectionsQuery.isError ? 'error' : 'muted';
 
   const handleStartEdit = () => {
     setAliasInput(alias ?? '');
@@ -287,19 +299,13 @@ export function FollowedShelfCard({
         </div>
       )}
 
-      {updateAliasMutation.isError && (
-        <p className="text-xs text-red-600">{updateAliasMutation.error.message}</p>
-      )}
+      <ShelfColumnStatus message={statusMessage} tone={statusTone} />
       {/* 416: 로딩·오류에서도 선반은 그대로 깔린다(ShelfColumnSkeleton 주석). 문구만 띄우면
           목록이 도착할 때 선반이 통째로 나타나 "선반 수가 갑자기 바뀐다"로 보인다. */}
       {collectionsQuery.isPending ? (
-        <ShelfColumnSkeleton rowCount={visibleRowCount} message="불러오는 중…" />
+        <ShelfColumnSkeleton rowCount={visibleRowCount} />
       ) : collectionsQuery.isError ? (
-        <ShelfColumnSkeleton
-          rowCount={visibleRowCount}
-          message="책장을 불러오지 못했어요."
-          tone="error"
-        />
+        <ShelfColumnSkeleton rowCount={visibleRowCount} />
       ) : (
         <FollowedShelfCollections
           followId={followId}
@@ -439,10 +445,6 @@ function FollowedShelfCollections({
 
   return (
     <>
-      {collections.length === 0 && (
-        <p className="text-xs text-ink-gray">공개된 컬렉션이 없습니다</p>
-      )}
-
       {/* 287-8/319: MyShelfColumn과 동일하게 flex-1 min-h-0이다 — 팔로우한 책장의 책 수와
           무관하게, 부모(ShelfColumn)가 내어주는 세로 공간을 그대로 채운다(319에서 min-h-[360px]/
           max-h-[590px] 고정 캡을 없앤 이유는 MyShelfList.tsx 상단 주석 참고). paddingTop/

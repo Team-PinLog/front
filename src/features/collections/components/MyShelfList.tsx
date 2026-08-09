@@ -18,6 +18,7 @@ import {
   ShelfCabinet,
   ShelfColumn,
   ShelfColumnSkeleton,
+  ShelfColumnStatus,
   ShelfLabel,
   ShelfTier,
 } from '@/shared/ui/Shelf';
@@ -80,7 +81,8 @@ export function MyShelfColumn({
     return (
       <>
         <ShelfLabel>내 컬렉션</ShelfLabel>
-        <ShelfColumnSkeleton rowCount={visibleRowCount} message="불러오는 중…" />
+        <ShelfColumnStatus message="불러오는 중…" />
+        <ShelfColumnSkeleton rowCount={visibleRowCount} />
       </>
     );
   }
@@ -89,11 +91,8 @@ export function MyShelfColumn({
     return (
       <>
         <ShelfLabel>내 컬렉션</ShelfLabel>
-        <ShelfColumnSkeleton
-          rowCount={visibleRowCount}
-          message="컬렉션을 불러오지 못했어요."
-          tone="error"
-        />
+        <ShelfColumnStatus message="컬렉션을 불러오지 못했어요." tone="error" />
+        <ShelfColumnSkeleton rowCount={visibleRowCount} />
       </>
     );
   }
@@ -126,10 +125,7 @@ export function MyShelfColumn({
   return (
     <>
       <ShelfLabel>내 컬렉션</ShelfLabel>
-
-      {collections.length === 0 && (
-        <p className="text-xs text-ink-gray">아직 만든 컬렉션이 없어요.</p>
-      )}
+      <ShelfColumnStatus message={collections.length === 0 ? '아직 만든 컬렉션이 없어요.' : null} />
 
       {/* 287-8: flex-1 min-h-0으로 부모가 내어주는 세로 공간을 그대로 채운다(많으면
           overflow-y-auto로 스크롤). 319: 여기 있던 min-h-[360px]/max-h-[590px]는 없앴다(위 주석).

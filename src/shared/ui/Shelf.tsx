@@ -477,6 +477,32 @@ export function ShelfColumn({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Library 열의 상태 문구가 차지하는 고정 한 줄.
+ *
+ * 빈 목록일 때만 `<p>`를 끼우면 그 열의 flex-1 선반 영역만 한 줄만큼 짧아져, 데이터가 있는
+ * 이웃 열과 ShelfTier 높이가 달라진다. 문구가 없어도 같은 높이를 예약해 모든 열의 선반 시작점과
+ * 끝점을 고정한다.
+ */
+export function ShelfColumnStatus({
+  message = null,
+  tone = 'muted',
+}: {
+  message?: string | null;
+  tone?: 'muted' | 'error';
+}) {
+  return (
+    <p
+      aria-hidden={message === null ? 'true' : undefined}
+      className={`h-4 flex-none truncate text-xs leading-4 ${
+        tone === 'error' ? 'text-red-600' : 'text-ink-gray'
+      }`}
+    >
+      {message ?? '\u00a0'}
+    </p>
+  );
+}
+
 // 250: 한 행(row)에 들어갈 스파인들. chunkIntoShelfRows(getRowCapacity)로 이미 한 줄 분량으로 잘려
 // 들어오므로 줄바꿈·스크롤은 이 레벨에서 다루지 않는다 — ShelfTier/바깥 컨테이너가 담당한다.
 // 287-4: 행 높이를 실제 책 높이(getSpineHeight, 112~168 가변)와 무관하게 SPINE_MAX_HEIGHT로

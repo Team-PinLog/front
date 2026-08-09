@@ -31,6 +31,7 @@ import {
   ShelfColumnGrid,
   ShelfColumnHeadSpacer,
   ShelfColumnSkeleton,
+  ShelfColumnStatus,
 } from '@/shared/ui/Shelf';
 
 /**
@@ -245,11 +246,11 @@ function LibraryShelf({ area, layoutArea }: LibraryShelfProps) {
         {/* 416/25번: 머리에 놓을 것이 없어도 자리는 비워 둔다 — 그래야 세 열의 첫 선반이 같은
             높이에 온다(ShelfColumnHeadSpacer 주석). */}
         <ShelfColumnHeadSpacer />
-        <ShelfColumnSkeleton
-          rowCount={visibleRowCount}
+        <ShelfColumnStatus
           message={showsMessage ? followStatusMessage : null}
           tone={followsQuery.isError ? 'error' : 'muted'}
         />
+        <ShelfColumnSkeleton rowCount={visibleRowCount} />
       </ShelfColumn>,
     );
     statusMessageShown = true;
