@@ -3,6 +3,7 @@ import { PaperCoverFace } from '@/features/home/components/HomeSheetPanels';
 import { useMyCollectionsQuery } from '@/features/collections/hooks/useMyCollectionsQuery';
 import { useRecentlyOpenedCount } from '@/features/feed/hooks/useRecentlyOpenedCount';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
+import { usePlaceRecordSheet } from '@/contexts/usePlaceRecordSheet';
 import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
 import { PaperNoteParts, PaperNoteTally } from '@/shared/ui/PaperNoteParts';
 
@@ -35,13 +36,8 @@ export function LibraryHeadType() {
   );
 }
 
-interface LibraryLeftTypeProps {
-  /** 지금 펼친 쪽(1부터). 캐비닛의 좌우 페이지 이동과 같은 값이다. */
-  pageNumber: number | null;
-}
-
 /**
- * 좌측 메모지 두 장 — 위는 **이 책장의 장부**, 아래는 지금 펼친 쪽.
+ * 좌측 메모지 두 장 — 위는 **이 책장의 장부**, 아래는 장소 추가 진입점.
  *
  * 29번(사용자 지시): 탐색의 메모지를 그대로 쓰지 않는다. 두 화면이 같은 종이 문법(제목 · 한 줄
  * 설명 · 점선 리더 장부)을 쓰되 **적는 사실은 달라야** 그 자리에 있을 이유가 생긴다. 탐색은
@@ -59,8 +55,9 @@ interface LibraryLeftTypeProps {
  * 「펼쳐본 책」만 탐색과 **같은 기록·같은 문구**다(382의 recentlyOpenedCollections). 사용자가
  * 책을 어디서 펼쳤든 "내가 펼쳐본 책"은 하나의 사실이라 두 화면이 같은 수를 말하는 것이 맞다.
  */
-export function LibraryLeftType({ pageNumber }: LibraryLeftTypeProps) {
+export function LibraryLeftType() {
   const openedCount = useRecentlyOpenedCount();
+  const sheet = usePlaceRecordSheet();
 
   const myCollectionsQuery = useMyCollectionsQuery();
   const collectionPages = myCollectionsQuery.data?.pages ?? [];
@@ -99,13 +96,11 @@ export function LibraryLeftType({ pageNumber }: LibraryLeftTypeProps) {
         <PaperNoteTally label="펼쳐본 책" value={openedCount === 0 ? '아직' : `${openedCount}권`} />
       </div>
 
-      <div className="pl-note pe-note-folio">
+      <button type="button" className="pl-note pl-note-add" onClick={sheet.open}>
         <PaperNoteParts />
-        <span>지금 펼친 쪽</span>
-        {/* 측정 전에는 자리만 잡아 둔다 — 숫자가 들어오면서 메모지 높이가 바뀌면 곁열이 한 번
-            출렁인다(탐색과 같은 이유). */}
-        <b>{pageNumber === null ? '—' : pageNumber}</b>
-      </div>
+        <b aria-hidden="true">+</b>
+        <span>장소 추가하기</span>
+      </button>
     </>
   );
 }
