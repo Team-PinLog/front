@@ -1,5 +1,10 @@
+import { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { SearchResultItem } from '@/features/search/api/searchRecords';
 import { ContextStickyNote } from '@/shared/ui/ContextStickyNote';
+import { PaperNoteParts } from '@/shared/ui/PaperNoteParts';
+import { PinStanding } from '@/shared/ui/PinSymbols';
+import { FOCUSABLE_SELECTOR } from '@/shared/lib/focusableSelector';
 
 interface SearchResultGalleryProps {
   items: SearchResultItem[];
@@ -74,5 +79,167 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
         </button>
       ))}
     </div>
+  );
+}
+
+interface SearchEmptyModalProps {
+  isOpen: boolean;
+  /** 방금 검색한 문장. 표제에 그대로 인용해 "무엇을 찾다가 못 찾았는지"를 보여준다. */
+  query: string;
+  /** ESC·배경 클릭으로 닫을 때. */
+  onClose: () => void;
+  /** 하단 CTA. 호출부가 검색어를 지우고 입력으로 포커스를 되돌리는 동작까지 책임진다 — 이
+   * 컴포넌트는 검색 상태를 모른다. */
+  onRetry: () => void;
+}
+
+/**
+ * S15P11A705-426: 검색 결과가 0건일 때의 안내를 상태 텍스트(`.pl-status`)가 아니라 모달로 띄운다.
+ *
+ * 종전에는 "그 문장으로는 아직 찾지 못했습니다" 문구가 도크 바로 아래(`.pl-status`)에 얹혔는데,
+ * 도크는 창이 열리면 위로 올라가 상단 워드마크(`HomeTopmark` — `.pl-topmark`)와 같은 자리를
+ * 지나간다. 그 순간 두 글자가 겹쳐 보이는 것이 이 티켓이 없애려는 문제다. 문구를 지면 위 텍스트가
+ * 아니라 화면 중앙의 별도 레이어(모달)로 옮기면 도크·워드마크가 어디에 있든 겹칠 수가 없다.
+ *
+ * 새로 그리지 않고 재사용한 것:
+ * - `PaperNoteParts`(마스킹 테이프 + 접힌 모서리) — 종이 메모지 장식은 여기 것을 그대로 쓴다.
+ *   테이프 기울기만 `[&_.pl-note-tape]:-rotate-3`로 살짝 준다(기본값은 회전이 없다 — 그 값은
+ *   `.pl-note-list`/`.pl-note-add`처럼 특정 부모 클래스에 걸려 있는데, 이 모달은 그 계열이 아니다).
+ * - `PinStanding`(마커 핀 심볼) — 시안의 "민트색 지도 핀 아이콘" 자리에 currentColor로 색만
+ *   입혀 쓴다. 새 SVG를 그리지 않는다.
+ * - 포커스 트랩·ESC 닫기·포커스 복귀는 `ConfirmDialog`(shared/ui)와 같은 패턴이다. 그쪽의
+ *   `FOCUSABLE_SELECTOR`(shared/lib)를 그대로 가져다 쓴다.
+ *
+ * 새로 만든 것 — **스프링 바인더 구멍**은 재사용할 부품이 없어(grep으로 확인, 아무 데도 없다)
+ * 여기서 처음 만든다. 진짜 종이를 오려낸 것처럼 배경까지 뚫는 mask 기법(`.pl-diary-card`가 쓰는
+ * 방식)이 더 정확하지만, 이 모달은 배경이 고정된 딤(#042142/45%) 한 색이라 눌린 자국(inset
+ * box-shadow)만으로도 같은 인상을 준다 — 마스크만큼 손이 가지 않는 쪽을 택했다.
+ *
+ * ⚠️ 배경 클릭으로 닫는다. `ConfirmDialog`는 파괴적 확인이라 배경 클릭을 막지만, 이 모달은
+ * 잃을 입력이 없는 안내문이라 정책이 다르게 적용된다(같은 파일 안의 두 모달이 서로 다른 배경
+ * 클릭 정책을 갖는 게 아니라, 이 결정은 ConfirmDialog의 정책과는 별개로 이 모달 하나에만 해당).
+ *
+ * ⚠️ 이 컴포넌트는 아직 `HomePage.tsx`에서 쓰이지 않는다. `hasNoResults`일 때 무엇을 렌더할지는
+ * HomePage가 정하는 배선이고, L3 영역이라 이 레인에서 손대지 않았다 — 보고에 필요한 배선 변경을
+ * 적었다.
+ */
+export function SearchEmptyModal({ isOpen, query, onClose, onRetry }: SearchEmptyModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const retryButtonRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  // 열릴 때 CTA로 포커스를 옮기고, 닫히면 열기 전 자리로 복귀한다(ConfirmDialog와 같은 규칙).
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    retryButtonRef.current?.focus();
+    return () => {
+      if (previouslyFocused !== null && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [isOpen]);
+
+  // ESC 닫기 + Tab 포커스 트랩.
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || panelRef.current === null) {
+        return;
+      }
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      );
+      if (focusables.length === 0) {
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      const isInside = panelRef.current.contains(active);
+
+      if (event.shiftKey && (active === first || !isInside)) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!event.shiftKey && (active === last || !isInside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-pin-navy/45 p-4"
+      onClick={onClose}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onClick={(event) => event.stopPropagation()}
+        className="relative w-full max-w-xs rounded-md bg-[#faf7f6] px-8 pb-8 pt-10 text-center shadow-[0_24px_50px_rgba(4,33,66,.3)] [&_.pl-note-tape]:-rotate-3"
+      >
+        <PaperNoteParts />
+
+        {/* 스프링 바인더 구멍 — 왼쪽 가장자리 세로 한 줄. */}
+        <div
+          className="absolute inset-y-6 left-2.5 flex flex-col justify-between"
+          aria-hidden="true"
+        >
+          {Array.from({ length: 7 }).map((_, index) => (
+            <span
+              key={index}
+              className="h-2.5 w-2.5 rounded-full bg-pin-navy/10 shadow-[inset_0_1px_2px_rgba(4,33,66,.35)]"
+            />
+          ))}
+        </div>
+
+        <PinStanding height={40} className="mx-auto mb-4 text-log-mint" />
+
+        <h2 id={titleId} className="text-xl font-bold leading-snug text-pin-navy">
+          “{query}”로는
+          <br />
+          아직 남긴 기억이 없어요
+        </h2>
+
+        <p id={descriptionId} className="mt-3 text-sm leading-relaxed text-ink-gray">
+          다른 낱말로 다시 찾아보거나
+          <br />
+          새로운 장소를 기록해 보세요
+        </p>
+
+        <button
+          ref={retryButtonRef}
+          type="button"
+          onClick={onRetry}
+          className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-log-mint px-6 py-2.5 text-sm font-bold text-pin-navy transition-transform hover:-translate-y-0.5"
+        >
+          다시 검색하기
+          <span aria-hidden="true">›</span>
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
