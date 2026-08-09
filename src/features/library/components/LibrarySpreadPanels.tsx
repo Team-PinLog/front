@@ -3,7 +3,6 @@ import { PaperCoverFace } from '@/features/home/components/HomeSheetPanels';
 import { useMyCollectionsQuery } from '@/features/collections/hooks/useMyCollectionsQuery';
 import { useRecentlyOpenedCount } from '@/features/feed/hooks/useRecentlyOpenedCount';
 import { useFollowsQuery } from '@/features/follows/hooks/useFollowsQuery';
-import { useMeSummaryQuery } from '@/features/me/hooks/useMeSummaryQuery';
 import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
 import { PaperNoteParts, PaperNoteTally } from '@/shared/ui/PaperNoteParts';
 
@@ -13,26 +12,16 @@ import { PaperNoteParts, PaperNoteTally } from '@/shared/ui/PaperNoteParts';
  * 문구는 개편 전 PageTitle이 쓰던 것을 그대로 옮겼다("나의 책장" / "저장한 장소를 책처럼
  * 꺼내보고…"). 이번 변경은 조판이지 문안이 아니다.
  *
- * 407: "나의 활동 기록"(/me/activity) 진입점이 여기 괘선 줄에 산다. 개편 전에는 PageTitle의
- * description 안에 있었는데, 그 PageTitle 자체가 411에서 이 조판으로 대체됐다 — 링크가 사라지지
- * 않도록 같은 줄(제목 아래 한 줄 설명)로 옮겨 왔다. 오른쪽 어깨의 PaperCornerNav와는 하는 일이
- * 다르다: 저쪽은 "다른 화면으로 나가는 길", 이쪽은 "이 책장에 대해 더 읽을 것"이라 둘 다 남는다.
- *
- * 노출 조건은 407이 정한 그대로다. docs 이슈 #55는 **기록 0건이면 책장에서 이 진입점을 숨기자**고
- * 제안한다 — 전부 0인 화면을 첫 사용자에게 주는 것은 그 페이지의 목적과 어긋나기 때문이다.
- * 판정에 GET /me/activity가 아니라 3.5(마이페이지 요약)의 recordCount를 쓰는 이유: 집계 응답은
- * 그 화면에 들어가야 받는 것이 맞고(진입 시 1회 호출이 계약이다), 요약 쪽은 설정 패널이 이미 같은
- * 쿼리 키(['me','summary'])로 쓰고 있어 캐시를 그대로 나눠 쓴다. 책장에 새 요청이 늘지 않는다.
- * 로딩 중(data === undefined)에는 숨긴다 — 없다가 생기는 편이, 있다가 사라지는 것보다 낫다.
+ * S15P11A705-424: "나의 활동 기록"(/me/activity) 진입점을 이 괘선 줄에서 걷어냈다. 407 이후
+ * 여기 살던 링크가 설정 모달(SettingsPanel)로 옮겨졌다 — 책장 지면이 아니라 계정 메뉴에 속하는
+ * 진입점이라는 판단이다. `hasAnyRecord` 조건부 노출과 그에 딸린 useMeSummaryQuery 호출도 함께
+ * 걷어냈다(그 판단은 SettingsPanel이 이어받는다).
  *
  * ⚠️ 이 줄에 무엇을 더 얹든 **높이는 그대로여야 한다**. 조판 머리(--pe-head)가 곁열·선반의 위
  * 경계를 정하고, 캐비닛은 그 아래 남은 상자를 실측해 행을 잡는다 — 한 줄이 두 줄로 접히면
- * 선반 마지막 행이 잘린다. 링크를 nowrap으로 두는 이유가 그것이다.
+ * 선반 마지막 행이 잘린다.
  */
 export function LibraryHeadType() {
-  const meSummaryQuery = useMeSummaryQuery();
-  const hasAnyRecord = (meSummaryQuery.data?.recordCount ?? 0) > 0;
-
   return (
     <>
       <p className="pe-eyebrow">책장</p>
@@ -41,11 +30,6 @@ export function LibraryHeadType() {
       </h1>
       <p className="pe-headrule">
         <span>저장한 장소를 책처럼 꺼내보고 컬렉션으로 정리해 보세요</span>
-        {hasAnyRecord && (
-          <Link to="/me/activity" className="pe-headlink">
-            나의 활동 기록
-          </Link>
-        )}
       </p>
     </>
   );
