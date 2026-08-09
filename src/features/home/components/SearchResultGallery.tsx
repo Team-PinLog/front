@@ -84,7 +84,12 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
 
 interface SearchEmptyModalProps {
   isOpen: boolean;
-  /** 방금 검색한 문장. 표제에 그대로 인용해 "무엇을 찾다가 못 찾았는지"를 보여준다. */
+  /**
+   * 방금 검색한 문장. S15P11A705-426 리터치로 표제 인용 문구를 시안 그대로("아직 이 지도에
+   * 남긴 기억이 없어요")로 바꾸면서 JSX에서는 더 이상 쓰지 않는다. 다만 `HomePage.tsx`(L3
+   * 영역)가 아직 이 prop을 넘기고 있어(읽기만 허용된 파일이라 배선을 바꾸지 않았다) 시그니처는
+   * 유지한다 — L3가 호출부를 정리하면 그때 지운다.
+   */
   query: string;
   /** ESC·배경 클릭으로 닫을 때. */
   onClose: () => void;
@@ -123,7 +128,7 @@ interface SearchEmptyModalProps {
  * HomePage가 정하는 배선이고, L3 영역이라 이 레인에서 손대지 않았다 — 보고에 필요한 배선 변경을
  * 적었다.
  */
-export function SearchEmptyModal({ isOpen, query, onClose, onRetry }: SearchEmptyModalProps) {
+export function SearchEmptyModal({ isOpen, onClose, onRetry }: SearchEmptyModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const retryButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -202,15 +207,15 @@ export function SearchEmptyModal({ isOpen, query, onClose, onRetry }: SearchEmpt
       >
         <PaperNoteParts />
 
-        {/* 스프링 바인더 구멍 — 왼쪽 가장자리 세로 한 줄. */}
+        {/* 스프링 바인더 구멍 — 왼쪽 가장자리 세로 한 줄. 카드 밖으로 절반 걸치게 진하게. */}
         <div
-          className="absolute inset-y-6 left-2.5 flex flex-col justify-between"
+          className="absolute inset-y-8 -left-2 flex flex-col justify-between"
           aria-hidden="true"
         >
-          {Array.from({ length: 7 }).map((_, index) => (
+          {Array.from({ length: 8 }).map((_, index) => (
             <span
               key={index}
-              className="h-2.5 w-2.5 rounded-full bg-pin-navy/10 shadow-[inset_0_1px_2px_rgba(4,33,66,.35)]"
+              className="h-3.5 w-3.5 rounded-full bg-[#e4ddd0] shadow-[inset_0_1.5px_3px_rgba(74,60,36,.4)]"
             />
           ))}
         </div>
@@ -218,15 +223,14 @@ export function SearchEmptyModal({ isOpen, query, onClose, onRetry }: SearchEmpt
         <PinStanding height={40} className="mx-auto mb-4 text-log-mint" />
 
         <h2 id={titleId} className="text-xl font-bold leading-snug text-pin-navy">
-          “{query}”로는
+          아직 이 지도에 남긴
           <br />
-          아직 남긴 기억이 없어요
+          기억이 없어요
         </h2>
 
         <p id={descriptionId} className="mt-3 text-sm leading-relaxed text-ink-gray">
-          다른 낱말로 다시 찾아보거나
-          <br />
-          새로운 장소를 기록해 보세요
+          마음에 드는 장소를 찾아
+          <br />첫 기록을 남겨보세요
         </p>
 
         <button
@@ -235,7 +239,7 @@ export function SearchEmptyModal({ isOpen, query, onClose, onRetry }: SearchEmpt
           onClick={onRetry}
           className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-log-mint px-6 py-2.5 text-sm font-bold text-pin-navy transition-transform hover:-translate-y-0.5"
         >
-          다시 검색하기
+          장소 찾아보기
           <span aria-hidden="true">›</span>
         </button>
       </div>
