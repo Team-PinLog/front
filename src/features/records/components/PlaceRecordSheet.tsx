@@ -589,14 +589,16 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
         통째로 사라진다(S15P11A705-324). 닫기 진입점은 헤더 X 버튼 하나로 통일한다.
       */}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2c2a28]/45 p-4 backdrop-blur-sm">
-        <div className="relative w-full max-w-[720px]">
+        {/* 433: 장소 추천/기록 노트를 Record 상세와 같은 최대 높이 760px로 줄인다. 기존 720×900의
+            4:5 비율을 유지해 폭도 760×0.8=608px로 함께 축소한다. */}
+        <div className="relative w-full max-w-[608px]">
           {/* page stack behind — mockup의 "노트 뒤에 쌓인 종이" 연출 */}
           <div className="pointer-events-none absolute inset-0 translate-x-[14px] translate-y-[14px] rounded-[14px] bg-[#f6f4f1] shadow-[0_24px_48px_-20px_rgba(60,54,48,0.28)]" />
           <div className="pointer-events-none absolute inset-0 translate-x-[7px] translate-y-[7px] rounded-[14px] bg-[#fbfaf8] shadow-[0_18px_36px_-18px_rgba(60,54,48,0.22)]" />
 
           {/* notebook page */}
           <section
-            className="relative z-10 flex h-[min(900px,calc(100dvh-64px))] flex-col rounded-[14px] bg-white px-6 pb-8 pt-9 shadow-[0_30px_60px_-24px_rgba(60,54,48,0.35)] sm:px-[52px] sm:pb-10 sm:pt-11"
+            className="relative z-10 flex h-[min(760px,calc(100dvh-72px))] flex-col rounded-[14px] bg-white px-6 pb-8 pt-9 shadow-[0_30px_60px_-24px_rgba(60,54,48,0.35)] sm:px-[44px] sm:pb-10 sm:pt-11"
             style={{
               backgroundImage: 'radial-gradient(rgba(120,110,100,0.025) 1px, transparent 1px)',
               backgroundSize: '4px 4px',
