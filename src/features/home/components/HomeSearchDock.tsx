@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { SEARCH_PLACEHOLDERS } from '../lib/paperAperture';
 
 interface HomeSearchDockProps {
@@ -8,6 +15,10 @@ interface HomeSearchDockProps {
   isPending: boolean;
   /** 창이 열린 뒤 검색바 아래에 뜨는 안내. 없으면 자리도 차지하지 않는다. */
   status?: string | null;
+}
+
+export interface HomeSearchDockHandle {
+  focus: () => void;
 }
 
 /** 순환 타이핑 속도(ms). 시안 값 그대로 — 치는 속도는 빠르고 지우는 속도는 더 빠르다. */
@@ -25,56 +36,62 @@ const NEXT_MS = 260;
  *
  * 근거: 디자인 시안 home-paper-aperture.html.
  */
-export function HomeSearchDock({
-  query,
-  onQueryChange,
-  onSubmit,
-  isPending,
-  status,
-}: HomeSearchDockProps) {
-  const ghost = useCyclingPlaceholder(query.length === 0);
+export const HomeSearchDock = forwardRef<HomeSearchDockHandle, HomeSearchDockProps>(
+  function HomeSearchDock({ query, onQueryChange, onSubmit, isPending, status }, ref) {
+    const inputRef = useRef<HTMLInputElement>(null);
+    const ghost = useCyclingPlaceholder(query.length === 0);
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = query.trim();
-    if (!trimmed) {
-      return;
-    }
-    onSubmit(trimmed);
-  };
+    useImperativeHandle(
+      ref,
+      () => ({
+        focus: () => inputRef.current?.focus(),
+      }),
+      [],
+    );
 
-  return (
-    <div className="pl-dock">
-      <form className="pl-field" onSubmit={handleSubmit}>
-        <label className="sr-only" htmlFor="home-search">
-          저장한 장소 검색
-        </label>
-        <input
-          id="home-search"
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-        {/* 사용자가 한 글자라도 치면 사라진다. aria-hidden이라 스크린리더는 라벨만 읽는다. */}
-        {ghost !== null && (
-          <span className="pl-ghost" aria-hidden="true">
-            {ghost}
-            <i />
-          </span>
-        )}
-        <button type="submit" disabled={!query.trim() || isPending}>
-          {isPending ? '찾는 중' : '찾기'}
-        </button>
-      </form>
+    const handleSubmit = (event: FormEvent) => {
+      event.preventDefault();
+      const trimmed = query.trim();
+      if (!trimmed) {
+        return;
+      }
+      onSubmit(trimmed);
+    };
 
-      <p className="pl-status" aria-live="polite">
-        {status ?? ''}
-      </p>
-    </div>
-  );
-}
+    return (
+      <div className="pl-dock">
+        <form className="pl-field" onSubmit={handleSubmit}>
+          <label className="sr-only" htmlFor="home-search">
+            저장한 장소 검색
+          </label>
+          <input
+            ref={inputRef}
+            id="home-search"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+          {/* 사용자가 한 글자라도 치면 사라진다. aria-hidden이라 스크린리더는 라벨만 읽는다. */}
+          {ghost !== null && (
+            <span className="pl-ghost" aria-hidden="true">
+              {ghost}
+              <i />
+            </span>
+          )}
+          <button type="submit" disabled={!query.trim() || isPending}>
+            {isPending ? '찾는 중' : '찾기'}
+          </button>
+        </form>
+
+        <p className="pl-status" aria-live="polite">
+          {status ?? ''}
+        </p>
+      </div>
+    );
+  },
+);
 
 /**
  * idle일 때만 도는 순환 placeholder. 사람이 한 글자라도 치면 그 프레임에 멈추고,

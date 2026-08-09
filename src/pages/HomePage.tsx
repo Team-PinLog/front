@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { PlaceRecordSheetProvider } from '@/contexts/PlaceRecordSheetProvider';
 import { PlaceRecordSheet } from '@/features/records/components/PlaceRecordSheet';
 import { RecordDetailOverlay } from '@/features/records/components/RecordDetailOverlay';
@@ -10,7 +10,10 @@ import {
   SearchResultGallery,
 } from '@/features/home/components/SearchResultGallery';
 import { PaperApertureStage } from '@/features/home/components/PaperApertureStage';
-import { HomeSearchDock } from '@/features/home/components/HomeSearchDock';
+import {
+  HomeSearchDock,
+  type HomeSearchDockHandle,
+} from '@/features/home/components/HomeSearchDock';
 import {
   HomeLeftType,
   HomeRightType,
@@ -38,6 +41,7 @@ import { PaperCornerNav } from '@/shared/ui/PaperCornerNav';
  */
 export function HomePage() {
   const searchMutation = useSearchRecordsMutation();
+  const searchDockRef = useRef<HomeSearchDockHandle>(null);
   const [query, setQuery] = useState('');
   const [openRecordId, setOpenRecordId] = useState<number | null>(null);
   // 방금 저장한 Record. 마커 목록이 갱신되는 대로 지도가 그 좌표로 이동하고 값을 비운다.
@@ -66,6 +70,14 @@ export function HomePage() {
   );
 
   const open = computeOpen(query);
+
+  const handleEmptySearchClose = useCallback(() => {
+    setQuery('');
+    resetSearch();
+    // SearchEmptyModal의 unmount cleanup이 열리기 전 포커스를 먼저 복구한다. 그 커밋 뒤 다음
+    // 프레임에서 검색창을 다시 잡아야 CTA·ESC·딤 어느 경로로 닫아도 새 검색을 바로 시작할 수 있다.
+    requestAnimationFrame(() => searchDockRef.current?.focus());
+  }, [resetSearch]);
 
   const hasResults = searchMutation.isSuccess && searchMutation.data.items.length > 0;
   const hasNoResults = searchMutation.isSuccess && searchMutation.data.items.length === 0;
@@ -107,6 +119,7 @@ export function HomePage() {
           topmark={<HomeTopmark />}
           dock={
             <HomeSearchDock
+              ref={searchDockRef}
               query={query}
               onQueryChange={handleQueryChange}
               onSubmit={(value) => searchMutation.mutate(value)}
@@ -150,8 +163,8 @@ export function HomePage() {
           <SearchEmptyModal
             isOpen={hasNoResults}
             query={query}
-            onClose={resetSearch}
-            onRetry={resetSearch}
+            onClose={handleEmptySearchClose}
+            onRetry={handleEmptySearchClose}
           />
         </PaperApertureStage>
 
