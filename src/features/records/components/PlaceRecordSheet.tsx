@@ -107,10 +107,10 @@ function placeMeta(place: KakaoPlace): string {
 }
 
 // 노트북 카드 전역에서 반복되는 CTA 버튼 톤. 화면별로 활성색만 다르다(입력 단계 #4f9b78 ·
-// 저장 단계 #5faa84) — mockup(장소 기록 화면.dc.html 외 3종)의 원값을 그대로 옮겼다.
+// 저장 단계 #5faa84). 434에서 760px 노트 비율에 맞춰 높이·글자·radius를 한 단계 줄였다.
 function ctaButtonClass(disabled: boolean, activeColor: string): string {
   return [
-    'mt-auto h-[60px] flex-none rounded-[14px] text-[19px] font-extrabold tracking-[-0.01em] text-white transition-colors',
+    'mt-auto h-12 flex-none rounded-xl text-[17px] font-extrabold tracking-[-0.01em] text-white transition-colors',
     disabled ? 'cursor-default' : 'cursor-pointer',
     disabled
       ? 'bg-[#bcd8c7] shadow-none'
@@ -518,8 +518,8 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
   // 검색 입력 UI. entry 화면과, details 화면에서 "수정"으로 들어온 편집 모드가 함께 쓴다
   // (mockup에는 편집 상태 화면이 따로 없어 entry의 검색 박스를 그대로 재사용했다).
   const searchBox = (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3 rounded-lg border-[1.5px] border-[#e5e2dd] bg-[#f5f5f5] px-5">
+    <div className="relative flex min-h-0 flex-col gap-2">
+      <div className="flex items-center gap-3 rounded-lg border-[1.5px] border-[#e5e2dd] bg-[#f5f5f5] px-4">
         <svg
           width="20"
           height="20"
@@ -546,7 +546,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
           }}
           placeholder="멀티캠퍼스 역삼"
           autoComplete="off"
-          className="flex-1 border-none bg-transparent py-4 font-[Pretendard] text-base text-[#3f3a2a] outline-none placeholder:text-[#b7b3ad]"
+          className="flex-1 border-none bg-transparent py-3 font-[Pretendard] text-[15px] text-[#3f3a2a] outline-none placeholder:text-[#b7b3ad]"
         />
         <button
           type="button"
@@ -559,16 +559,23 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
       </div>
 
       {showResults && (
-        <div className="place-scroll grid max-h-72 gap-2.5 overflow-y-auto pr-1">
+        <div
+          data-place-record-scroll-owner="search-results"
+          className={`place-scroll grid gap-2 overflow-y-auto pr-1 ${
+            stage === 'entry'
+              ? 'absolute inset-x-0 top-full z-30 mt-2 max-h-40 rounded-lg border border-[#e5e2dd] bg-white p-2 shadow-[0_12px_28px_-12px_rgba(60,54,48,0.35)]'
+              : 'max-h-72'
+          }`}
+        >
           {searchResults.map((place) => (
             <button
               key={place.kakaoPlaceId}
               type="button"
               onClick={() => handleSelect(place)}
-              className="min-h-[76px] rounded-[10px] border-[1.5px] border-[#e5e2dd] bg-white px-5 py-4 text-left text-[#2c2a28] transition-colors hover:border-[#5faa84] hover:bg-[#f4faf7]"
+              className="min-h-16 rounded-[10px] border-[1.5px] border-[#e5e2dd] bg-white px-4 py-3 text-left text-[#2c2a28] transition-colors hover:border-[#5faa84] hover:bg-[#f4faf7]"
             >
               <strong className="block text-[15px] font-extrabold">{place.name}</strong>
-              <small className="mt-1.5 block text-[13px] leading-5 text-[#8a857e]">
+              <small className="mt-1 block text-[13px] leading-4 text-[#8a857e]">
                 {placeMeta(place)}
               </small>
             </button>
@@ -598,7 +605,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
 
           {/* notebook page */}
           <section
-            className="relative z-10 flex h-[min(760px,calc(100dvh-72px))] flex-col rounded-[14px] bg-white px-6 pb-8 pt-9 shadow-[0_30px_60px_-24px_rgba(60,54,48,0.35)] sm:px-[44px] sm:pb-10 sm:pt-11"
+            className="relative z-10 flex h-[min(760px,calc(100dvh-72px))] flex-col rounded-[14px] bg-white px-6 pb-6 pt-7 shadow-[0_30px_60px_-24px_rgba(60,54,48,0.35)] sm:px-10 sm:pb-7 sm:pt-8"
             style={{
               backgroundImage: 'radial-gradient(rgba(120,110,100,0.025) 1px, transparent 1px)',
               backgroundSize: '4px 4px',
@@ -621,36 +628,45 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                   type="button"
                   onClick={handleClose}
                   aria-label="장소 기록 닫기"
-                  className="absolute right-6 top-6 grid h-11 w-11 place-items-center rounded-full bg-[#efece8] text-lg text-[#6f6a63] transition-colors hover:bg-[#e2ddd6] sm:right-[26px] sm:top-[26px]"
+                  className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full bg-[#efece8] text-base text-[#6f6a63] transition-colors hover:bg-[#e2ddd6]"
                 >
                   ✕
                 </button>
 
-                <div className="flex-none pr-14">
+                <div className="flex-none pr-12">
                   <p className="text-[13px] font-extrabold tracking-[0.14em] text-[#4f9b78]">
                     PLACE RECORD
                   </p>
                   <h2
                     id="place-record-title"
-                    className="mt-2 text-[32px] font-extrabold leading-[1.05] tracking-[-0.02em] text-[#2c2a28] sm:text-[38px]"
+                    className="mt-1 text-[30px] font-extrabold leading-[1.05] tracking-[-0.02em] text-[#2c2a28] sm:text-[34px]"
                   >
                     장소 기록
                   </h2>
                 </div>
 
-                <div className="mt-6 flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <div
+                  data-place-record-viewport={stage}
+                  className={`mt-4 flex min-h-0 flex-1 flex-col ${
+                    stage === 'entry'
+                      ? 'overflow-hidden max-sm:overflow-y-auto [@media(max-height:680px)]:overflow-y-auto'
+                      : stage === 'analysis' || stage === 'failure'
+                        ? 'overflow-y-auto'
+                        : 'overflow-hidden'
+                  }`}
+                >
                   {stage === 'entry' && (
                     <div className="flex flex-1 flex-col gap-1">
                       <h3 className="text-[17px] font-extrabold tracking-[-0.01em] text-[#4f9b78]">
                         장소 검색
                       </h3>
-                      <p className="mb-4 text-[15px] font-medium text-[#8a857e]">
+                      <p className="mb-2 text-[14px] font-medium leading-5 text-[#8a857e]">
                         등록하려는 장소의 이름이나 주소를 적어보세요.
                       </p>
 
                       {searchBox}
 
-                      <div className="my-7 flex items-center gap-4">
+                      <div className="my-3 flex items-center gap-3">
                         <div className="h-0 flex-1 border-t-2 border-dashed border-[#ddd7cd]" />
                         {/* 375: 외부 CDN 장식 폰트를 로컬 번들 금은보화(font-hand)로 교체했다. */}
                         <span className="font-hand text-xl text-[#a29d95]">OR</span>
@@ -660,14 +676,14 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                       <h3 className="text-[17px] font-extrabold tracking-[-0.01em] text-[#4f9b78]">
                         대화 캡처 업로드
                       </h3>
-                      <p className="text-[15px] font-medium text-[#8a857e]">
+                      <p className="text-[14px] font-medium leading-5 text-[#8a857e]">
                         장소명이나 지역 정보가 보이는 대화 캡처 화면을 올려 주세요.
                       </p>
-                      <p className="mb-4 mt-1.5 text-[13px] font-medium text-[#b0aba3]">
+                      <p className="mb-2 mt-1 text-[12px] font-medium leading-4 text-[#b0aba3]">
                         * 분석된 이미지는 저장되지 않으며, 장소 후보 확인에만 사용됩니다.
                       </p>
 
-                      <div className="mx-auto mb-5 w-full max-w-[380px]">
+                      <div className="mx-auto mb-3 w-full max-w-[320px]">
                         <label
                           htmlFor="place-capture-input"
                           onDragOver={(event) => {
@@ -677,7 +693,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                           onDragLeave={() => setIsDraggingImage(false)}
                           onDrop={handleDropImage}
                           className={
-                            'block cursor-pointer overflow-hidden rounded-xl border-[6px] shadow-[0_8px_20px_-10px_rgba(60,54,48,0.4)] transition-colors ' +
+                            'block cursor-pointer overflow-hidden rounded-xl border-4 shadow-[0_8px_20px_-10px_rgba(60,54,48,0.4)] transition-colors ' +
                             (isDraggingImage ? 'border-[#e9f4ee]' : 'border-white')
                           }
                           style={{ transform: 'rotate(-0.8deg)' }}
@@ -690,30 +706,33 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                             className="sr-only"
                           />
                           {imagePreviewUrl && imageFile ? (
-                            <span className="grid grid-cols-[88px_1fr] items-center gap-3 bg-[#faf9f7] p-3 text-left">
+                            <span className="grid grid-cols-[72px_1fr] items-center gap-3 bg-[#faf9f7] p-2 text-left">
                               <img
                                 src={imagePreviewUrl}
                                 alt="업로드한 캡처 미리보기"
-                                className="h-[88px] w-[88px] rounded-lg object-cover"
+                                className="h-[72px] w-[72px] rounded-lg object-cover"
                               />
                               <span>
                                 <strong className="block text-sm font-extrabold text-[#2c2a28]">
                                   {imageFile.name}
                                 </strong>
-                                <small className="mt-1 block text-xs leading-6 text-[#8a857e]">
+                                <small className="mt-1 block text-xs leading-5 text-[#8a857e]">
                                   이 이미지로 대화 속 장소와 메모를 분석합니다.
                                 </small>
                               </span>
                             </span>
                           ) : (
-                            <span className="grid min-h-[200px] place-items-center bg-[#faf9f7] p-6 text-center">
-                              <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl border-2 border-[#4f9b78]/60 text-3xl font-bold text-[#4f9b78]">
+                            <span
+                              data-testid="place-capture-dropzone"
+                              className="grid min-h-[120px] place-items-center bg-[#faf9f7] p-4 text-center"
+                            >
+                              <span className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-xl border-2 border-[#4f9b78]/60 text-2xl font-bold text-[#4f9b78]">
                                 +
                               </span>
                               <strong className="block text-sm font-extrabold text-[#2c2a28]">
                                 이미지를 드래그하거나 클릭하여 업로드
                               </strong>
-                              <small className="mt-2 block text-xs text-[#8a857e]">
+                              <small className="mt-1 block text-xs text-[#8a857e]">
                                 JPG, PNG · 최대 1장(10MB 이하)
                               </small>
                             </span>
@@ -848,7 +867,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                       <button
                         type="button"
                         onClick={handleRetryImage}
-                        className="mt-auto h-[60px] w-full flex-none rounded-[14px] border-[1.5px] border-[#cfe6d9] bg-white text-[19px] font-extrabold text-[#2c2a28] transition-colors hover:bg-[#f4faf7]"
+                        className="mt-auto h-12 w-full flex-none rounded-xl border-[1.5px] border-[#cfe6d9] bg-white text-[17px] font-extrabold text-[#2c2a28] transition-colors hover:bg-[#f4faf7]"
                       >
                         다시 시도하기
                       </button>
@@ -860,82 +879,84 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                       <h3 className="text-[17px] font-extrabold tracking-[-0.01em] text-[#4f9b78]">
                         대화에서 찾은 장소
                       </h3>
-                      <p className="mb-5 text-[15px] font-medium text-[#8a857e]">
+                      <p className="mb-3 text-[14px] font-medium leading-5 text-[#8a857e]">
                         저장할 장소를 선택해 주세요.
                       </p>
 
-                      {suggestionWarnings.length > 0 && (
-                        <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-[13px] leading-6 text-amber-800">
-                          {suggestionWarnings.map((message, index) => (
-                            <p key={index}>{message}</p>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="flex flex-col gap-2.5">
-                        {suggestedOptions.map((option) => {
-                          const selected = selectedSuggestionId === option.id;
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              aria-pressed={selected}
-                              onClick={() => setSelectedSuggestionId(option.id)}
-                              className={
-                                'flex items-center gap-4 rounded-[14px] border-[1.5px] px-5 py-4 text-left transition-colors ' +
-                                (selected
-                                  ? 'border-[#5faa84] bg-gradient-to-br from-[#e9f4ee] to-[#dcecdf]'
-                                  : 'border-[#e5e2dd] bg-white hover:border-[#cfe6d9]')
-                              }
-                            >
-                              <span
+                      <div
+                        data-place-record-scroll-owner="candidates"
+                        className="place-scroll min-h-0 flex-1 overflow-y-auto pr-1"
+                      >
+                        {suggestionWarnings.length > 0 && (
+                          <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-[13px] leading-6 text-amber-800">
+                            {suggestionWarnings.map((message, index) => (
+                              <p key={index}>{message}</p>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-2.5">
+                          {suggestedOptions.map((option) => {
+                            const selected = selectedSuggestionId === option.id;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => setSelectedSuggestionId(option.id)}
                                 className={
-                                  'grid h-[26px] w-[26px] flex-none place-items-center rounded-full border-2 ' +
+                                  'flex items-center gap-4 rounded-[14px] border-[1.5px] px-5 py-4 text-left transition-colors ' +
                                   (selected
-                                    ? 'border-[#2c2a28] bg-[#2c2a28]'
-                                    : 'border-[#d8d3cc] bg-white')
+                                    ? 'border-[#5faa84] bg-gradient-to-br from-[#e9f4ee] to-[#dcecdf]'
+                                    : 'border-[#e5e2dd] bg-white hover:border-[#cfe6d9]')
                                 }
-                                aria-hidden="true"
                               >
                                 <span
                                   className={
-                                    'h-[9px] w-[9px] rounded-full ' +
-                                    (selected ? 'bg-white' : 'bg-transparent')
+                                    'grid h-[26px] w-[26px] flex-none place-items-center rounded-full border-2 ' +
+                                    (selected
+                                      ? 'border-[#2c2a28] bg-[#2c2a28]'
+                                      : 'border-[#d8d3cc] bg-white')
                                   }
-                                />
-                              </span>
-                              <span className="flex min-w-0 flex-col gap-1.5">
-                                <strong className="truncate text-[17px] font-extrabold text-[#2c2a28]">
-                                  {option.place.name}
-                                </strong>
-                                <small className="text-sm font-medium text-[#8a857e]">
-                                  {placeMeta(option.place) || option.extractedName}
-                                </small>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {unresolvedCandidates.length > 0 && (
-                        <div className="mt-2.5 flex flex-col gap-2.5">
-                          {unresolvedCandidates.map((candidate) => (
-                            <div
-                              key={candidate.candidateId}
-                              className="rounded-[14px] border-[1.5px] border-dashed border-[#e5e2dd] bg-[#faf9f7] px-5 py-4 text-left"
-                            >
-                              <strong className="block text-[15px] font-extrabold text-[#2c2a28]">
-                                {candidate.extractedName}
-                              </strong>
-                              <small className="mt-1 block text-[13px] leading-5 text-[#8a857e]">
-                                {unresolvedCandidateMessage(candidate.status)}
-                              </small>
-                            </div>
-                          ))}
+                                  aria-hidden="true"
+                                >
+                                  <span
+                                    className={
+                                      'h-[9px] w-[9px] rounded-full ' +
+                                      (selected ? 'bg-white' : 'bg-transparent')
+                                    }
+                                  />
+                                </span>
+                                <span className="flex min-w-0 flex-col gap-1.5">
+                                  <strong className="truncate text-[17px] font-extrabold text-[#2c2a28]">
+                                    {option.place.name}
+                                  </strong>
+                                  <small className="text-sm font-medium text-[#8a857e]">
+                                    {placeMeta(option.place) || option.extractedName}
+                                  </small>
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
-                      )}
 
-                      <div className="flex-1" />
+                        {unresolvedCandidates.length > 0 && (
+                          <div className="mt-2.5 flex flex-col gap-2.5">
+                            {unresolvedCandidates.map((candidate) => (
+                              <div
+                                key={candidate.candidateId}
+                                className="rounded-[14px] border-[1.5px] border-dashed border-[#e5e2dd] bg-[#faf9f7] px-5 py-4 text-left"
+                              >
+                                <strong className="block text-[15px] font-extrabold text-[#2c2a28]">
+                                  {candidate.extractedName}
+                                </strong>
+                                <small className="mt-1 block text-[13px] leading-5 text-[#8a857e]">
+                                  {unresolvedCandidateMessage(candidate.status)}
+                                </small>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
 
                       <button
                         type="button"
@@ -952,7 +973,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                       <button
                         type="button"
                         onClick={() => setStage('entry')}
-                        className="mt-3 h-[60px] w-full flex-none rounded-[14px] border-[1.5px] border-[#cfe6d9] bg-white text-[17px] font-extrabold text-[#2c2a28] transition-colors hover:bg-[#f4faf7]"
+                        className="mt-2 h-12 w-full flex-none rounded-xl border-[1.5px] border-[#cfe6d9] bg-white text-[16px] font-extrabold text-[#2c2a28] transition-colors hover:bg-[#f4faf7]"
                       >
                         찾는 장소가 없나요? 직접 검색하기
                       </button>
@@ -960,7 +981,10 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                   )}
 
                   {showDetails && (
-                    <div className="place-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pb-1 pr-1">
+                    <div
+                      data-place-record-scroll-owner="details"
+                      className="place-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pb-1 pr-1"
+                    >
                       {isEditingPlace ? (
                         <>
                           <h3 className="text-[17px] font-extrabold tracking-[-0.01em] text-[#4f9b78]">
