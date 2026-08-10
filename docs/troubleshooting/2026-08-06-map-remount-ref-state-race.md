@@ -1,7 +1,7 @@
 # 화면을 다녀오면 지도 마커가 다시 그려지지 않는다 — ref와 state의 이중 관리
 
 - 날짜: 2026-08-06
-- 관련 이슈키: S15P11A705-346
+- 관련 이슈키: Jira 작업
 
 ## 증상
 
@@ -54,9 +54,9 @@ Error: Calling setState synchronously within an effect can trigger cascading ren
 
 ## 관련 이슈키
 
-- S15P11A705-346 (GitHub front#128) — 이 문서
-- S15P11A705-307 — SDK 재로드 깜빡임 제거(`isKakaoMapsSdkReady` 초기화), StrictMode 이중 Map 생성 가드, `isolate` stacking context
-- S15P11A705-325 — 가시 영역 보정(`topObstructionPx`, `readInsets`, 저장 후 `focusRecordId` `panTo`)
+- Jira 작업 (GitHub front#128) — 이 문서
+- Jira 작업 — SDK 재로드 깜빡임 제거(`isKakaoMapsSdkReady` 초기화), StrictMode 이중 Map 생성 가드, `isolate` stacking context
+- Jira 작업 — 가시 영역 보정(`topObstructionPx`, `readInsets`, 저장 후 `focusRecordId` `panTo`)
 
 ---
 

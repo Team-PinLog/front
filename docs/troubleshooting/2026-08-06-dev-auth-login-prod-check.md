@@ -1,7 +1,7 @@
 # 운영 백엔드 /dev/auth/login 노출 여부 확인
 
 - 날짜: 2026-08-06
-- 관련 이슈키: S15P11A705-342
+- 관련 이슈키: Jira 작업
 
 ## 증상
 
@@ -33,9 +33,9 @@ $ curl -s https://pin-log.com/api/core/v1/dev/auth/login
 
 ## 재발 방지
 
-- 프론트: 라우트 자체를 `import.meta.env.DEV`로 감싸 프로덕션 번들에서 제외(S15P11A705-342, `docs/conventions.md` 7장에 규칙 추가).
+- 프론트: 라우트 자체를 `import.meta.env.DEV`로 감싸 프로덕션 번들에서 제외(Jira 작업, `docs/conventions.md` 7장에 규칙 추가).
 - 백엔드: dev 프로파일 전용 컨트롤러가 prod 프로파일 빌드/설정에 포함되지 않는지는 백엔드 팀 확인이 필요하다. 이번 실측상 운영에서 열려 있지 않음이 확인됐으므로 별도 이슈 승격은 하지 않는다.
 
 ## 관련 이슈키
 
-S15P11A705-342
+Jira 작업
