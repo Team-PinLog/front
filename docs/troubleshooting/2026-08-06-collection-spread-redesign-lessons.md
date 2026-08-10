@@ -1,9 +1,9 @@
 # 컬렉션 펼친 화면 재설계에서 반복된 함정들 (레인 시야·죽은 소비자·Tailwind·지도)
 
 - 날짜: 2026-08-06
-- 관련 이슈키: S15P11A705-332
+- 관련 이슈키: Jira 작업
 
-여러 세션이 worktree를 나눠(L1 상세 / L2 표지 / L3 책장) 동시에 작업하는 중에 S15P11A705-332를
+여러 세션이 worktree를 나눠(L1 상세 / L2 표지 / L3 책장) 동시에 작업하는 중에 Jira 작업를
 진행하며 겪은 문제를 모았다. 개별 버그보다 **반복된 패턴**이 남길 가치가 있어 한 문서로 묶는다.
 
 ---
@@ -185,11 +185,11 @@ record 장의 확대 레벨을 6 → 3으로 당기면서 발견했다. 기존 �
 
 ## 관련 이슈키
 
-- S15P11A705-332 (컬렉션 펼친 화면 재설계)
-- S15P11A705-207 (오버레이 진입 구분 — `collectionOverlayIntent` 도입)
-- S15P11A705-143 (`ShelfExploreSection` 원본)
-- S15P11A705-307 (마커 SVG asset·`RecordMapView` 마커 처리)
-- S15P11A705-245 / -246 / -171 (목차 fitBounds · 인덱스 레일 · 지도 고정 레벨)
+- Jira 작업 (컬렉션 펼친 화면 재설계)
+- Jira 작업 (오버레이 진입 구분 — `collectionOverlayIntent` 도입)
+- Jira 작업 (`ShelfExploreSection` 원본)
+- Jira 작업 (마커 SVG asset·`RecordMapView` 마커 처리)
+- Jira 작업 / -246 / -171 (목차 fitBounds · 인덱스 레일 · 지도 고정 레벨)
 
 ---
 

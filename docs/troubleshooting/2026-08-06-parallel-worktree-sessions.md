@@ -42,7 +42,7 @@ PinLog/
 git은 같은 브랜치를 두 worktree에서 체크아웃하지 못하게 막는다. 조율 세션이 `front/`에서 `dev`를 잡고 있으므로 **레인은 `dev`를 건드릴 수 없다.**
 
 - 최신화: `git fetch origin && git rebase origin/dev`
-- 다음 티켓 브랜치: `git checkout -b feature/S15P11A705-XXX-... origin/dev`
+- 다음 티켓 브랜치: `git checkout -b feature/Jira-XXX-... origin/dev`
 - ❌ `git pull` / ❌ `git checkout dev`
 
 **재발 방지**: worktree 브리프에 이 세 줄을 명시한다. 모르면 레인이 `git checkout dev`에서 막히고 원인을 못 찾는다.
@@ -50,7 +50,7 @@ git은 같은 브랜치를 두 worktree에서 체크아웃하지 못하게 막�
 ## 3. `git worktree add -b`가 upstream을 `origin/dev`로 잡는다
 
 ```bash
-git worktree add ../front-cover -b feature/S15P11A705-326-... origin/dev
+git worktree add ../front-cover -b feature/<jira-key>-... origin/dev
 # → branch '...' set up to track 'origin/dev'
 ```
 
@@ -109,8 +109,8 @@ gitignore라 당연히 안 따라오는데, 없으면 앱이 **에러 없이 반
 ## 재발 방지 — 세팅 체크리스트
 
 ```bash
-git worktree add ../front-<name> -b feature/S15P11A705-XXX-<desc> origin/dev
-git branch --unset-upstream feature/S15P11A705-XXX-<desc>   # 3번
+git worktree add ../front-<name> -b feature/Jira-XXX-<desc> origin/dev
+git branch --unset-upstream feature/Jira-XXX-<desc>   # 3번
 cp .env ../front-<name>/.env                                 # 5번
 (cd ../front-<name> && npm ci)                               # 4번
 # CLAUDE.local.md 작성 (2번 규칙 + 담당 파일 목록 포함)        # 6번
@@ -124,4 +124,4 @@ git worktree remove ../front-<name> && git worktree prune
 
 ## 관련 이슈키
 
-- S15P11A705-326·327·328·329·330·332·346·347 (이 방식으로 진행)
+- Jira 작업·327·328·329·330·332·346·347 (이 방식으로 진행)

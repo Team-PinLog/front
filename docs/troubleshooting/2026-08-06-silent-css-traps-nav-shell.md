@@ -1,7 +1,7 @@
 # 조용히 잘못되는 CSS 셋 — safe-area·:focus-within·Tailwind가 주석을 읽는다
 
 - 날짜: 2026-08-06
-- 관련 이슈키: S15P11A705-330
+- 관련 이슈키: Jira 작업
 
 ## 배경
 
@@ -130,4 +130,4 @@ grep -oE "[^{},]*focus-visible[^{}]*\{[^}]*\}" dist/assets/*.css
 
 ## 관련 이슈키
 
-- S15P11A705-330
+- Jira 작업

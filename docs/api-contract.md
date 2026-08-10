@@ -88,7 +88,7 @@
 
 > ⚠️ **이 절의 근거는 원본 `08_API_명세`가 아니라 front#109다.** Collection 표지 생성 절(§"Collection 표지 생성")과 같은 패턴 — 원본 문서에 이 엔드포인트가 아직 없고, 스키마가 바뀌면 이 문서가 아니라 그 이슈가 기준이다. 이 엔드포인트는 Core API 소속이라(`/image/api/*`와 달리) `httpClient`를 그대로 쓴다.
 
-<!-- 근거: front#109, S15P11A705-344 -->
+<!-- 근거: front#109, Jira 작업 -->
 
 - **목적**: 대화 캡처 이미지 1장에서 장소명 후보를 AI가 추출하고, 후보마다 카카오 로컬 검색 결과를 붙여 함께 내려준다. 위 "세 가지 장소 검색" 표에는 없는 **네 번째 경로**다 — 카카오도 `GET /records/map`도 아니고, 이미지 한 장에서 장소를 **발견**하는 용도다. 사용자가 최종 확인·수정한 뒤 기존 `POST /records`로 저장한다. **AI 결과만으로 자동 저장되지 않는다.**
 - **요청**: `multipart/form-data`, 필드명 `image`, 이미지 **1장만**, **JPEG/PNG만**, **최대 5 MiB**(front#109). 기존 로그인 쿠키+CSRF 흐름을 그대로 쓴다 — 별도 인증 방식이 없다.
@@ -135,8 +135,8 @@
 - 추가 필드: **`latestCollectionId`**(`number | null`) — 그 Record가 **가장 최근에 담긴** Collection의 id. "가장 최근"의 기준은 컬렉션 내부 정렬과 같은 **담은 시각**이며, 컬렉션에서 **뺀(삭제된) 연결은 판단에서 제외**된다. 어느 Collection에도 담기지 않은 Record는 `null`이다. <!-- 근거: 08_API_명세.md §4.2 -->
   - ⚠️ 필드명은 `collectionId`가 **아니다.** 2026-08-04 doc-sync 이전 이 문서와 프론트 Zod 스키마가 `collectionId`로 적혀 있었고, 그대로면 파싱이 조용히 `undefined`가 되어 모든 마커가 "미분류" 색으로 떨어진다.
   - 한 Record가 여러 Collection에 담길 수 있으나 이 필드는 **단일 값**이다. 마커 색은 "그 Record가 속한 모든 Collection"이 아니라 "가장 최근 것 하나"를 나타낸다.
-- 프론트 처리: `latestCollectionId` 기반 해시로 마커 asset(색) 결정, `null`이면 별도 고정 asset(미분류) 적용. 구현은 `getRecordMarkerAsset`(S15P11A705-307).
-- **back 구현은 아직 머지되지 않았다** — back PR #191(`S15P11A705-308`)이 2026-08-04 기준 **OPEN**이다. 그래서 프론트 Zod 스키마는 이 필드를 **optional로 받는다**(필드가 없거나 명시적 `null`이면 동일하게 "미분류"로 취급). 현재 지도 마커가 전부 미분류 색으로 보이는 것은 **정상**이며, #191이 머지·배포된 뒤에야 색이 갈린다. 그 시점에 optional 제거를 검토한다.
+- 프론트 처리: `latestCollectionId` 기반 해시로 마커 asset(색) 결정, `null`이면 별도 고정 asset(미분류) 적용. 구현은 `getRecordMarkerAsset`(Jira 작업).
+- **back 구현은 아직 머지되지 않았다** — back PR #191(`Jira 작업`)이 2026-08-04 기준 **OPEN**이다. 그래서 프론트 Zod 스키마는 이 필드를 **optional로 받는다**(필드가 없거나 명시적 `null`이면 동일하게 "미분류"로 취급). 현재 지도 마커가 전부 미분류 색으로 보이는 것은 **정상**이며, #191이 머지·배포된 뒤에야 색이 갈린다. 그 시점에 optional 제거를 검토한다.
 
 ### [확정] 지도 키워드 칩 (`GET /records/map/keywords`)
 
@@ -156,7 +156,7 @@
 
 > **`DELETE /me`는 더 이상 "탈퇴 완료"가 아니다.** `204`(완료) → **`200` + 이동할 곳**으로 바뀌었다. 엔드포인트·메서드는 그대로다. <!-- 근거: 08_API_명세.md §3.6, 06_데이터모델_및_무결성.md §6.9 -->
 >
-> **프론트 대응 완료** — front #97, back #181(`S15P11A705-285`, 머지됨). `deleteAccount` 응답 파싱 · `WithdrawConfirmDialog` 페이지 이동 · `handleOAuthCallback`의 `WITHDRAWAL_*` 분기까지 반영돼 있다.
+> **프론트 대응 완료** — front #97, back #181(`Jira 작업`, 머지됨). `deleteAccount` 응답 파싱 · `WithdrawConfirmDialog` 페이지 이동 · `handleOAuthCallback`의 `WITHDRAWAL_*` 분기까지 반영돼 있다.
 
 탈퇴는 두 단계이며, **공급자 연결 해제가 선행되고 그것이 성공한 경우에만** 데이터가 삭제된다.
 
@@ -224,7 +224,7 @@ type PlaceSummary = {
 };
 ```
 
-- back 구현 **머지 완료**(back #184 `S15P11A705-305`, 2026-08-04). `PlaceSummaryResponse`를 쓰는 **모든 응답**에 실린다 — Record 상세뿐 아니라 Collection 상세도 포함이다.
+- back 구현 **머지 완료**(back #184 `Jira 작업`, 2026-08-04). `PlaceSummaryResponse`를 쓰는 **모든 응답**에 실린다 — Record 상세뿐 아니라 Collection 상세도 포함이다.
 - **`thumbnailUrl`은 `null`일 수 있으나 필드가 생략되지는 않는다.** `null`이거나 이미지 로드에 실패하면 기본 이미지로 폴백한다. <!-- 근거: 08_API_명세.md §11.1 -->
 - **4:3 비율**로 제공된다. `aspect-ratio: 4 / 3` + `object-fit: cover`로 표시하면 로딩 전 영역이 확보되고 폭에 적응한다.
 - 현 단계 값은 같은 오리진의 절대 경로(`/api/core/images/places/…`)다. 이후 카카오 이미지 검색 API 전환 시 같은 필드에 외부 절대 URL이 들어가며 **프론트 계약은 바뀌지 않는다**. **`VITE_API_BASE_URL`(`/api/core/v1`)을 앞에 붙이지 않는다** — 이 경로는 `v1` 밖이다.
@@ -371,8 +371,8 @@ type PlaceSummary = {
 1. **provider 대소문자** — 경로는 소문자(`kakao`), 응답은 대문자(`KAKAO`). 타입은 대문자로 두고 경로 조립 시 `toLowerCase()`로 매핑한다.
 2. **표지 생성 요청의 인증·rate limit** — `POST /image/api/covers`는 GPU 비용이 발생하는데 front#99 예제에 인증 헤더가 없다. 비로그인 허용 여부와 남용 방지 정책이 미확정이다(`05-1_파트간_요구사항.md` §3.2). <!-- 2026-08-05 doc-sync -->
    - **구현은 막지 않는다** — 가이드대로 인증 없이 호출한다. 다만 인증이 붙으면 요청 헤더가 바뀌므로, 이미지 서비스 호출부를 전용 클라이언트 한 곳에 모아 그 변경이 한 파일에서 끝나게 한다.
-3. **이미지 기반 장소 제안(`POST /places/suggestions`)의 rate limit 구체값** — Gemini Vision 등 분석 비용이 발생하는 경로다. front#109가 `503 PLACE_SUGGESTION_BUSY`(동시 분석 제한)의 **존재**는 명시하지만 임계값(동시 요청 수·시간당 횟수 등)은 없다. 표지 생성(위 2번)과 같은 이유로 협의 필요. <!-- 근거: front#109, S15P11A705-344 -->
-4. **`kakaoSearch.status`(`NO_RESULTS`/`FAILED`)가 오류인지 정상 응답 안의 상태 표시인지** — 200 응답 안에 후보별로 내려오는 필드라는 스키마 형태로 미루어 보면 "정상 응답, 개별 후보 실패"에 가깝지만, front#109 본문에는 이 필드명 자체가 없다(이슈는 `warnings[].code`로만 부분 실패를 표현한다). 확정 전까지 프론트는 후보별 안내로만 처리하고 전체 요청 실패로 승격하지 않는다(`PlaceRecordSheet.tsx`, S15P11A705-343). <!-- 근거: front#109 부재, S15P11A705-343/344 -->
+3. **이미지 기반 장소 제안(`POST /places/suggestions`)의 rate limit 구체값** — Gemini Vision 등 분석 비용이 발생하는 경로다. front#109가 `503 PLACE_SUGGESTION_BUSY`(동시 분석 제한)의 **존재**는 명시하지만 임계값(동시 요청 수·시간당 횟수 등)은 없다. 표지 생성(위 2번)과 같은 이유로 협의 필요. <!-- 근거: front#109, Jira 작업 -->
+4. **`kakaoSearch.status`(`NO_RESULTS`/`FAILED`)가 오류인지 정상 응답 안의 상태 표시인지** — 200 응답 안에 후보별로 내려오는 필드라는 스키마 형태로 미루어 보면 "정상 응답, 개별 후보 실패"에 가깝지만, front#109 본문에는 이 필드명 자체가 없다(이슈는 `warnings[].code`로만 부분 실패를 표현한다). 확정 전까지 프론트는 후보별 안내로만 처리하고 전체 요청 실패로 승격하지 않는다(`PlaceRecordSheet.tsx`, Jira 작업). <!-- 근거: front#109 부재, Jira 작업/344 -->
 
 ### 이번에 [협의 필요]에서 제거(확정으로 흡수)됨
 
