@@ -3,6 +3,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomeSearchDock, type HomeSearchDockHandle } from './HomeSearchDock';
 
+const { preloadMock } = vi.hoisted(() => ({ preloadMock: vi.fn() }));
+
+vi.mock('react-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-dom')>()),
+  preload: preloadMock,
+}));
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -15,6 +22,7 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  preloadMock.mockClear();
 });
 
 afterEach(() => {
@@ -41,5 +49,11 @@ describe('HomeSearchDock', () => {
     act(() => ref.current?.focus());
 
     expect(document.activeElement).toBe(container.querySelector('#home-search'));
+    expect(preloadMock).toHaveBeenCalledExactlyOnceWith('/fonts/nanum-geumeunbohwa.woff2', {
+      as: 'font',
+      type: 'font/woff2',
+      crossOrigin: 'anonymous',
+      fetchPriority: 'low',
+    });
   });
 });

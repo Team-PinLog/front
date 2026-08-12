@@ -1,9 +1,10 @@
 # 폰트 원본과 변환 절차
 
 이 디렉터리는 **웹에 서빙되지 않는다.** 원본 TTF와 변환 스크립트만 들어 있다.
-실제로 브라우저가 받는 파일은 `public/fonts/*.woff2` 이고, 그건 여기서 만들어 낸 산출물이다.
+실제로 브라우저가 받는 파일은 `public/fonts/*.woff2`다. 이 디렉터리의 `build.sh`가 만드는
+파일은 아래 표의 **재생성 가능** 4종이며, 잘난체 2종은 원본 TTF 없이 WOFF2 산출물만 보관한다.
 
-근거: Jira 작업
+근거: Jira S15P11A705-357, S15P11A705-380, S15P11A705-414, S15P11A705-442
 
 ## 왜 원본을 그대로 쓰지 않나
 
@@ -12,23 +13,32 @@ CDN에서 받던 것보다 느려진다 — 폰트를 로컬 번들한 목적("�
 정반대로 뒤집힌다. 그래서 원본은 서빙되지 않는 이 디렉터리에 두고, 필요한 글자만 뽑아
 WOFF2로 압축한 것만 `public/fonts/`로 내보낸다.
 
-| 원본                           | → 산출물                                | 크기     | 역할(tailwind 토큰)      |
-| ------------------------------ | --------------------------------------- | -------- | ------------------------ |
-| `JejuGothic.ttf` (2.3M)        | `public/fonts/jeju-gothic.woff2`        | 92K      | `font-sans` (본문 기본)  |
-| `JejuHallasan.ttf` (6.4M)      | `public/fonts/jeju-hallasan.woff2`      | 195K     | `font-display` (표제)    |
-| `JejuMyeongjo.ttf` (9.1M)      | `public/fonts/jeju-myeongjo.woff2`      | 241K     | `font-serif` (인용·서브) |
-| `NanumGeumEunBoHwa.ttf` (4.6M) | `public/fonts/nanum-geumeunbohwa.woff2` | 469K     | `font-hand` (Context)    |
-|                                | **합계**                                | **997K** |                          |
+| 원본/재생성 상태                      | → 브라우저 산출물                       |     정확한 크기 | 역할                     |
+| ------------------------------------- | --------------------------------------- | --------------: | ------------------------ |
+| 원본 없음, 사전 생성 WOFF2만 보관     | `public/fonts/jalnan-gothic.woff2`      |       153,840 B | 종이 무대 조판 폴백      |
+| 원본 없음, 사전 생성 WOFF2만 보관     | `public/fonts/jalnan2.woff2`            |       186,356 B | 종이 무대 조판           |
+| `JejuGothic.ttf` (재생성 가능)        | `public/fonts/jeju-gothic.woff2`        |        91,552 B | `font-sans` (본문 기본)  |
+| `JejuHallasan.ttf` (재생성 가능)      | `public/fonts/jeju-hallasan.woff2`      |       194,508 B | `font-display` (표제)    |
+| `JejuMyeongjo.ttf` (재생성 가능)      | `public/fonts/jeju-myeongjo.woff2`      |       241,132 B | `font-serif` (인용·서브) |
+| `NanumGeumEunBoHwa.ttf` (재생성 가능) | `public/fonts/nanum-geumeunbohwa.woff2` |       469,032 B | `font-hand` (Context)    |
+|                                       | **합계**                                | **1,336,420 B** | 약 1.27 MiB              |
 
-> 380에서 본문·표제 서체를 제주 3종으로 교체했다(잘난체 2·잘난고딕 → 제주고딕·제주한라산·
-> 제주명조). 구 원본과 산출물, `@font-face`, preload, LICENSE 항목은 전부 제거했다.
+> 380에서 본문·표제 서체를 제주 3종으로 교체하며 잘난체 산출물을 제거했지만, 414에서 종이 무대
+> 조판만 원본 디자인의 잘난체 스택으로 되돌렸다. 이때 WOFF2 산출물은 다시 들어왔으나 원본 TTF와
+> `build.sh` 생성 단계는 복원되지 않았다.
 >
 > 손글씨체(금은보화)는 교보 손글씨 2025로 바꾸려다 **보류**했다 — 그 폰트의 라이선스가 이
 > 디렉터리의 변환 절차 자체(서브셋·포맷 변환·재배포)를 금지한다. 근거는 `public/fonts/LICENSE`
 > 하단 "반입 보류" 항목에 있다.
 >
-> 첫 화면이 실제로 받는 것은 **본문 서체 1개(92K)** 뿐이다 — 나머지 셋은 그 서체를 쓰는 요소가
-> 화면에 나타날 때만 받는다(`index.html`의 preload 주석 참고).
+> 로그인 화면의 첫 렌더는 본문 서체 1개(91,552B)만 받는다. 인증된 Home 첫 렌더는 현재 조판에
+> 제주고딕·잘난체2·제주명조를 사용하므로 합계 519,040B(약 507KiB)를 받는다. 제주명조는 Home
+> 종이 표지가 보일 때 컴포넌트에서 선로딩한다.
+>
+> 손글씨체 469,032B는 Context가 실제로 표시될 때 요청한다. Home 검색에서는 검색창 포커스를
+> 사용자 의도로 보고 낮은 우선순위로 미리 받지만, 검색하지 않는 첫 화면에는 포함하지 않는다.
+> 계측 근거와 결정 과정은
+> `docs/troubleshooting/2026-08-12-font-loading-optimization.md`에 기록했다.
 >
 > 서브셋 글리프 커버리지: 제주 3종 모두 완성형 한글 2350자를 전부 포함한다. 요청한 2524자 중
 > `®`·`✓`는 원본 폰트에 글리프가 없어 빠진다 — 이 두 글자는 폴백 폰트로 그려진다.
@@ -40,8 +50,9 @@ pip install fonttools brotli   # brotli 없이는 --flavor=woff2가 실패한다
 ./fonts-src/build.sh
 ```
 
-산출물은 `public/fonts/`에 덮어쓴다. 결과 파일도 저장소에 커밋한다 — 빌드 파이프라인에
-파이썬 의존을 넣지 않기 위해서다(폰트는 거의 바뀌지 않는다).
+산출물은 `public/fonts/`의 제주고딕·제주한라산·제주명조·금은보화 4개 파일에 덮어쓴다.
+잘난고딕·잘난체2는 원본이 없어 이 스크립트로 재생성되지 않는다. 결과 파일도 저장소에
+커밋한다 — 빌드 파이프라인에 파이썬 의존을 넣지 않기 위해서다(폰트는 거의 바뀌지 않는다).
 
 ## 서브셋 범위를 바꾸려면
 
@@ -60,7 +71,7 @@ pip install fonttools brotli   # brotli 없이는 --flavor=woff2가 실패한다
 
 ## 라이선스
 
-`public/fonts/LICENSE`에 세 폰트의 저작권·라이선스 고지를 모아 두었다. **폰트를 추가하거나
+`public/fonts/LICENSE`에 폰트의 저작권·라이선스 고지를 모아 두었다. **폰트를 추가하거나
 교체하면 그 파일도 함께 갱신한다.**
 
 `build.sh`는 `--name-IDs`로 저작권(0)·상표(7)·라이선스(13/14) 등을 서브셋 결과물에도

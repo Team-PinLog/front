@@ -8,7 +8,7 @@
          하단 고정 탭바(AppLayout)가 홈 인디케이터에 가리지 않으려면 반드시 필요하다. 근거: S15P11A705-330 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- 357: 외부 폰트 <link>(jsDelivr Pretendard, Google Fonts 손글씨체)와 preconnect를 모두
-         제거했다. 세 서체 모두 public/fonts/의 서브셋 WOFF2로 번들해 같은 오리진에서 받는다.
+         제거했다. 웹폰트는 public/fonts/의 로컬 WOFF2로 번들해 같은 오리진에서 받는다.
          @font-face 선언은 src/index.css에 있다.
 
          본문 서체만 preload한다. 폰트는 CSS를 받아 파싱하고, 그 폰트를 쓰는 요소가 실제로
@@ -17,9 +17,11 @@
          crossorigin이 빠지면 폰트를 두 번 받는다(preload는 CORS 모드로 요청되므로 같은 오리진
          이어도 반드시 붙여야 캐시가 재사용된다).
 
-         나머지 셋은 일부러 preload하지 않는다 — 표제용 제주한라산(195K)·인용용 제주명조(241K)는
-         쓰는 화면에서만 요청하고, 손글씨체(469K)는 포스트잇 전용이라 첫 화면에 없는 경우가 많다.
-         전부 preload하면 정작 필요한 본문 서체와 대역폭을 다투어 초기 렌더가 밀린다.
+         나머지는 전역 preload하지 않는다. 제주한라산·잘난체·제주명조는 사용하는 화면에서만
+         요청한다(Home 표지의 제주명조는 해당 컴포넌트가 선로딩한다). 손글씨체(469K)는 Context
+         전용이라 첫 화면에 없는 경우가 많고, Home에서는 검색창 포커스 때 낮은 우선순위로
+         준비한다. 전부 전역 preload하면 정작 필요한 본문 서체와 대역폭을 다투어 초기 렌더가
+         밀린다. 계측 근거: docs/troubleshooting/2026-08-12-font-loading-optimization.md.
 
          380: 본문 서체가 잘난고딕(154K)에서 제주고딕(92K)으로 바뀌면서 이 preload 한 건의
          전송량도 그만큼 줄었다. -->

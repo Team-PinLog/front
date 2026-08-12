@@ -6,7 +6,24 @@ import {
   useState,
   type FormEvent,
 } from 'react';
+import { preload } from 'react-dom';
 import { SEARCH_PLACEHOLDERS } from '../lib/paperAperture';
+
+const CONTEXT_FONT_URL = '/fonts/nanum-geumeunbohwa.woff2';
+
+/**
+ * 검색창 포커스는 Context 결과를 곧 볼 가능성이 높다는 사용자 의도다. 첫 화면에서는 469KB를
+ * 받지 않고, 입력을 시작할 때 검색 API와 경쟁하지 않도록 낮은 우선순위로 준비한다.
+ * 같은 href의 실제 @font-face 요청은 브라우저 캐시를 재사용한다.
+ */
+function preloadContextFont() {
+  preload(CONTEXT_FONT_URL, {
+    as: 'font',
+    type: 'font/woff2',
+    crossOrigin: 'anonymous',
+    fetchPriority: 'low',
+  });
+}
 
 interface HomeSearchDockProps {
   query: string;
@@ -71,6 +88,7 @@ export const HomeSearchDock = forwardRef<HomeSearchDockHandle, HomeSearchDockPro
             autoComplete="off"
             spellCheck={false}
             value={query}
+            onFocus={preloadContextFont}
             onChange={(event) => onQueryChange(event.target.value)}
           />
           {/* 사용자가 한 글자라도 치면 사라진다. aria-hidden이라 스크린리더는 라벨만 읽는다. */}
