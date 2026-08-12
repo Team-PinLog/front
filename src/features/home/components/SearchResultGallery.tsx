@@ -108,7 +108,6 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
     didDragRef.current = false;
     isDraggingRef.current = true;
     setIsDragging(true);
-    gallery.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -118,6 +117,12 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
     }
     const deltaX = event.clientX - dragStartXRef.current;
     if (Math.abs(deltaX) >= DRAG_THRESHOLD_PX) {
+      if (!didDragRef.current) {
+        // pointerdown에서 바로 capture하면 브라우저가 pointerup/click의 대상을 카드가 아니라
+        // 갤러리로 재지정한다. hover는 보이는데 카드 onClick만 사라졌던 실제 원인이다.
+        // 단순 클릭은 원래 button을 끝까지 대상으로 유지하고, 드래그가 확정된 뒤에만 capture한다.
+        gallery.setPointerCapture(event.pointerId);
+      }
       didDragRef.current = true;
     }
     if (didDragRef.current) {
