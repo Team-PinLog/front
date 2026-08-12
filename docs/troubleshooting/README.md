@@ -52,3 +52,4 @@
 - [스택 브랜치가 부모 squash 머지 후 CONFLICTING이 된다](2026-08-07-squash-merge-stacked-branch-rebase.md) — `git rebase --onto origin/dev <머지된 마지막 커밋>`으로 범위를 제외하면 충돌 0건
 - ["무료 폰트"여도 서브셋·WOFF2 변환이 라이선스 위반일 수 있다](2026-08-07-free-font-license-blocks-subset-pipeline.md) — 교보·온글잎 반입 불가 판정 경위와 폰트 라이선스 3단계 검증 절차
 - [병렬 dev 서버(5174·5175)에서 카카오맵이 안 뜬다](2026-08-07-kakao-sdk-401-on-parallel-dev-ports.md) — 카카오 콘솔에 5173만 등록돼 SDK 401, 코드 회귀로 오인 주의
+- [Home 검색 결과의 손글씨 폰트가 늦게 바뀐다](2026-08-12-font-loading-optimization.md) — 검색 의도 시점 선로딩으로 초기 비용 없이 Context 폰트를 결과보다 먼저 준비
