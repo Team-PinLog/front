@@ -26,21 +26,27 @@ interface SearchResultGalleryProps {
  * `POST /search/records`는 "내 기록의 맥락"만 검색하므로(api-contract.md "Place · 지도 · 검색"
  * 표) matchedContext.body는 항상 본인 Context 원문이라 공개 범위 규칙(타인 Context 원문 비공개)
  * 위반이 아니다. attachment='flat'을 쓴 이유는 lifted보다 회전·그림자가 절제돼 있어 좁은
- * 카드(w-72) 안에서 다른 항목(이름·위치·키워드)과 부딪히지 않기 때문 — 디자인 시안이 도착하면
- * 이 선택은 다시 확인한다.
+ * 카드 안에서 다른 항목(이름·위치·키워드)과 부딪히지 않기 때문 — 디자인 시안이 도착하면
+ * 이 선택은 다시 확인한다. S15P11A705-437부터 카드 폭은 고정값이 아니라 갤러리 가용 폭의
+ * 3등분이다. 바깥 결과 영역이 좁아져도 세 번째 카드만 잘리는 대신 세 카드가 함께 줄어든다.
  * editable을 넘기지 않는다(기본 false) — 검색 결과 카드는 Context를 고치는 자리가 아니다.
  */
 export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalleryProps) {
   const total = items.length;
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-2">
+    <div
+      className="pl-results__gallery"
+      role="region"
+      aria-label={`검색 결과 ${total}곳`}
+      tabIndex={0}
+    >
       {items.map((item, index) => (
         <button
           key={item.recordId}
           type="button"
           onClick={() => onSelectRecord(item.recordId)}
-          className="flex w-72 flex-none flex-col gap-3 rounded-2xl border border-line-card bg-white p-5 text-left shadow-sm transition-transform hover:-translate-y-1"
+          className="pl-results__card flex min-w-0 flex-col gap-3 rounded-2xl border border-line-card bg-white p-5 text-left shadow-sm transition-transform hover:-translate-y-1"
         >
           <p className="text-[11px] font-bold tracking-[0.12em] text-log-mint">
             장소 {index + 1}/{total}

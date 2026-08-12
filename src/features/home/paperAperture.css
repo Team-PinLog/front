@@ -1088,18 +1088,67 @@
 }
 /* ── 검색 결과 ───────────────────────────────────────────────────────
    결과는 창이 완전히 열린 뒤(--open이 1일 때)에만 존재하므로 종이 판과 겹칠 일이 없다.
-   좌우 레일의 포스트잇·책은 지도 쪽으로 삐져나오므로 넓은 판형에서는 360px 이상의 안전 여백을
-   예약한다. 1080px 이하에서는 레일 자체가 사라져 원래의 유동 여백으로 되돌린다.
+   437: 예전처럼 좌우에 각각 360px 이상을 예약하면 1280px PC에서 실제 결과 폭이 약 560px밖에
+   남지 않아 288px 카드 세 장 중 마지막 장이 잘렸다. 레일 소품이 실제로 침범하는 160px만
+   양쪽에 남기고 중앙 갤러리를 최대 960px로 제한한다. 내부 카드는 이 폭을 정확히 3등분한다.
    z-index는 판(6·7)보다 위, 도크(20)보다 아래에 둔다 — 지우다 만 상태에서 판이 아직 돌아오는 중일
    때 결과가 종이 밑으로 들어가 보이지 않게 하려는 것이다. */
 .pl-results {
   position: absolute;
   z-index: 15;
-  left: 0;
-  right: 0;
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
-  padding: 0 clamp(360px, 25%, 440px);
+  width: min(960px, calc(100% - 320px));
+  transform: translate(-50%, -50%);
+}
+
+/* 437: 세 카드가 한 화면의 한 "쪽"이다. 네 번째부터는 같은 폭으로 오른쪽에 이어지고, 각 쪽의
+   첫 카드(1·4·7…)에만 snap을 걸어 휠·트랙패드 탐색이 세 장 단위로 안정된다. 스크롤 영역 자체에
+   포커스를 줄 수 있어 키보드 화살표/페이지 이동도 브라우저 기본 동작으로 사용할 수 있다. */
+.pl-results__gallery {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 2rem) / 3);
+  gap: 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 12px;
+  scroll-padding-inline: 2px;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: theme('colors.log-mint') rgba(250, 247, 246, 0.82);
+  outline: none;
+}
+
+.pl-results__gallery:focus-visible {
+  border-radius: 18px;
+  outline: 2px solid theme('colors.log-mint');
+  outline-offset: 4px;
+}
+
+.pl-results__card:nth-child(3n + 1) {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.pl-results__gallery::-webkit-scrollbar {
+  height: 12px;
+}
+
+.pl-results__gallery::-webkit-scrollbar-track {
+  background-color: rgba(250, 247, 246, 0.82);
+  border: 1px solid theme('colors.line-card');
+  border-radius: 9999px;
+}
+
+.pl-results__gallery::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  background-clip: content-box;
+  background-color: theme('colors.log-mint');
+  border-radius: 9999px;
+}
+
+.pl-results__gallery::-webkit-scrollbar-thumb:hover {
+  background-color: theme('colors.pin-navy');
 }
 
 /* ── 반응형: 축소가 아니라 제본 방식이 바뀐다 ─────────────────────────
@@ -1119,7 +1168,7 @@
     --pl-sh-x: 0%;
   }
   .pl-results {
-    padding: 0 clamp(22px, 7%, 92px);
+    width: min(960px, calc(100% - 44px));
   }
   .pl-dock {
     /* 곁열이 없으니 밀 대상도 없다 — 무대의 수학적 중앙이 곧 광학적 중앙이다. */
@@ -1151,6 +1200,13 @@
   .pl-field button {
     padding: 10px 14px;
     font-size: 12px;
+  }
+  .pl-results__gallery {
+    grid-auto-columns: min(86%, 288px);
+    scroll-snap-type: x mandatory;
+  }
+  .pl-results__card:nth-child(n) {
+    scroll-snap-align: start;
   }
 }
 
