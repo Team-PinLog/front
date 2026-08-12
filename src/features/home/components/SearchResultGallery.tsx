@@ -12,7 +12,7 @@ interface SearchResultGalleryProps {
 }
 
 const SEARCH_RESULT_PAGE_SIZE = 6;
-const DRAG_THRESHOLD_PX = 6;
+const DRAG_THRESHOLD_PX = 10;
 const SEARCH_NOTE_METRICS = {
   bodyFontPx: 18,
   bodyLineHeightPx: 22,
@@ -165,6 +165,9 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
         onPointerCancel={finishDrag}
         onClickCapture={(event) => {
           if (didDragRef.current) {
+            // 포인터 드래그 직후 브라우저가 합성하는 click 한 번만 막는다. 여기서 소비하지 않으면
+            // 이후 Record를 정상 클릭해도 상세 열기 콜백이 계속 차단된다(S15P11A705-440).
+            didDragRef.current = false;
             event.preventDefault();
             event.stopPropagation();
           }
