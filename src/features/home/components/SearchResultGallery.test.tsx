@@ -119,11 +119,12 @@ describe('SearchResultGallery', () => {
     const pages = Array.from(container.querySelectorAll<HTMLElement>('.pl-results__page'));
     const firstCard = container.querySelector<HTMLButtonElement>('.pl-results__card')!;
     const scrollTo = vi.fn();
+    const setPointerCapture = vi.fn();
 
     Object.defineProperties(gallery, {
       scrollLeft: { configurable: true, writable: true, value: 0 },
       scrollTo: { configurable: true, value: scrollTo },
-      setPointerCapture: { configurable: true, value: vi.fn() },
+      setPointerCapture: { configurable: true, value: setPointerCapture },
       hasPointerCapture: { configurable: true, value: () => true },
       releasePointerCapture: { configurable: true, value: vi.fn() },
     });
@@ -149,10 +150,45 @@ describe('SearchResultGallery', () => {
     });
 
     expect(gallery.scrollLeft).toBe(600);
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
     expect(scrollTo).toHaveBeenCalledWith({ left: 960, behavior: 'smooth' });
     expect(onSelectRecord).not.toHaveBeenCalled();
 
     act(() => firstCard.click());
+    expect(onSelectRecord).toHaveBeenCalledWith(1);
+  });
+
+  it('카드의 pointerdown과 pointerup 사이에 드래그가 없으면 capture하지 않고 상세를 연다', () => {
+    const onSelectRecord = vi.fn();
+    act(() => {
+      root.render(<SearchResultGallery items={ITEMS} onSelectRecord={onSelectRecord} />);
+    });
+
+    const gallery = container.querySelector<HTMLElement>('.pl-results__gallery')!;
+    const firstCard = container.querySelector<HTMLButtonElement>('.pl-results__card')!;
+    const setPointerCapture = vi.fn();
+
+    Object.defineProperties(gallery, {
+      setPointerCapture: { configurable: true, value: setPointerCapture },
+      hasPointerCapture: { configurable: true, value: () => false },
+    });
+
+    act(() => {
+      firstCard.dispatchEvent(
+        Object.assign(new MouseEvent('pointerdown', { bubbles: true, clientX: 400, button: 0 }), {
+          pointerId: 2,
+        }),
+      );
+      firstCard.dispatchEvent(
+        Object.assign(new MouseEvent('pointerup', { bubbles: true, clientX: 400, button: 0 }), {
+          pointerId: 2,
+        }),
+      );
+      firstCard.click();
+    });
+
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    expect(onSelectRecord).toHaveBeenCalledOnce();
     expect(onSelectRecord).toHaveBeenCalledWith(1);
   });
 });
