@@ -178,6 +178,7 @@ export function HomePage() {
           {hasResults && (
             <div className="pl-results">
               <SearchResultGallery
+                key={searchMutation.data.items.map((item) => item.recordId).join('-')}
                 items={searchMutation.data.items}
                 onSelectRecord={setOpenRecordId}
               />
