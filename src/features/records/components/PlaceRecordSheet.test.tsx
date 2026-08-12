@@ -147,7 +147,9 @@ describe('PlaceRecordSheet 760px 노트 밀도', () => {
       (button) => button.textContent?.trim() === '이 이미지로 분석 시작',
     );
 
-    expect(dropzone?.className).toContain('min-h-[120px]');
+    expect(dropzone?.className).toContain('flex-1');
+    expect(dropzone?.closest('div')?.className).toContain('min-h-[156px]');
+    expect(dropzone?.closest('div')?.className).toContain('my-3');
     expect(analyzeButton?.className).toContain('h-12');
     expect(analyzeButton?.className).not.toContain('h-[60px]');
   });

@@ -683,7 +683,7 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                         * 분석된 이미지는 저장되지 않으며, 장소 후보 확인에만 사용됩니다.
                       </p>
 
-                      <div className="mx-auto mb-3 w-full max-w-[320px]">
+                      <div className="my-3 flex min-h-[156px] w-full flex-1">
                         <label
                           htmlFor="place-capture-input"
                           onDragOver={(event) => {
@@ -693,10 +693,9 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                           onDragLeave={() => setIsDraggingImage(false)}
                           onDrop={handleDropImage}
                           className={
-                            'block cursor-pointer overflow-hidden rounded-xl border-4 shadow-[0_8px_20px_-10px_rgba(60,54,48,0.4)] transition-colors ' +
+                            'flex min-h-0 w-full flex-1 cursor-pointer overflow-hidden rounded-xl border-4 shadow-[0_8px_20px_-10px_rgba(60,54,48,0.4)] transition-colors ' +
                             (isDraggingImage ? 'border-[#e9f4ee]' : 'border-white')
                           }
-                          style={{ transform: 'rotate(-0.8deg)' }}
                         >
                           <input
                             id="place-capture-input"
@@ -706,13 +705,15 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                             className="sr-only"
                           />
                           {imagePreviewUrl && imageFile ? (
-                            <span className="grid grid-cols-[72px_1fr] items-center gap-3 bg-[#faf9f7] p-2 text-left">
-                              <img
-                                src={imagePreviewUrl}
-                                alt="업로드한 캡처 미리보기"
-                                className="h-[72px] w-[72px] rounded-lg object-cover"
-                              />
-                              <span>
+                            <span className="flex min-h-0 w-full flex-1 flex-col gap-2 bg-[#faf9f7] p-3 text-left">
+                              <span className="relative min-h-0 w-full flex-1 overflow-hidden rounded-lg">
+                                <img
+                                  src={imagePreviewUrl}
+                                  alt="업로드한 캡처 미리보기"
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                />
+                              </span>
+                              <span className="flex-none">
                                 <strong className="block text-sm font-extrabold text-[#2c2a28]">
                                   {imageFile.name}
                                 </strong>
@@ -724,17 +725,19 @@ export function PlaceRecordSheet({ previewMode = false, onRecordSaved }: PlaceRe
                           ) : (
                             <span
                               data-testid="place-capture-dropzone"
-                              className="grid min-h-[120px] place-items-center bg-[#faf9f7] p-4 text-center"
+                              className="grid w-full flex-1 place-items-center bg-[#faf9f7] p-4 text-center"
                             >
-                              <span className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-xl border-2 border-[#4f9b78]/60 text-2xl font-bold text-[#4f9b78]">
-                                +
+                              <span>
+                                <span className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-xl border-2 border-[#4f9b78]/60 text-2xl font-bold text-[#4f9b78]">
+                                  +
+                                </span>
+                                <strong className="block text-sm font-extrabold text-[#2c2a28]">
+                                  이미지를 드래그하거나 클릭하여 업로드
+                                </strong>
+                                <small className="mt-1 block text-xs text-[#8a857e]">
+                                  JPG, PNG · 최대 1장(10MB 이하)
+                                </small>
                               </span>
-                              <strong className="block text-sm font-extrabold text-[#2c2a28]">
-                                이미지를 드래그하거나 클릭하여 업로드
-                              </strong>
-                              <small className="mt-1 block text-xs text-[#8a857e]">
-                                JPG, PNG · 최대 1장(10MB 이하)
-                              </small>
                             </span>
                           )}
                         </label>
