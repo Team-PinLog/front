@@ -12,9 +12,10 @@ interface SearchResultGalleryProps {
 }
 
 const SEARCH_RESULT_PAGE_SIZE = 6;
+const DRAG_THRESHOLD_PX = 6;
 const SEARCH_NOTE_METRICS = {
-  bodyFontPx: 15,
-  bodyLineHeightPx: 18,
+  bodyFontPx: 18,
+  bodyLineHeightPx: 22,
   metaFontPx: 9,
   padXPx: 14,
   padTopPx: 18,
@@ -52,7 +53,12 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
   );
   const galleryId = useId();
   const galleryRef = useRef<HTMLDivElement>(null);
+  const dragStartXRef = useRef(0);
+  const dragStartScrollLeftRef = useRef(0);
+  const didDragRef = useRef(false);
+  const isDraggingRef = useRef(false);
   const [pageIndex, setPageIndex] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const scrollToPage = (nextPageIndex: number) => {
     const gallery = galleryRef.current;
@@ -89,16 +95,80 @@ export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalle
     setPageIndex(nearestPageIndex);
   };
 
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const gallery = galleryRef.current;
+    if (gallery === null) {
+      return;
+    }
+    dragStartXRef.current = event.clientX;
+    dragStartScrollLeftRef.current = gallery.scrollLeft;
+    didDragRef.current = false;
+    isDraggingRef.current = true;
+    setIsDragging(true);
+    gallery.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gallery = galleryRef.current;
+    if (!isDraggingRef.current || gallery === null) {
+      return;
+    }
+    const deltaX = event.clientX - dragStartXRef.current;
+    if (Math.abs(deltaX) >= DRAG_THRESHOLD_PX) {
+      didDragRef.current = true;
+    }
+    if (didDragRef.current) {
+      gallery.scrollLeft = dragStartScrollLeftRef.current - deltaX;
+    }
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gallery = galleryRef.current;
+    if (!isDraggingRef.current || gallery === null) {
+      return;
+    }
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    if (gallery.hasPointerCapture(event.pointerId)) {
+      gallery.releasePointerCapture(event.pointerId);
+    }
+    if (didDragRef.current) {
+      const pages = Array.from(gallery.querySelectorAll<HTMLElement>('.pl-results__page'));
+      const nearestPageIndex = pages.reduce(
+        (nearest, page, index) =>
+          Math.abs(gallery.scrollLeft - page.offsetLeft) <
+          Math.abs(gallery.scrollLeft - pages[nearest].offsetLeft)
+            ? index
+            : nearest,
+        0,
+      );
+      scrollToPage(nearestPageIndex);
+    }
+  };
+
   return (
     <div className="pl-results__viewport">
       <div
         ref={galleryRef}
         id={galleryId}
-        className="pl-results__gallery"
+        className={`pl-results__gallery${isDragging ? ' pl-results__gallery--dragging' : ''}`}
         role="region"
         aria-label={`검색 결과 ${total}곳`}
         tabIndex={0}
         onScroll={handleGalleryScroll}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+        onClickCapture={(event) => {
+          if (didDragRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
       >
         {pages.map((pageItems, pageNumber) => (
           <div
