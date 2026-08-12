@@ -61,11 +61,16 @@ describe('SearchResultGallery', () => {
 
     const gallery = container.querySelector<HTMLElement>('.pl-results__gallery');
     const cards = Array.from(container.querySelectorAll<HTMLButtonElement>('.pl-results__card'));
+    const contextBody = container.querySelector<HTMLElement>(
+      '.pl-results__context .context-sticky-note > p:first-of-type',
+    );
 
     expect(gallery?.getAttribute('role')).toBe('region');
     expect(gallery?.getAttribute('aria-label')).toBe('검색 결과 7곳');
     expect(gallery?.tabIndex).toBe(0);
     expect(container.querySelectorAll('.pl-results__page')).toHaveLength(2);
+    expect(contextBody?.style.fontSize).toBe('18px');
+    expect(contextBody?.style.lineHeight).toBe('22px');
     expect(cards.map((card) => card.textContent)).toEqual(
       Array.from({ length: 7 }, (_, index) => expect.stringContaining(`장소 ${index + 1}/7`)),
     );
@@ -102,5 +107,49 @@ describe('SearchResultGallery', () => {
     expect(previousButton?.disabled).toBe(false);
     expect(nextButton?.disabled).toBe(true);
     expect(container.querySelector('.pl-results__page-status')?.textContent).toBe('2/2');
+  });
+
+  it('결과 영역을 좌우로 드래그하면 가장 가까운 6개 단위 페이지로 이동한다', () => {
+    const onSelectRecord = vi.fn();
+    act(() => {
+      root.render(<SearchResultGallery items={ITEMS} onSelectRecord={onSelectRecord} />);
+    });
+
+    const gallery = container.querySelector<HTMLElement>('.pl-results__gallery')!;
+    const pages = Array.from(container.querySelectorAll<HTMLElement>('.pl-results__page'));
+    const firstCard = container.querySelector<HTMLButtonElement>('.pl-results__card')!;
+    const scrollTo = vi.fn();
+
+    Object.defineProperties(gallery, {
+      scrollLeft: { configurable: true, writable: true, value: 0 },
+      scrollTo: { configurable: true, value: scrollTo },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      hasPointerCapture: { configurable: true, value: () => true },
+      releasePointerCapture: { configurable: true, value: vi.fn() },
+    });
+    Object.defineProperty(pages[1], 'offsetLeft', { configurable: true, value: 960 });
+
+    act(() => {
+      gallery.dispatchEvent(
+        Object.assign(new MouseEvent('pointerdown', { bubbles: true, clientX: 800, button: 0 }), {
+          pointerId: 1,
+        }),
+      );
+      gallery.dispatchEvent(
+        Object.assign(new MouseEvent('pointermove', { bubbles: true, clientX: 200 }), {
+          pointerId: 1,
+        }),
+      );
+      gallery.dispatchEvent(
+        Object.assign(new MouseEvent('pointerup', { bubbles: true, clientX: 200 }), {
+          pointerId: 1,
+        }),
+      );
+      firstCard.click();
+    });
+
+    expect(gallery.scrollLeft).toBe(600);
+    expect(scrollTo).toHaveBeenCalledWith({ left: 960, behavior: 'smooth' });
+    expect(onSelectRecord).not.toHaveBeenCalled();
   });
 });

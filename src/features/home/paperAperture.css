@@ -1119,7 +1119,15 @@
   scroll-padding-inline: 12px;
   scroll-snap-type: x mandatory;
   scrollbar-color: theme('colors.log-mint') rgba(250, 247, 246, 0.82);
+  cursor: grab;
+  touch-action: pan-y;
   outline: none;
+}
+
+.pl-results__gallery--dragging {
+  cursor: grabbing;
+  user-select: none;
+  scroll-snap-type: none;
 }
 
 .pl-results__gallery:focus-visible {
