@@ -151,5 +151,8 @@ describe('SearchResultGallery', () => {
     expect(gallery.scrollLeft).toBe(600);
     expect(scrollTo).toHaveBeenCalledWith({ left: 960, behavior: 'smooth' });
     expect(onSelectRecord).not.toHaveBeenCalled();
+
+    act(() => firstCard.click());
+    expect(onSelectRecord).toHaveBeenCalledWith(1);
   });
 });

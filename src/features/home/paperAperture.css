@@ -1115,8 +1115,8 @@
   min-height: 440px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 10px 12px 8px;
-  scroll-padding-inline: 12px;
+  padding: 10px 0 8px;
+  scroll-padding-inline: 0;
   scroll-snap-type: x mandatory;
   scrollbar-color: theme('colors.log-mint') rgba(250, 247, 246, 0.82);
   cursor: grab;
@@ -1144,7 +1144,9 @@
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 16px 18px;
   min-width: 0;
-  padding: 4px 8px 8px;
+  /* gallery 바깥이 아니라 각 페이지 안에 여백을 둔다. gallery에 좌우 padding이 있으면 100%인
+     다음 페이지가 그 padding 틈으로 비쳐 한 페이지에 3열 + 흰 띠가 보인다(S15P11A705-440). */
+  padding: 4px 20px 8px;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
