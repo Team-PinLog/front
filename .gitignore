@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Python test cache / bytecode
+__pycache__/
+*.py[cod]
+
 # Env
 .env
 .env.*.local

@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SearchResultItem } from '@/features/search/api/searchRecords';
 import { ContextStickyNote } from '@/shared/ui/ContextStickyNote';
 import { PaperNoteParts } from '@/shared/ui/PaperNoteParts';
-import { PinStanding } from '@/shared/ui/PinSymbols';
+import { PinPushMount, PinStanding } from '@/shared/ui/PinSymbols';
 import { FOCUSABLE_SELECTOR } from '@/shared/lib/focusableSelector';
 
 interface SearchResultGalleryProps {
@@ -11,8 +11,19 @@ interface SearchResultGalleryProps {
   onSelectRecord: (recordId: number) => void;
 }
 
+const SEARCH_RESULT_PAGE_SIZE = 6;
+const SEARCH_NOTE_METRICS = {
+  bodyFontPx: 15,
+  bodyLineHeightPx: 18,
+  metaFontPx: 9,
+  padXPx: 14,
+  padTopPx: 18,
+  padBottomPx: 12,
+  dividerGapPx: 6,
+} as const;
+
 /**
- * 스마트 검색 결과 갤러리: 가로 스크롤 카드 목록.
+ * 스마트 검색 결과 갤러리: PC 한 쪽에 2행 × 3열로 놓이는 종이 메모 목록.
  * 근거: Jira S15P11A705-165, mockup(PinLog.responsive.dc.html) home-coverflow(1063~1104행).
  * 목업은 3D coverflow(카드 겹침) 효과를 쓰지만, 이번 범위는 가로 스크롤 + 카드 형태로 충분하다고
  * 명시돼 있어 완전한 3D 구현은 하지 않았다.
@@ -27,63 +38,162 @@ interface SearchResultGalleryProps {
  * 표) matchedContext.body는 항상 본인 Context 원문이라 공개 범위 규칙(타인 Context 원문 비공개)
  * 위반이 아니다. attachment='flat'을 쓴 이유는 lifted보다 회전·그림자가 절제돼 있어 좁은
  * 카드 안에서 다른 항목(이름·위치·키워드)과 부딪히지 않기 때문 — 디자인 시안이 도착하면
- * 이 선택은 다시 확인한다. S15P11A705-437부터 카드 폭은 고정값이 아니라 갤러리 가용 폭의
- * 3등분이다. 바깥 결과 영역이 좁아져도 세 번째 카드만 잘리는 대신 세 카드가 함께 줄어든다.
+ * 이 선택은 다시 확인한다. S15P11A705-438부터 한 페이지는 6장(2행 × 3열)이다. 일곱 번째부터
+ * 다음 종이 쪽에 놓고 페이지 단위로 넘긴다. 카드 외곽은 반듯한 노트 한 장과 뒤에 겹친 종이만
+ * 남기고, 바깥 노트의 부착 장식은 앱 공용 `PinPushMount`로 통일한다. 안쪽 Context는 다른
+ * 화면과 같은 공용 컴포넌트 판형(파스텔 종이·테이프)을 그대로 유지한다.
  * editable을 넘기지 않는다(기본 false) — 검색 결과 카드는 Context를 고치는 자리가 아니다.
  */
 export function SearchResultGallery({ items, onSelectRecord }: SearchResultGalleryProps) {
   const total = items.length;
+  const pageCount = Math.ceil(total / SEARCH_RESULT_PAGE_SIZE);
+  const pages = Array.from({ length: pageCount }, (_, pageIndex) =>
+    items.slice(pageIndex * SEARCH_RESULT_PAGE_SIZE, (pageIndex + 1) * SEARCH_RESULT_PAGE_SIZE),
+  );
+  const galleryId = useId();
+  const galleryRef = useRef<HTMLDivElement>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+
+  const scrollToPage = (nextPageIndex: number) => {
+    const gallery = galleryRef.current;
+    if (gallery === null) {
+      return;
+    }
+
+    const boundedPageIndex = Math.max(0, Math.min(nextPageIndex, pageCount - 1));
+    const targetPage = gallery.querySelectorAll<HTMLElement>('.pl-results__page')[boundedPageIndex];
+    if (targetPage === undefined) {
+      return;
+    }
+
+    setPageIndex(boundedPageIndex);
+    gallery.scrollTo({ left: targetPage.offsetLeft, behavior: 'smooth' });
+  };
+
+  const handleGalleryScroll = () => {
+    const gallery = galleryRef.current;
+    if (gallery === null) {
+      return;
+    }
+
+    const pageStarts = Array.from(gallery.querySelectorAll<HTMLElement>('.pl-results__page')).map(
+      (page) => page.offsetLeft,
+    );
+    const nearestPageIndex = pageStarts.reduce(
+      (nearest, start, index) =>
+        Math.abs(gallery.scrollLeft - start) < Math.abs(gallery.scrollLeft - pageStarts[nearest])
+          ? index
+          : nearest,
+      0,
+    );
+    setPageIndex(nearestPageIndex);
+  };
 
   return (
-    <div
-      className="pl-results__gallery"
-      role="region"
-      aria-label={`검색 결과 ${total}곳`}
-      tabIndex={0}
-    >
-      {items.map((item, index) => (
-        <button
-          key={item.recordId}
-          type="button"
-          onClick={() => onSelectRecord(item.recordId)}
-          className="pl-results__card flex min-w-0 flex-col gap-3 rounded-2xl border border-line-card bg-white p-5 text-left shadow-sm transition-transform hover:-translate-y-1"
-        >
-          <p className="text-[11px] font-bold tracking-[0.12em] text-log-mint">
-            장소 {index + 1}/{total}
-          </p>
-
-          <div>
-            <p className="text-base font-bold text-pin-navy">{item.place.name}</p>
-            <p className="text-xs font-semibold text-log-mint">{item.place.address}</p>
-          </div>
-
-          {item.keywords.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {item.keywords.map((keyword) => (
-                <span
-                  key={keyword}
-                  className="rounded-full bg-log-mint/10 px-3 py-1.5 text-xs font-bold text-log-mint"
+    <div className="pl-results__viewport">
+      <div
+        ref={galleryRef}
+        id={galleryId}
+        className="pl-results__gallery"
+        role="region"
+        aria-label={`검색 결과 ${total}곳`}
+        tabIndex={0}
+        onScroll={handleGalleryScroll}
+      >
+        {pages.map((pageItems, pageNumber) => (
+          <div
+            key={`search-page-${pageNumber}`}
+            className="pl-results__page"
+            aria-label={`${pageNumber + 1}번째 검색 결과 페이지`}
+          >
+            {pageItems.map((item, itemIndex) => {
+              const resultIndex = pageNumber * SEARCH_RESULT_PAGE_SIZE + itemIndex;
+              return (
+                <button
+                  key={item.recordId}
+                  type="button"
+                  onClick={() => onSelectRecord(item.recordId)}
+                  className="pl-results__card"
                 >
-                  {keyword}
-                </span>
-              ))}
-            </div>
-          ) : item.keywordStatus === 'PROCESSING' ? (
-            <p className="text-xs text-ink-gray-light">
-              AI가 키워드를 분석 중이에요. 잠시 후 자동으로 채워집니다
-            </p>
-          ) : (
-            <p className="text-xs text-ink-gray-light">이 기록엔 키워드가 없어요</p>
-          )}
+                  <PinPushMount
+                    height={30}
+                    className="-top-3 left-1/2 -translate-x-1/2 text-log-mint"
+                  />
+                  <p className="pl-results__index">
+                    장소 {resultIndex + 1}/{total}
+                  </p>
 
-          <ContextStickyNote
-            contextId={item.matchedContext.contextId}
-            body={item.matchedContext.body}
-            createdAt={item.matchedContext.createdAt}
-            attachment="flat"
-          />
-        </button>
-      ))}
+                  <div className="pl-results__place">
+                    <p className="pl-results__place-name">{item.place.name}</p>
+                    <p className="pl-results__address">{item.place.address}</p>
+                  </div>
+
+                  {item.keywords.length > 0 ? (
+                    <div className="pl-results__keywords">
+                      {item.keywords.map((keyword) => (
+                        <span key={keyword} className="pl-results__keyword">
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  ) : item.keywordStatus === 'PROCESSING' ? (
+                    <p className="pl-results__keyword-status">AI가 키워드를 분석 중이에요</p>
+                  ) : (
+                    <p className="pl-results__keyword-status">이 기록엔 키워드가 없어요</p>
+                  )}
+
+                  <div className="pl-results__context">
+                    <ContextStickyNote
+                      contextId={item.matchedContext.contextId}
+                      body={item.matchedContext.body}
+                      createdAt={item.matchedContext.createdAt}
+                      attachment="flat"
+                      metrics={SEARCH_NOTE_METRICS}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {pageCount > 1 && (
+        <nav className="pl-results__controls" aria-label="검색 결과 페이지">
+          <button
+            type="button"
+            className="pl-results__page-button"
+            aria-controls={galleryId}
+            aria-label="이전 검색 결과 6개"
+            disabled={pageIndex === 0}
+            onClick={() => scrollToPage(pageIndex - 1)}
+          >
+            ‹
+          </button>
+          <span className="pl-results__page-track" aria-hidden="true">
+            <span
+              className="pl-results__page-thumb"
+              style={{
+                width: `${100 / pageCount}%`,
+                transform: `translateX(${pageIndex * 100}%)`,
+              }}
+            />
+          </span>
+          <span className="pl-results__page-status" aria-live="polite">
+            {pageIndex + 1}/{pageCount}
+          </span>
+          <button
+            type="button"
+            className="pl-results__page-button"
+            aria-controls={galleryId}
+            aria-label="다음 검색 결과 6개"
+            disabled={pageIndex === pageCount - 1}
+            onClick={() => scrollToPage(pageIndex + 1)}
+          >
+            ›
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
